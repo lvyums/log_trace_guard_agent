@@ -12,6 +12,47 @@ class RiskLevel(str, Enum):
     P3_NOISE = "P3_噪音"
 
 
+class DeviceType(str, Enum):
+    """设备类型枚举"""
+    FIREWALL = "firewall"
+    WAF = "waf"
+    IDS = "ids"
+    IPS = "ips"
+    ROUTER = "router"
+    SWITCH = "switch"
+    SERVER = "server"
+    WEB = "web"
+    APPLICATION = "application"
+    NGINX = "nginx"
+    APACHE = "apache"
+    DB = "db"
+    MYSQL = "mysql"
+    POSTGRESQL = "postgresql"
+    SQLSERVER = "sqlserver"
+    ORACLE = "oracle"
+    BASTION = "bastion"
+    HIDS = "hids"
+    EDR = "edr"
+    SIEM = "siem"
+    UNKNOWN = "unknown"
+
+
+class CollectProtocol(str, Enum):
+    """采集协议枚举"""
+    SYSLOG = "syslog"
+    FILE = "file"
+    DB_SYNC = "db_sync"
+    AGENT = "agent"
+    API = "api"
+
+
+class ScaleLevel(str, Enum):
+    """企业规模枚举"""
+    SMALL = "small"
+    MEDIUM = "medium"
+    LARGE = "large"
+
+
 class Settings(BaseSettings):
     # ── 服务配置 ──
     service_host: str = "0.0.0.0"
@@ -57,6 +98,17 @@ class Settings(BaseSettings):
     # ── 规则引擎配置 ──
     rule_data_dir: str = "./data/rule_data"
     rule_watcher_enabled: bool = True
+
+    # ── 模块三：日志采集配置 ──
+    device_protocol_data_path: str = "./data/rule_data/device_protocol.json"
+    fault_kb_data_path: str = "./data/rule_data/fault_kb.json"
+    collect_template_data_path: str = "./data/rule_data/collect_templates.json"
+    context_ttl_seconds: int = 3600  # 上下文过期时间（秒）
+    match_confidence_threshold: float = 60.0  # 设备匹配置信度阈值
+    # 架构分级阈值
+    arch_small_device_count: int = 10
+    arch_small_log_volume: str = "small"
+    arch_medium_device_count: int = 100
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -1,4 +1,4 @@
-"""模块三业务逻辑编排 — 采集方案生成 + 故障诊断 + 架构推荐"""
+"""模块三业务逻辑编排 — 参数校验 + RAG增强 + 批量支持 + 配置化阈值"""
 
 from typing import Optional
 
@@ -6,6 +6,7 @@ from modules.log_collect.collect_strategy import CollectStrategyFactory
 from modules.log_collect.device_match import DeviceMatcher
 from modules.log_collect.fault_fix import FaultFixer
 from core.context_manager import ContextManager, ModuleContext
+from app.exceptions import ParamInvalidException
 from common.logger import LogManager
 from common.result_util import Result
 
@@ -18,21 +19,30 @@ class LogCollectService:
     @staticmethod
     async def match_device(device_type: str, device_model: str = "", scale: str = "small", context: Optional[ContextManager] = None) -> Result:
         """设备类型匹配 — 自动识别并推荐采集方案"""
+        # 参数校验
+        if not device_type or not device_type.strip():
+            raise ParamInvalidException("设备类型不能为空")
+        device_type = device_type.strip().lower()
+        if scale not in ("small", "medium", "large"):
+            raise ParamInvalidException(f"无效的规模参数: {scale}，可选: small/medium/large")
+
         # 获取推荐方案
         recommendation = DeviceMatcher.get_recommendation(device_type, device_model, scale)
 
         plan = recommendation.get("plan")
-        plan_dict = None
-        if plan:
-            plan_dict = {
-                "device_type": plan.device_type,
-                "device_model": plan.device_model,
-                "protocol": plan.protocol,
-                "architecture": plan.architecture,
-                "config_template": plan.config_template,
-                "steps": plan.steps,
-                "notes": plan.notes,
-            }
+        plan_dict = _plan_to_dict(plan) if plan else None
+        confidence = recommendation.get("match_confidence", 0)
+
+        # 低置信度附加人工确认提示
+        from app.settings import settings
+        low_confidence_note = None
+        if confidence < settings.match_confidence_threshold:
+            low_confidence_note = f"匹配置信度较低({confidence:.1f}分)，建议人工确认设备类型"
+
+        # RAG 增强：从采集知识库补充小众设备适配说明
+        rag_supplements = []
+        if plan and plan.rag_supplements:
+            rag_supplements = plan.rag_supplements
 
         # 更新上下文
         if context:
@@ -44,31 +54,37 @@ class LogCollectService:
             )
             context.set_module_result("log_collect", ctx)
 
-        return Result.ok({
+        result_data = {
             "device_info": recommendation["device_info"],
             "plan": plan_dict,
             "match_source": recommendation["match_source"],
-        })
+            "match_confidence": confidence,
+        }
+        if low_confidence_note:
+            result_data["low_confidence_note"] = low_confidence_note
+        if rag_supplements:
+            result_data["rag_supplements"] = rag_supplements
+
+        return Result.ok(result_data)
 
     @staticmethod
     async def generate_plan(device_type: str, device_model: str = "", scale: str = "small", include_config: bool = True, context: Optional[ContextManager] = None) -> Result:
-        """生成采集方案 — 根据设备类型和规模生成完整方案"""
+        """生成采集方案 — 含 RAG 增强"""
+        # 参数校验
+        if not device_type or not device_type.strip():
+            raise ParamInvalidException("设备类型不能为空")
+        device_type = device_type.strip().lower()
+        if scale not in ("small", "medium", "large"):
+            raise ParamInvalidException(f"无效的规模参数: {scale}")
+
         plan = CollectStrategyFactory.get_plan(device_type, device_model, scale)
 
-        if plan is None:
-            return Result.fail(f"暂不支持设备类型: {device_type}")
+        # RAG 增强：从采集知识库补充特殊环境适配说明
+        rag_supplements = _get_rag_supplements(device_type, device_model)
 
-        plan_dict = {
-            "device_type": plan.device_type,
-            "device_model": plan.device_model,
-            "protocol": plan.protocol,
-            "architecture": plan.architecture,
-            "steps": plan.steps,
-            "notes": plan.notes,
-        }
-
-        if include_config:
-            plan_dict["config_template"] = plan.config_template
+        plan_dict = _plan_to_dict(plan, include_config)
+        if rag_supplements:
+            plan_dict["rag_supplements"] = rag_supplements
 
         # 更新上下文
         if context:
@@ -83,35 +99,103 @@ class LogCollectService:
         return Result.ok(plan_dict)
 
     @staticmethod
-    async def diagnose_fault(symptom: str, device_type: Optional[str] = None, context: Optional[ContextManager] = None) -> Result:
-        """故障诊断 — 根据症状自动定位原因并输出修复方案"""
-        diagnosis = FaultFixer.diagnose(symptom)
+    async def batch_generate_plans(devices: list[dict], context: Optional[ContextManager] = None) -> Result:
+        """批量生成采集方案 — 支持多设备汇总"""
+        if not devices:
+            raise ParamInvalidException("设备列表不能为空")
+        if len(devices) > 50:
+            raise ParamInvalidException("单次批量请求最多50台设备")
 
-        if diagnosis is None:
-            return Result.ok({
-                "fault_type": "未识别",
-                "fault_desc": f"未匹配到已知故障类型，症状描述: {symptom}",
-                "possible_causes": ["请提供更多故障细节以便精准诊断"],
-                "fix_steps": ["建议联系技术支持获取帮助"],
-                "prevention": [],
-                "severity": "unknown",
+        items = []
+        protocol_summary = {}
+        for i, device in enumerate(devices):
+            device_type = device.get("device_type", "").strip().lower()
+            device_model = device.get("device_model", "")
+            scale = device.get("scale", "small")
+
+            if not device_type:
+                items.append({"index": i, "device_type": "", "error": "设备类型不能为空"})
+                continue
+
+            plan = CollectStrategyFactory.get_plan(device_type, device_model, scale)
+            plan_dict = _plan_to_dict(plan) if plan else None
+
+            # 汇总协议分布
+            protocol = plan.protocol if plan else "unknown"
+            protocol_summary[protocol] = protocol_summary.get(protocol, 0) + 1
+
+            items.append({
+                "index": i,
+                "device_type": device_type,
+                "device_model": device_model,
+                "plan": plan_dict,
             })
-
-        result = {
-            "fault_type": diagnosis.fault_type,
-            "fault_desc": diagnosis.fault_desc,
-            "possible_causes": diagnosis.possible_causes,
-            "fix_steps": diagnosis.fix_steps,
-            "prevention": diagnosis.prevention,
-            "severity": diagnosis.severity,
-        }
 
         # 更新上下文
         if context:
             ctx = ModuleContext(
                 module_id="log_collect",
                 status="success",
-                input={"symptom": symptom, "device_type": device_type},
+                input={"batch_size": len(devices)},
+                output={"items": items, "protocol_summary": protocol_summary},
+            )
+            context.set_module_result("log_collect", ctx)
+
+        return Result.ok({
+            "total": len(devices),
+            "success_count": sum(1 for i in items if i.get("plan")),
+            "fail_count": sum(1 for i in items if i.get("error")),
+            "items": items,
+            "protocol_summary": protocol_summary,
+        })
+
+    @staticmethod
+    async def diagnose_fault(
+        symptom: str,
+        device_type: Optional[str] = None,
+        protocol: Optional[str] = None,
+        error_log: Optional[str] = None,
+        context: Optional[ContextManager] = None,
+    ) -> Result:
+        """故障诊断 — 多维度联合诊断"""
+        # 参数校验
+        if not symptom or not symptom.strip():
+            raise ParamInvalidException("故障症状描述不能为空")
+
+        diagnosis = FaultFixer.diagnose(
+            symptom=symptom,
+            protocol=protocol,
+            device_type=device_type,
+            error_log=error_log,
+        )
+
+        if diagnosis is None:
+            result = {
+                "fault_type": "未识别",
+                "fault_desc": f"未匹配到已知故障类型，症状描述: {symptom}",
+                "match_score": 0,
+                "possible_causes": ["请提供更多故障细节以便精准诊断"],
+                "fix_steps": ["建议联系技术支持获取帮助"],
+                "prevention": [],
+                "severity": "unknown",
+            }
+        else:
+            result = {
+                "fault_type": diagnosis.fault_type,
+                "fault_desc": diagnosis.fault_desc,
+                "match_score": diagnosis.match_score,
+                "possible_causes": diagnosis.possible_causes,
+                "fix_steps": diagnosis.fix_steps,
+                "prevention": diagnosis.prevention,
+                "severity": diagnosis.severity,
+            }
+
+        # 更新上下文
+        if context:
+            ctx = ModuleContext(
+                module_id="log_collect",
+                status="success",
+                input={"symptom": symptom, "device_type": device_type, "protocol": protocol},
                 output={"diagnosis": result},
             )
             context.set_module_result("log_collect", ctx)
@@ -126,38 +210,15 @@ class LogCollectService:
 
     @staticmethod
     async def recommend_architecture(device_count: int, daily_log_volume: str = "small", budget: str = "low", team_skill: str = "basic", context: Optional[ContextManager] = None) -> Result:
-        """架构推荐 — 根据企业规模和预算推荐日志采集架构"""
-        # 根据设备数量和日志量级推荐架构
-        if device_count <= 10 and daily_log_volume == "small":
-            arch = {
-                "recommended_arch": "轻量级单机汇聚",
-                "architecture_desc": "适用于小型园区/中小企业，日志量 < 5GB/天",
-                "components": ["Syslog 服务器", "Filebeat 采集器", "单机 Elasticsearch", "Kibana 可视化"],
-                "data_flow": ["设备 → Syslog/Filebeat → ES → Kibana"],
-                "estimated_cost": "低（开源方案，服务器成本 < 2万）",
-                "pros": ["部署简单", "维护成本低", "快速上线"],
-                "cons": ["扩展性有限", "单点故障风险", "查询性能受限"],
-            }
-        elif device_count <= 100 and daily_log_volume in ("small", "medium"):
-            arch = {
-                "recommended_arch": "ELK 分布式集群",
-                "architecture_desc": "适用于中型企业，日志量 5-50GB/天",
-                "components": ["Kafka 缓冲层", "Logstash 解析", "ES 集群(3节点)", "Kibana 可视化", "Filebeat 采集器"],
-                "data_flow": ["设备 → Filebeat → Kafka → Logstash → ES → Kibana"],
-                "estimated_cost": "中等（服务器成本 5-15万）",
-                "pros": ["高可用", "可扩展", "性能优秀"],
-                "cons": ["运维复杂度较高", "需要专业团队"],
-            }
-        else:
-            arch = {
-                "recommended_arch": "企业级 SIEM 架构",
-                "architecture_desc": "适用于大型政企/园区，日志量 > 50GB/天",
-                "components": ["Kafka 集群", "Flink 实时计算", "ES 集群(6+节点)", "SIEM 平台", "SOAR 编排", "告警中心"],
-                "data_flow": ["设备 → 采集代理 → Kafka → Flink → ES/SIEM → 告警/SOAR"],
-                "estimated_cost": "高（服务器成本 30万+，含商业 SIEM 授权）",
-                "pros": ["高性能", "高可用", "智能化", "合规审计"],
-                "cons": ["成本高", "需要专业安全团队", "建设周期长"],
-            }
+        """架构推荐 — 阈值从 settings.py 配置化读取"""
+        from app.settings import settings
+
+        if device_count < 1:
+            raise ParamInvalidException("设备数量必须大于0")
+        if daily_log_volume not in ("small", "medium", "large"):
+            raise ParamInvalidException(f"无效的日志量级: {daily_log_volume}")
+
+        arch = _recommend_arch_by_threshold(device_count, daily_log_volume, settings)
 
         # 更新上下文
         if context:
@@ -170,3 +231,70 @@ class LogCollectService:
             context.set_module_result("log_collect", ctx)
 
         return Result.ok(arch)
+
+
+# ── 私有辅助函数 ──
+
+def _plan_to_dict(plan, include_config: bool = True) -> dict:
+    """CollectPlan 转字典"""
+    d = {
+        "device_type": plan.device_type,
+        "device_model": plan.device_model,
+        "protocol": plan.protocol,
+        "architecture": plan.architecture,
+        "steps": plan.steps,
+        "notes": plan.notes,
+    }
+    if include_config:
+        d["config_template"] = plan.config_template
+    if plan.rag_supplements:
+        d["rag_supplements"] = plan.rag_supplements
+    return d
+
+
+def _get_rag_supplements(device_type: str, device_model: str) -> list[str]:
+    """从采集知识库获取 RAG 补充说明"""
+    try:
+        from core.ai_base.rag_factory import RAGFactory
+        query = f"{device_type} {device_model} 采集方案 特殊环境".strip()
+        kb = RAGFactory.get_kb("collection")
+        result = kb.retrieve(query, top_k=2)
+        if result.items:
+            return [item.get("document", "")[:200] for item in result.items if item.get("document")]
+    except Exception as e:
+        logger.debug(f"RAG 采集知识库检索跳过: {e}")
+    return []
+
+
+def _recommend_arch_by_threshold(device_count: int, daily_log_volume: str, settings) -> dict:
+    """根据配置化阈值推荐架构"""
+    if device_count <= settings.arch_small_device_count and daily_log_volume == settings.arch_small_log_volume:
+        return {
+            "recommended_arch": "轻量级单机汇聚",
+            "architecture_desc": "适用于小型园区/中小企业，日志量 < 5GB/天",
+            "components": ["Syslog 服务器", "Filebeat 采集器", "单机 Elasticsearch", "Kibana 可视化"],
+            "data_flow": ["设备 → Syslog/Filebeat → ES → Kibana"],
+            "estimated_cost": "低（开源方案，服务器成本 < 2万）",
+            "pros": ["部署简单", "维护成本低", "快速上线"],
+            "cons": ["扩展性有限", "单点故障风险", "查询性能受限"],
+        }
+    elif device_count <= settings.arch_medium_device_count and daily_log_volume in ("small", "medium"):
+        return {
+            "recommended_arch": "ELK 分布式集群",
+            "architecture_desc": "适用于中型企业，日志量 5-50GB/天",
+            "components": ["Kafka 缓冲层", "Logstash 解析", "ES 集群(3节点)", "Kibana 可视化", "Filebeat 采集器"],
+            "data_flow": ["设备 → Filebeat → Kafka → Logstash → ES → Kibana"],
+            "estimated_cost": "中等（服务器成本 5-15万）",
+            "pros": ["高可用", "可扩展", "性能优秀"],
+            "cons": ["运维复杂度较高", "需要专业团队"],
+        }
+    else:
+        return {
+            "recommended_arch": "企业级 SIEM 架构",
+            "architecture_desc": "适用于大型政企/园区，日志量 > 50GB/天",
+            "components": ["Kafka 集群", "Flink 实时计算", "ES 集群(6+节点)", "SIEM 平台", "SOAR 编排", "告警中心"],
+            "data_flow": ["设备 → 采集代理 → Kafka → Flink → ES/SIEM → 告警/SOAR"],
+            "estimated_cost": "高（服务器成本 30万+，含商业 SIEM 授权）",
+            "pros": ["高性能", "高可用", "智能化", "合规审计"],
+            "cons": ["成本高", "需要专业安全团队", "建设周期长"],
+        }

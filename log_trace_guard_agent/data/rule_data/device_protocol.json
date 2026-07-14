@@ -1,0 +1,23 @@
+{
+  "description": "设备型号 → 采集协议映射表，支持热加载",
+  "version": "1.0.0",
+  "entries": {
+    "paloalto": {"type": "firewall", "vendor": "Palo Alto", "protocol": "syslog", "log_hints": ["pan-os", "threat", "traffic"]},
+    "fortigate": {"type": "firewall", "vendor": "Fortinet", "protocol": "syslog", "log_hints": ["fortios", "utm"]},
+    "usg": {"type": "firewall", "vendor": "Huawei", "protocol": "syslog", "log_hints": ["usg", "ipsecd"]},
+    "asa": {"type": "firewall", "vendor": "Cisco", "protocol": "syslog", "log_hints": ["asa", "syslog-id"]},
+    "iptables": {"type": "firewall", "vendor": "Linux", "protocol": "syslog", "log_hints": ["ufw", "kernel"]},
+    "modsecurity": {"type": "waf", "vendor": "Apache", "protocol": "file", "log_hints": ["modsecurity", "audit"]},
+    "yundun": {"type": "waf", "vendor": "Yundun", "protocol": "syslog", "log_hints": ["yundun", "waf"]},
+    "anquanbao": {"type": "waf", "vendor": "Anquanbao", "protocol": "syslog", "log_hints": ["anquanbao", "waf"]},
+    "linux": {"type": "server", "vendor": "Linux", "protocol": "file", "log_hints": ["sshd", "sudo", "systemd"]},
+    "windows": {"type": "server", "vendor": "Microsoft", "protocol": "agent", "log_hints": ["eventlog", "security"]},
+    "mysql": {"type": "db", "vendor": "Oracle", "protocol": "file", "log_hints": ["mysql", "general_log"]},
+    "postgresql": {"type": "db", "vendor": "PostgreSQL", "protocol": "file", "log_hints": ["postgresql", "pg_log"]},
+    "sqlserver": {"type": "db", "vendor": "Microsoft", "protocol": "agent", "log_hints": ["mssql", "audit"]},
+    "oracle": {"type": "db", "vendor": "Oracle", "protocol": "agent", "log_hints": ["oracle", "audit_trail"]},
+    "nginx": {"type": "web", "vendor": "Nginx", "protocol": "file", "log_hints": ["nginx", "access_log"]},
+    "apache": {"type": "web", "vendor": "Apache", "protocol": "file", "log_hints": ["apache", "access_log"]},
+    "iis": {"type": "web", "vendor": "Microsoft", "protocol": "agent", "log_hints": ["iis", "w3svc"]}
+  }
+}

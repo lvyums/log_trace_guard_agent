@@ -1,8 +1,12 @@
-"""采集策略模式 — 不同设备对应独立采集方案"""
+"""采集策略模式 — 工厂 + 策略模式，支持外部注册，零硬编码"""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
+
+from common.logger import LogManager
+
+logger = LogManager.get_logger()
 
 
 @dataclass
@@ -11,14 +15,15 @@ class CollectPlan:
     device_type: str
     device_model: str = ""
     protocol: str = ""           # syslog / file / db_sync / agent
-    architecture: str = ""       # 单机汇聚 / 分布式集群 / 云原生
+    architecture: str = ""       # 单机汇聚 / 分布式集群
     config_template: dict = field(default_factory=dict)
     steps: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    rag_supplements: list[str] = field(default_factory=list)  # RAG 补充说明
 
 
 class BaseCollectStrategy(ABC):
-    """采集策略基类"""
+    """采集策略抽象基类 — 所有策略必须继承"""
 
     device_type: str = "unknown"
 
@@ -32,38 +37,75 @@ class BaseCollectStrategy(ABC):
         """生成采集方案"""
         ...
 
+    def get_supported_types(self) -> list[str]:
+        """返回该策略支持的设备类型列表，子类可覆盖"""
+        return []
 
-class SyslogCollectStrategy(BaseCollectStrategy):
-    """Syslog 推送采集策略 — 适用于防火墙/WAF/IDS 等网络设备"""
 
-    device_type = "syslog"
+class GenericSyslogStrategy(BaseCollectStrategy):
+    """通用兜底策略 — 未知设备/未知厂商时自动返回通用 Syslog 方案"""
+
+    device_type = "generic"
 
     def match(self, device_type: str, device_model: str = "") -> bool:
-        return device_type in ("firewall", "waf", "ids", "ips", "router", "switch")
+        # 兜底策略永远返回 True，但优先级最低
+        return True
 
     def generate_plan(self, device_model: str = "", scale: str = "small") -> CollectPlan:
         steps = [
-            "1. 设备端开启 Syslog 推送功能",
-            "2. 配置 Syslog 服务器地址和端口（默认 UDP 514 / TCP 514）",
-            "3. 选择日志格式：RFC 3164 或 RFC 5424",
-            "4. 配置日志级别和过滤规则",
-            "5. 服务端配置 Syslog 接收器（rsyslog / syslog-ng）",
-            "6. 配置日志解析规则和字段映射",
-            "7. 验证日志接收和解析结果",
+            "1. 确认设备支持的日志导出方式",
+            "2. 优先尝试 Syslog 标准协议（UDP/TCP 514）",
+            "3. 如不支持 Syslog，尝试文件采集或 API 接入",
+            "4. 配置日志解析规则（需手动适配格式）",
+            "5. 验证日志采集完整性",
         ]
 
         config = {
             "protocol": "syslog",
             "port": 514,
             "transport": "udp",
-            "format": "rfc3164",
-            "server_config": "/etc/rsyslog.d/50-default.conf",
+            "note": "通用方案，建议根据设备实际情况调整",
         }
 
-        if scale == "large":
-            config["transport"] = "tcp"
-            config["tls"] = True
-            steps.insert(3, "3.1 配置 TLS 加密传输")
+        return CollectPlan(
+            device_type=self.device_type,
+            device_model=device_model,
+            protocol="syslog",
+            architecture="单机汇聚",
+            config_template=config,
+            steps=steps,
+            notes=[
+                f"设备型号 [{device_model}] 未在已知设备库中匹配",
+                "当前为通用采集方案，建议参考设备厂商文档确认最佳采集方式",
+                "建议联系技术支持获取针对性采集方案",
+            ],
+        )
+
+
+class SyslogCollectStrategy(BaseCollectStrategy):
+    """Syslog 推送采集策略 — 适用于防火墙/WAF/IDS 等网络设备"""
+
+    device_type = "syslog"
+
+    _supported_types = ["firewall", "waf", "ids", "ips", "router", "switch"]
+
+    def match(self, device_type: str, device_model: str = "") -> bool:
+        return device_type in self._supported_types
+
+    def get_supported_types(self) -> list[str]:
+        return self._supported_types.copy()
+
+    def generate_plan(self, device_model: str = "", scale: str = "small") -> CollectPlan:
+        from app.settings import settings
+        from common.json_util import JsonConfigLoader
+
+        # 从外部配置加载模板
+        templates = JsonConfigLoader.get(settings.collect_template_data_path, "templates.syslog", {})
+        template = templates.get(scale, templates.get("small", {}))
+
+        steps = template.get("steps", [])
+        config = {k: v for k, v in template.items() if k not in ("steps", "notes")}
+        notes = template.get("notes", [])
 
         return CollectPlan(
             device_type=self.device_type,
@@ -72,7 +114,7 @@ class SyslogCollectStrategy(BaseCollectStrategy):
             architecture="分布式集群" if scale == "large" else "单机汇聚",
             config_template=config,
             steps=steps,
-            notes=["确保设备与采集服务器网络连通", "建议使用 TCP 协议保证日志不丢失"],
+            notes=notes,
         )
 
 
@@ -81,31 +123,24 @@ class FileCollectStrategy(BaseCollectStrategy):
 
     device_type = "file"
 
+    _supported_types = ["server", "web", "application", "nginx", "apache"]
+
     def match(self, device_type: str, device_model: str = "") -> bool:
-        return device_type in ("server", "web", "application", "nginx", "apache")
+        return device_type in self._supported_types
+
+    def get_supported_types(self) -> list[str]:
+        return self._supported_types.copy()
 
     def generate_plan(self, device_model: str = "", scale: str = "small") -> CollectPlan:
-        steps = [
-            "1. 确认日志文件路径和轮转策略",
-            "2. 部署 Filebeat / Fluentd 采集代理",
-            "3. 配置日志文件路径和采集规则",
-            "4. 配置输出目标（ES / Kafka / 本地存储）",
-            "5. 启动采集代理并验证日志流转",
-            "6. 配置日志解析规则（Grokv2 / 正则）",
-        ]
+        from app.settings import settings
+        from common.json_util import JsonConfigLoader
 
-        config = {
-            "protocol": "file",
-            "log_paths": ["/var/log/syslog", "/var/log/nginx/access.log"],
-            "collector": "filebeat",
-            "multiline": True,
-            "close_inactive": "5m",
-        }
+        templates = JsonConfigLoader.get(settings.collect_template_data_path, "templates.file", {})
+        template = templates.get(scale, templates.get("small", {}))
 
-        if scale == "large":
-            config["collector"] = "filebeat"
-            config["output"] = "kafka"
-            steps.append("7. 配置 Kafka 缓冲层削峰填谷")
+        steps = template.get("steps", [])
+        config = {k: v for k, v in template.items() if k not in ("steps", "notes")}
+        notes = template.get("notes", [])
 
         return CollectPlan(
             device_type=self.device_type,
@@ -114,7 +149,7 @@ class FileCollectStrategy(BaseCollectStrategy):
             architecture="分布式集群" if scale == "large" else "单机汇聚",
             config_template=config,
             steps=steps,
-            notes=["注意日志文件轮转导致的采集断层", "建议配置 multiline 处理堆栈日志"],
+            notes=notes,
         )
 
 
@@ -123,25 +158,25 @@ class DBSyncCollectStrategy(BaseCollectStrategy):
 
     device_type = "db"
 
+    _supported_types = ["db", "mysql", "postgresql", "sqlserver", "oracle"]
+
     def match(self, device_type: str, device_model: str = "") -> bool:
-        return device_type in ("db", "mysql", "postgresql", "sqlserver", "oracle")
+        return device_type in self._supported_types
+
+    def get_supported_types(self) -> list[str]:
+        return self._supported_types.copy()
 
     def generate_plan(self, device_model: str = "", scale: str = "small") -> CollectPlan:
-        steps = [
-            "1. 开启数据库审计日志功能",
-            "2. 配置审计日志输出方式（文件 / 表 / Syslog）",
-            "3. 选择采集方式：直连查询 / 文件采集 / CDC",
-            "4. 部署采集代理并配置连接信息",
-            "5. 配置日志解析规则",
-            "6. 验证审计日志完整性",
-        ]
+        from app.settings import settings
+        from common.json_util import JsonConfigLoader
 
-        config = {
-            "protocol": "db_sync",
-            "method": "file",
-            "db_type": device_model or "mysql",
-            "audit_log_path": "/var/log/mysql/audit.log",
-        }
+        templates = JsonConfigLoader.get(settings.collect_template_data_path, "templates.db_sync", {})
+        template = templates.get("small", {})
+
+        steps = template.get("steps", [])
+        config = {k: v for k, v in template.items() if k not in ("steps", "notes")}
+        config["db_type"] = device_model or "mysql"
+        notes = template.get("notes", [])
 
         return CollectPlan(
             device_type=self.device_type,
@@ -150,7 +185,7 @@ class DBSyncCollectStrategy(BaseCollectStrategy):
             architecture="单机汇聚",
             config_template=config,
             steps=steps,
-            notes=["确保审计日志不影响数据库性能", "建议配置审计日志独立存储路径"],
+            notes=notes,
         )
 
 
@@ -159,24 +194,24 @@ class AgentCollectStrategy(BaseCollectStrategy):
 
     device_type = "agent"
 
+    _supported_types = ["bastion", "hids", "edr", "siem"]
+
     def match(self, device_type: str, device_model: str = "") -> bool:
-        return device_type in ("bastion", "ids", "hids", "edr", "siem")
+        return device_type in self._supported_types
+
+    def get_supported_types(self) -> list[str]:
+        return self._supported_types.copy()
 
     def generate_plan(self, device_model: str = "", scale: str = "small") -> CollectPlan:
-        steps = [
-            "1. 确认设备支持的日志导出方式",
-            "2. 选择采集代理类型（专用 Agent / Syslog / API）",
-            "3. 安装并配置采集代理",
-            "4. 配置日志转发目标",
-            "5. 配置日志解析规则",
-            "6. 验证日志采集完整性",
-        ]
+        from app.settings import settings
+        from common.json_util import JsonConfigLoader
 
-        config = {
-            "protocol": "agent",
-            "collector": "generic_agent",
-            "forward_to": "log_server:514",
-        }
+        templates = JsonConfigLoader.get(settings.collect_template_data_path, "templates.agent", {})
+        template = templates.get("small", {})
+
+        steps = template.get("steps", [])
+        config = {k: v for k, v in template.items() if k not in ("steps", "notes")}
+        notes = template.get("notes", [])
 
         return CollectPlan(
             device_type=self.device_type,
@@ -185,53 +220,64 @@ class AgentCollectStrategy(BaseCollectStrategy):
             architecture="单机汇聚",
             config_template=config,
             steps=steps,
-            notes=["不同厂商设备采集方式差异较大", "建议优先使用标准 Syslog 协议"],
+            notes=notes,
         )
 
 
 class CollectStrategyFactory:
-    """采集策略工厂 — 根据设备类型自动匹配最优采集方案"""
+    """采集策略工厂 — 外部注册模式，工厂内部不硬编码策略实例
 
-    _strategies: list[BaseCollectStrategy] = [
-        SyslogCollectStrategy(),
-        FileCollectStrategy(),
-        DBSyncCollectStrategy(),
-        AgentCollectStrategy(),
-    ]
+    使用方式:
+        CollectStrategyFactory.register(SyslogCollectStrategy())
+        CollectStrategyFactory.register(FileCollectStrategy())
+        plan = CollectStrategyFactory.get_plan("firewall", "paloalto", "small")
+    """
 
-    @classmethod
-    def get_strategy(cls, device_type: str) -> Optional[BaseCollectStrategy]:
-        """根据设备类型返回匹配的采集策略"""
-        for strategy in cls._strategies:
-            if strategy.match(device_type):
-                return strategy
-        return None
-
-    @classmethod
-    def get_plan(cls, device_type: str, device_model: str = "", scale: str = "small") -> Optional[CollectPlan]:
-        """根据设备类型生成采集方案"""
-        strategy = cls.get_strategy(device_type)
-        if strategy is None:
-            return None
-        return strategy.generate_plan(device_model, scale)
+    _strategies: list[BaseCollectStrategy] = []
+    _fallback: GenericSyslogStrategy = GenericSyslogStrategy()
 
     @classmethod
     def register(cls, strategy: BaseCollectStrategy):
-        """注册新的采集策略"""
+        """注册采集策略（外部调用，禁止工厂内部实例化）"""
         cls._strategies.append(strategy)
+        logger.info(f"注册采集策略: {strategy.__class__.__name__} -> {strategy.device_type}")
+
+    @classmethod
+    def get_strategy(cls, device_type: str) -> BaseCollectStrategy:
+        """根据设备类型返回匹配的采集策略，无匹配返回兜底策略"""
+        for strategy in cls._strategies:
+            if strategy.match(device_type):
+                return strategy
+        logger.info(f"设备类型 [{device_type}] 未匹配已知策略，使用通用兜底方案")
+        return cls._fallback
+
+    @classmethod
+    def get_plan(cls, device_type: str, device_model: str = "", scale: str = "small") -> CollectPlan:
+        """根据设备类型生成采集方案，始终返回有效方案（兜底策略保证）"""
+        strategy = cls.get_strategy(device_type)
+        return strategy.generate_plan(device_model, scale)
 
     @classmethod
     def get_supported_types(cls) -> list[str]:
-        """获取所有支持的设备类型"""
+        """获取所有已注册策略支持的设备类型"""
         types = []
         for strategy in cls._strategies:
-            # 从 match 方法的设备类型推断
-            if strategy.device_type == "syslog":
-                types.extend(["firewall", "waf", "ids", "ips", "router", "switch"])
-            elif strategy.device_type == "file":
-                types.extend(["server", "web", "application", "nginx", "apache"])
-            elif strategy.device_type == "db":
-                types.extend(["db", "mysql", "postgresql", "sqlserver", "oracle"])
-            elif strategy.device_type == "agent":
-                types.extend(["bastion", "ids", "hids", "edr", "siem"])
+            types.extend(strategy.get_supported_types())
         return list(set(types))
+
+    @classmethod
+    def clear(cls):
+        """清空所有已注册策略（用于测试）"""
+        cls._strategies.clear()
+
+
+# ── 模块加载时外部注册所有策略（不在工厂内部硬编码） ──
+def _register_default_strategies():
+    """注册默认采集策略"""
+    CollectStrategyFactory.register(SyslogCollectStrategy())
+    CollectStrategyFactory.register(FileCollectStrategy())
+    CollectStrategyFactory.register(DBSyncCollectStrategy())
+    CollectStrategyFactory.register(AgentCollectStrategy())
+
+
+_register_default_strategies()

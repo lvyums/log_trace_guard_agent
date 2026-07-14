@@ -1,98 +1,109 @@
-"""设备类型匹配 — 根据设备型号/日志样例自动匹配最优采集方案"""
+"""设备类型匹配 — 外部配置驱动 + 置信度评估 + 日志特征识别（不依赖 log_parse 模块）"""
 
 from dataclasses import dataclass
 from typing import Optional
 
+from common.logger import LogManager
+from common.json_util import JsonConfigLoader
+
+logger = LogManager.get_logger()
+
 
 @dataclass
-class DeviceInfo:
-    """设备信息"""
-    device_type: str        # 防火墙/WAF/服务器/数据库
-    device_model: str = ""  # 具体型号
-    vendor: str = ""        # 厂商
-    log_format: str = ""    # 日志格式
-    recommended_protocol: str = ""  # 推荐采集协议
-
-
-# 设备型号 → 采集协议映射表
-DEVICE_PROTOCOL_MAP = {
-    # 防火墙
-    "paloalto": {"type": "firewall", "vendor": "Palo Alto", "protocol": "syslog"},
-    "fortigate": {"type": "firewall", "vendor": "Fortinet", "protocol": "syslog"},
-    "usg": {"type": "firewall", "vendor": "Huawei", "protocol": "syslog"},
-    "asa": {"type": "firewall", "vendor": "Cisco", "protocol": "syslog"},
-    "iptables": {"type": "firewall", "vendor": "Linux", "protocol": "syslog"},
-
-    # WAF
-    "modsecurity": {"type": "waf", "vendor": "Apache", "protocol": "file"},
-    "yundun": {"type": "waf", "vendor": "Yundun", "protocol": "syslog"},
-    "anquanbao": {"type": "waf", "vendor": "Anquanbao", "protocol": "syslog"},
-
-    # 服务器
-    "linux": {"type": "server", "vendor": "Linux", "protocol": "file"},
-    "windows": {"type": "server", "vendor": "Microsoft", "protocol": "agent"},
-
-    # 数据库
-    "mysql": {"type": "db", "vendor": "Oracle", "protocol": "file"},
-    "postgresql": {"type": "db", "vendor": "PostgreSQL", "protocol": "file"},
-    "sqlserver": {"type": "db", "vendor": "Microsoft", "protocol": "agent"},
-    "oracle": {"type": "db", "vendor": "Oracle", "protocol": "agent"},
-
-    # Web 服务器
-    "nginx": {"type": "web", "vendor": "Nginx", "protocol": "file"},
-    "apache": {"type": "web", "vendor": "Apache", "protocol": "file"},
-    "iis": {"type": "web", "vendor": "Microsoft", "protocol": "agent"},
-}
+class DeviceMatchResult:
+    """设备匹配结果 — 含置信度"""
+    device_type: str
+    device_model: str = ""
+    vendor: str = ""
+    log_format: str = ""
+    recommended_protocol: str = ""
+    match_confidence: float = 0.0   # 0~100 置信度
+    match_source: str = ""          # "model" | "log_sample" | "type" | "fallback"
 
 
 class DeviceMatcher:
-    """设备类型匹配器 — 根据设备型号/厂商自动识别并推荐采集方案"""
+    """设备类型匹配器 — 外部配置驱动，不依赖 log_parse 模块"""
+
+    _config_cache: Optional[dict] = None
 
     @classmethod
-    def match_by_model(cls, device_model: str) -> Optional[DeviceInfo]:
-        """根据设备型号匹配"""
+    def _load_config(cls) -> dict:
+        """加载设备型号映射配置"""
+        if cls._config_cache is None:
+            from app.settings import settings
+            cls._config_cache = JsonConfigLoader.load(settings.device_protocol_data_path)
+        return cls._config_cache or {}
+
+    @classmethod
+    def reload_config(cls):
+        """强制重新加载配置"""
+        from app.settings import settings
+        cls._config_cache = JsonConfigLoader.reload(settings.device_protocol_data_path)
+
+    @classmethod
+    def match_by_model(cls, device_model: str) -> Optional[DeviceMatchResult]:
+        """根据设备型号匹配，返回含置信度的结果"""
+        config = cls._load_config()
+        entries = config.get("entries", {})
         model_lower = device_model.lower()
-        for key, info in DEVICE_PROTOCOL_MAP.items():
+
+        for key, info in entries.items():
             if key in model_lower:
-                return DeviceInfo(
+                return DeviceMatchResult(
                     device_type=info["type"],
                     device_model=device_model,
-                    vendor=info["vendor"],
-                    recommended_protocol=info["protocol"],
+                    vendor=info.get("vendor", ""),
+                    recommended_protocol=info.get("protocol", ""),
+                    match_confidence=95.0,
+                    match_source="model",
                 )
         return None
 
     @classmethod
-    def match_by_log_sample(cls, log_line: str) -> Optional[DeviceInfo]:
-        """根据日志样例推断设备类型"""
+    def match_by_log_sample(cls, log_line: str) -> Optional[DeviceMatchResult]:
+        """根据日志样例推断设备类型（从 collect_templates.json 加载特征关键词）"""
+        config = cls._load_config()
+        log_features = config.get("log_features", {})
+
+        # 也从 collect_templates.json 加载特征
+        from app.settings import settings
+        templates_config = JsonConfigLoader.get(settings.collect_template_data_path, "log_features", {})
+        if templates_config:
+            log_features.update(templates_config)
+
         log_lower = log_line.lower()
 
-        # 按特征关键词匹配
-        features = {
-            "firewall": ["ufw", "pf:", "kernel:", "iptables", "firewall", "deny.*src=", "block.*from"],
-            "waf": ["waf", "attack detected", "modsecurity", "violation", "blocked.*attack"],
-            "server": ["sshd", "sudo", "systemd", "cron"],
-            "db": ["mysql", "postgresql", "query", "select", "insert", "connection received"],
-            "web": ["http/1.", "get /", "post /", "mozilla", "nginx", "apache"],
-        }
+        best_match: Optional[DeviceMatchResult] = None
+        best_score = 0.0
 
-        for device_type, keywords in features.items():
+        for device_type, feature_info in log_features.items():
+            keywords = feature_info.get("keywords", [])
+            matched_count = 0
             for kw in keywords:
                 if kw in log_lower:
-                    return DeviceInfo(
+                    matched_count += 1
+
+            if matched_count > 0:
+                # 置信度 = 匹配关键词数 / 总关键词数 * 100，上限 90
+                confidence = min(matched_count / max(len(keywords), 1) * 100, 90.0)
+                if confidence > best_score:
+                    best_score = confidence
+                    best_match = DeviceMatchResult(
                         device_type=device_type,
                         log_format="auto-detected",
-                        recommended_protocol="syslog" if device_type in ("firewall", "waf") else "file",
+                        recommended_protocol=feature_info.get("recommended_protocol", "file"),
+                        match_confidence=round(confidence, 1),
+                        match_source="log_sample",
                     )
 
-        return None
+        return best_match
 
     @classmethod
     def get_recommendation(cls, device_type: str, device_model: str = "", scale: str = "small") -> dict:
-        """获取采集方案推荐"""
+        """获取采集方案推荐 — 返回含置信度的完整结果"""
         from modules.log_collect.collect_strategy import CollectStrategyFactory
 
-        # 先尝试按型号匹配
+        # 优先按型号匹配
         if device_model:
             info = cls.match_by_model(device_model)
             if info:
@@ -104,10 +115,11 @@ class DeviceMatcher:
                         "vendor": info.vendor,
                     },
                     "plan": plan,
-                    "match_source": "model",
+                    "match_source": info.match_source,
+                    "match_confidence": info.match_confidence,
                 }
 
-        # 按设备类型匹配
+        # 按设备类型匹配（置信度固定 80）
         plan = CollectStrategyFactory.get_plan(device_type, device_model, scale)
         return {
             "device_info": {
@@ -116,4 +128,5 @@ class DeviceMatcher:
             },
             "plan": plan,
             "match_source": "type",
+            "match_confidence": 80.0,
         }
