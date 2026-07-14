@@ -1,0 +1,10 @@
+fastapi==0.114.0
+uvicorn[standard]==0.30.6
+chromadb==1.4.1
+sentence-transformers>=3.0.0
+openai>=2.15.0
+pydantic>=2.11.0
+pydantic-settings>=2.0.0
+watchfiles>=1.1.0
+pyyaml>=6.0
+python-dotenv>=1.0

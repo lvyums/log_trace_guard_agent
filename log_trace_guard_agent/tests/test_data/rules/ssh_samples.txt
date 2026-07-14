@@ -1,0 +1,4 @@
+Mar 15 10:30:25 server sshd[1234]: Accepted password for root from 192.168.1.1 port 22
+Mar 15 10:31:00 server sshd[1235]: Failed password for admin from 10.0.0.5 port 22
+Mar 15 10:32:00 server sudo: root : TTY=pts/0 ; PWD=/home ; USER=root ; COMMAND=/bin/rm -rf /tmp/test
+Mar 15 10:33:00 server sshd[1236]: Accepted publickey for devops from 10.0.0.10 port 2222

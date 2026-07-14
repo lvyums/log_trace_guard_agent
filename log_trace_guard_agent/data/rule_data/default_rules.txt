@@ -1,0 +1,10 @@
+ssh|5|high|sshd\[\d+\]:\s+Accepted\s+password\s+for\s+\w+\s+from\s+[\d.]+
+ssh|5|high|sshd\[\d+\]:\s+Failed\s+password\s+for\s+\w+\s+from\s+[\d.]+
+ssh|3|medium|sshd\[\d+\]
+web|5|medium|"\w+\s+/\w+\s+HTTP/
+web|3|low|GET\s+/|POST\s+/waf|6|high|attack\s+detected|violation|blocked.*from\s+[\d.]+
+waf|5|high|\[WAF\]\s+\w+|modsecurity|sql.?inject|xss.?attack
+firewall|6|high|SRC=([\d.]+).*DST=([\d.]+).*PROTO=(\w+)|UFW\s+BLOCK|pf:\s+block
+firewall|4|medium|DENY\s+\w+\s+[\d.]+.*->.*[\d.]+|firewall.*block
+db|5|high|login\s+failed|drop\s+table|truncate|grant\s+all|create\s+user
+db|4|medium|general_log|slow_log|query.*select|information_schema
