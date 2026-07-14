@@ -6,3 +6,4 @@ data/upload_temp/
 *.egg-info/
 dist/
 build/
+logs/
