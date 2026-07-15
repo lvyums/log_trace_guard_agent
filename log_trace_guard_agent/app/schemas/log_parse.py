@@ -1,13 +1,22 @@
 """统一接口入参/出参模型层 — Pydantic 定义所有接口结构体"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+
+
+def _validate_log_line(v: str) -> str:
+    """共享的日志行校验逻辑"""
+    if not v or not v.strip():
+        raise ValueError("日志内容不能为空")
+    return v.strip()
 
 
 class LogIdentifyReq(BaseModel):
     """日志类型识别请求"""
     log_line: str = Field(default="", max_length=10000, description="日志内容")
     input_type: str = Field(default="text", pattern="^(text|file|scene)$", description="输入类型")
+
+    _validate_log_line = field_validator("log_line")(_validate_log_line)
 
 
 class LogIdentifyResp(BaseModel):
@@ -20,6 +29,8 @@ class LogIdentifyResp(BaseModel):
 class LogParseReq(BaseModel):
     """日志解析请求"""
     log_line: str = Field(default="", max_length=10000, description="日志内容")
+
+    _validate_log_line = field_validator("log_line")(_validate_log_line)
 
 
 class LogParseResp(BaseModel):
@@ -41,6 +52,8 @@ class LogParseResp(BaseModel):
 class RiskAssessReq(BaseModel):
     """风险研判请求"""
     log_line: str = Field(default="", max_length=10000, description="日志内容")
+
+    _validate_log_line = field_validator("log_line")(_validate_log_line)
 
 
 class RiskAssessResp(BaseModel):

@@ -1,0 +1,8 @@
+{
+  "name": "ELK Stack (Elasticsearch + Logstash + Kibana)",
+  "type": "ELK集群",
+  "pros": ["开源免费", "社区活跃", "生态丰富", "支持水平扩展"],
+  "cons": ["运维复杂度较高", "资源消耗较大", "学习曲线陡峭"],
+  "estimated_cost": "中（需3-5台服务器）",
+  "suitable_scenario": "适合中型企业，有专职运维团队，日志量在TB级别"
+}

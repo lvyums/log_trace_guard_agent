@@ -52,11 +52,6 @@ def make_response(data=None, msg: str = "success", code: int = 0) -> dict:
     return Result.fail(msg=msg, code=code, data=data)
 
 
-def error_response(msg: str, code: int = 400, data=None) -> dict:
-    """统一错误返回"""
-    return make_response(data=data, msg=msg, code=code)
-
-
 async def global_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """全局异常捕获处理器 — 统一返回格式"""
     return JSONResponse(

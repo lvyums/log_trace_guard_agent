@@ -1,8 +1,11 @@
 """FastAPI 主入口"""
 """
 ===== 项目强制开发约束（所有模块开发必须遵守）=====
+开发前必须阅读 docs/dev_standard.md 完整规范
+核心约束见下方，完整规范见 docs/dev_standard.md
+
 1. modules业务模块禁止互相import，跨模块数据走core上下文；
-2. 工厂必须使用register注册模式，禁止内部硬编码策略实例；
+2. 工厂必须使用register注册模式，禁止内部硬编码实例化策略；
 3. 映射表、阈值、故障库禁止写死代码，统一放settings或data/rule_data；
 4. 所有入参使用schemas Pydantic校验，未知场景必须兜底；
 5. 通用逻辑复用common工具，禁止重复造轮子；

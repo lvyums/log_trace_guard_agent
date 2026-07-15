@@ -255,6 +255,7 @@ def _plan_to_dict(plan, include_config: bool = True) -> dict:
 def _get_rag_supplements(device_type: str, device_model: str) -> list[str]:
     """从采集知识库获取 RAG 补充说明"""
     try:
+        # 延迟导入：避免 openai 等依赖缺失导致模块加载失败
         from core.ai_base.rag_factory import RAGFactory
         query = f"{device_type} {device_model} 采集方案 特殊环境".strip()
         kb = RAGFactory.get_kb("collection")

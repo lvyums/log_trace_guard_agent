@@ -19,6 +19,12 @@ class ParsedLogFields(BaseModel):
     command: Optional[str] = None
     status: Optional[str] = None
     device_type: str = "unknown"
+    protocol: Optional[str] = None
+    action: Optional[str] = None
+    user_agent: Optional[str] = None
+    sql_statement: Optional[str] = None
+    is_dangerous: Optional[bool] = None
+    attack_type: Optional[str] = None
     missing_fields: list[str] = Field(default_factory=list)
     raw_log: Optional[str] = None
 

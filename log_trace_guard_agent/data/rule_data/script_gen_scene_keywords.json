@@ -1,0 +1,20 @@
+{
+  "regex": {
+    "ssh": ["ssh", "爆破", "brute", "登录", "login", "sshd"],
+    "web": ["web", "http", "url", "get", "post", "sql注入", "xss", "扫描"],
+    "sql": ["sql注入", "sqli", "database", "数据库", "mysql"],
+    "port_scan": ["端口扫描", "scan", "nmap", "masscan", "探测"],
+    "ddos": ["ddos", "dos", "拒绝服务", "flood", "攻击流量"],
+    "malware": ["木马", "后门", "webshell", "trojan", "远控", "c2"],
+    "privilege": ["提权", "权限提升", "sudo", "suid", "escalation"],
+    "lateral": ["横向移动", "内网", "psexec", "wmiexec", "smbexec"]
+  },
+  "es_query": {
+    "ssh_brute": ["ssh", "爆破", "brute", "登录失败", "failed password"],
+    "sql_injection": ["sql注入", "sqli", "union", "select", "注入"],
+    "web_attack": ["web", "http", "攻击", "scan", "扫描", "xss", "csrf"],
+    "abnormal_traffic": ["异常流量", "ddos", "flood", "大量", "带宽"],
+    "data_exfil": ["数据泄露", "导出", "外传", "exfil", "data"],
+    "lateral_move": ["横向移动", "内网", "psexec", "wmiexec"]
+  }
+}

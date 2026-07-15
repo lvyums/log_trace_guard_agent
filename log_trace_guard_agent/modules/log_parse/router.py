@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends
 
 from modules.log_parse.service import LogParseService
 from core.context_manager import ContextManager
-from app.dependencies import get_context, validate_log_line
-from app.exceptions import ParamInvalidException, LogParseFailedException
+from app.dependencies import get_context
 from app.schemas.log_parse import (
     LogIdentifyReq, LogParseReq, RiskAssessReq,
     FieldExplainReq, FieldExplainBatchReq, BatchParseReq,
@@ -20,11 +19,6 @@ router = APIRouter(prefix="/api/v1/log-parse", tags=["日志解析"])
 @router.post("/identify")
 async def identify_log_type(req: LogIdentifyReq, ctx: ContextManager = Depends(get_context)):
     """识别日志类型"""
-    # 入参校验（额外的业务层校验，超出 Pydantic 约束）
-    validation = validate_log_line(req.log_line)
-    if not validation["valid"]:
-        raise ParamInvalidException(validation["error"])
-
     result = await LogParseService.identify_log_type(req.log_line, ctx)
     return result
 
@@ -32,10 +26,6 @@ async def identify_log_type(req: LogIdentifyReq, ctx: ContextManager = Depends(g
 @router.post("/parse")
 async def parse_log(req: LogParseReq, ctx: ContextManager = Depends(get_context)):
     """结构化解析日志"""
-    validation = validate_log_line(req.log_line)
-    if not validation["valid"]:
-        raise ParamInvalidException(validation["error"])
-
     result = await LogParseService.parse_log(req.log_line, ctx)
     return result
 
@@ -43,10 +33,6 @@ async def parse_log(req: LogParseReq, ctx: ContextManager = Depends(get_context)
 @router.post("/assess")
 async def assess_risk(req: RiskAssessReq, ctx: ContextManager = Depends(get_context)):
     """异常行为研判"""
-    validation = validate_log_line(req.log_line)
-    if not validation["valid"]:
-        raise ParamInvalidException(validation["error"])
-
     # 先解析，再研判
     parse_result = await LogParseService.parse_log(req.log_line, ctx)
     if parse_result["code"] != 0:

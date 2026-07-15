@@ -11,6 +11,15 @@ class PlatformChooseStrategy(BaseScriptStrategy):
     strategy_type = "platform"
     strategy_name = "平台选型推荐"
 
+    def __init__(self):
+        self._fallback = None
+        self._load_config()
+
+    def _load_config(self):
+        """加载外部配置"""
+        fallback_path = f"{settings.rule_data_dir}/script_gen_platform_fallback.json"
+        self._fallback = JsonConfigLoader.load(fallback_path)
+
     def can_handle(self, params: dict) -> bool:
         return bool(params.get("device_count"))
 
@@ -99,7 +108,9 @@ class PlatformChooseStrategy(BaseScriptStrategy):
         return score
 
     def _get_fallback_recommendation(self) -> dict:
-        """兜底推荐"""
+        """兜底推荐 — 从外部配置加载"""
+        if self._fallback:
+            return dict(self._fallback)
         return {
             "name": "ELK Stack (Elasticsearch + Logstash + Kibana)",
             "type": "ELK集群",
@@ -111,8 +122,10 @@ class PlatformChooseStrategy(BaseScriptStrategy):
 
     def _generate_summary(self, recommendation: dict, device_count: int, volume: str, budget: str) -> str:
         """生成选型总结"""
+        name = recommendation.get("name", "")
+        scenario = recommendation.get("suitable_scenario", "")
         return (
             f"基于您的企业规模（{device_count}台设备，{volume}日志量级，{budget}预算），"
-            f"推荐 **{recommendation.get('name', '')}**。"
-            f"该方案{recommendation.get('suitable_scenario', '')}。"
+            f"推荐 {name}。"
+            f"该方案{scenario}。"
         )

@@ -17,9 +17,9 @@ class DBParser(BaseParser):
             r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)\s+(\d+)\s+(Connect|Query|Quit|Execute)\s*(.*)",
             re.IGNORECASE,
         ),
-        # MySQL slow_log: "# Time: 2023-10-11T14:32:23.000000+08:00\n# User@Host: root[root] @ [192.168.1.1]"
+# MySQL slow_log: "# Time: 2023-10-11T14:32:23.000000+08:00\\n# User@Host: root[root] @ [192.168.1.1]"
         re.compile(
-            r"# Time:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}).*?# User@Host:\s*(\S+).*?\[(\d[\d.]+)\]",
+            r"# Time:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}).*?# User@Host:\s*([^\[]+)\[[^\]]+\]\s*@?\s*\[([\d.]+)\]",
             re.DOTALL | re.IGNORECASE,
         ),
         # PostgreSQL log: "2023-10-11 14:32:23.000 CST [12345] LOG:  connection received: host=192.168.1.1 user=admin"

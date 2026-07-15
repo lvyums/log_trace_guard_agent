@@ -61,7 +61,11 @@ class RegexRuleEngine:
 
     @classmethod
     def _load_rule_file(cls, filepath: str):
-        """加载单个规则文件"""
+        """加载单个规则文件（仅处理管道分隔格式：device_type|priority|hazard_level|regex_pattern）"""
+        # 跳过 JSON 文件（其他模块使用的数据文件）
+        if filepath.endswith(".json"):
+            return
+
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -69,7 +73,6 @@ class RegexRuleEngine:
             logger.error(f"读取规则文件失败 {filepath}: {e}")
             return
 
-        # 简单规则格式：每行一条规则，格式: device_type|priority|hazard_level|regex_pattern
         for line in content.splitlines():
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("//"):
@@ -79,11 +82,15 @@ class RegexRuleEngine:
                 continue
             device_type, priority_str, hazard_level, pattern_str = parts
             try:
+                priority = int(priority_str)
+            except ValueError:
+                continue
+            try:
                 pattern = re.compile(pattern_str, re.IGNORECASE)
                 rule = Rule(
                     name=f"{device_type}_{pattern_str[:20]}",
                     patterns=[pattern],
-                    priority=int(priority_str),
+                    priority=priority,
                     hazard_level=hazard_level,
                     device_type=device_type,
                     field_mappings={"device_type": device_type},

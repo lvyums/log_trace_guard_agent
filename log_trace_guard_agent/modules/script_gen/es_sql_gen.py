@@ -5,23 +5,31 @@ from typing import Optional
 
 from modules.script_gen.script_strategy import BaseScriptStrategy
 from common.json_util import JsonConfigLoader
+from common.logger import LogManager
 from app.settings import settings
+
+logger = LogManager.get_logger()
 
 
 class ESQueryGenStrategy(BaseScriptStrategy):
-    """ES 检索语句生成策略 — 基于场景模板 + 配置化"""
+    """ES 检索语句生成策略 — 基于场景模板 + 配置化 + RAG知识库增强"""
 
     strategy_type = "es_query"
     strategy_name = "ES检索语句生成"
 
-    SCENE_KEYWORDS = {
-        "ssh_brute": ["ssh", "爆破", "brute", "登录失败", "failed password"],
-        "sql_injection": ["sql注入", "sqli", "union", "select", "注入"],
-        "web_attack": ["web", "http", "攻击", "scan", "扫描", "xss", "csrf"],
-        "abnormal_traffic": ["异常流量", "ddos", "flood", "大量", "带宽"],
-        "data_exfil": ["数据泄露", "导出", "外传", "exfil", "data"],
-        "lateral_move": ["横向移动", "内网", "psexec", "wmiexec"],
-    }
+    def __init__(self):
+        self._scene_keywords = {}
+        self._time_map = {}
+        self._load_config()
+
+    def _load_config(self):
+        """加载外部配置"""
+        keywords_path = f"{settings.rule_data_dir}/script_gen_scene_keywords.json"
+        all_keywords = JsonConfigLoader.load(keywords_path) or {}
+        self._scene_keywords = all_keywords.get("es_query", {})
+
+        time_path = f"{settings.rule_data_dir}/script_gen_time_map.json"
+        self._time_map = JsonConfigLoader.load(time_path) or {}
 
     def can_handle(self, params: dict) -> bool:
         return bool(params.get("search_scenario"))
@@ -42,11 +50,19 @@ class ESQueryGenStrategy(BaseScriptStrategy):
         # 3. 生成查询
         query = None
         explanation = ""
+        note_parts = []
+
         if scene_type in templates:
             tpl = templates[scene_type]
             query = self._build_query(tpl, index_pattern, time_range, filters)
             explanation = tpl.get("explanation", f"基于场景「{scenario}」的ES检索语句")
         else:
+            # 尝试 RAG 知识库
+            query, explanation, rag_note = self._try_rag_fallback(scenario, index_pattern, time_range)
+            if rag_note:
+                note_parts.append(rag_note)
+
+        if query is None:
             query = self._build_fallback_query(scenario, index_pattern, time_range)
             explanation = f"通用检索：基于场景「{scenario}」的全文检索"
 
@@ -55,17 +71,47 @@ class ESQueryGenStrategy(BaseScriptStrategy):
             "explanation": explanation,
             "scenario": scenario,
             "index_pattern": index_pattern,
-            "note": self._get_note(scene_type),
+            "note": self._get_note(scene_type, note_parts),
         }
 
     def _identify_scene(self, scenario: str) -> str:
+        """识别场景类型 — 配置驱动"""
         scenario_lower = scenario.lower()
         scores = {}
-        for scene_type, keywords in self.SCENE_KEYWORDS.items():
+        for scene_type, keywords in self._scene_keywords.items():
             score = sum(2 if kw in scenario_lower else 0 for kw in keywords)
             if score > 0:
                 scores[scene_type] = score
         return max(scores, key=scores.get) if scores else "unknown"
+
+    def _try_rag_fallback(self, scenario: str, index_pattern: str, time_range: str) -> tuple:
+        """尝试通过 RAG 知识库检索获取查询模板"""
+        try:
+            from core.ai_base.rag_factory import RAGFactory
+
+            rag = RAGFactory.get_rag("scripts")
+            if rag:
+                results = rag.search(query=scenario, top_k=3)
+                if results:
+                    # 使用知识库结果构建查询
+                    must_conditions = []
+                    for r in results:
+                        content = r.get("content", "")
+                        if content:
+                            must_conditions.append({"match": {"message": content[:100]}})
+
+                    if must_conditions:
+                        query = {
+                            "bool": {
+                                "must": must_conditions,
+                                "filter": [self._build_time_filter(time_range)] if time_range != "all" else [],
+                            }
+                        }
+                        return query, f"基于知识库检索：场景「{scenario}」", "已检索知识库相关查询模式，建议验证后使用。"
+        except Exception as e:
+            logger.warning(f"ES查询RAG检索失败: {e}")
+            return None, "", "RAG知识库检索异常，已降级为规则层结果。"
+        return None, "", None
 
     def _build_query(self, tpl: dict, index_pattern: str, time_range: str, filters: dict) -> dict:
         """根据模板构建 ES Query DSL"""
@@ -78,29 +124,25 @@ class ESQueryGenStrategy(BaseScriptStrategy):
         query_str = query_str.replace("__SCENARIO__", tpl.get("scene_label", "unknown"))
         query = json.loads(query_str)
 
-        # 添加时间范围过滤
+        # 添加时间范围过滤 — 兼容 {query: {bool: ...}} 和 {bool: ...} 两种结构
         if time_range != "all":
             time_filter = self._build_time_filter(time_range)
-            if "bool" in query:
-                if "filter" not in query["bool"]:
-                    query["bool"]["filter"] = []
-                query["bool"]["filter"].append(time_filter)
+            # 找到 bool 所在的层级
+            bool_part = query.get("query", {}).get("bool") or query.get("bool")
+            if bool_part is not None:
+                if "filter" not in bool_part:
+                    bool_part["filter"] = []
+                bool_part["filter"].append(time_filter)
 
         return query
 
     def _build_time_filter(self, time_range: str) -> dict:
-        """构建时间范围过滤"""
-        time_map = {
-            "last_1h": "now-1h",
-            "last_6h": "now-6h",
-            "last_24h": "now-24h",
-            "last_7d": "now-7d",
-            "last_30d": "now-30d",
-        }
+        """构建时间范围过滤 — 配置驱动"""
+        gte = self._time_map.get(time_range) or self._time_map.get("default", "now-24h")
         return {
             "range": {
                 "@timestamp": {
-                    "gte": time_map.get(time_range, "now-24h"),
+                    "gte": gte,
                     "lte": "now",
                 }
             }
@@ -120,7 +162,11 @@ class ESQueryGenStrategy(BaseScriptStrategy):
         }
         return query
 
-    def _get_note(self, scene_type: str) -> Optional[str]:
+    def _get_note(self, scene_type: str, extra_notes: list = None) -> Optional[str]:
+        """生成附加说明"""
+        notes = extra_notes or []
         if scene_type == "unknown":
-            return "场景类型未明确识别，已生成通用全文检索，建议细化场景描述获取更精准的查询。"
-        return None
+            notes.append("场景类型未明确识别，已生成通用全文检索，建议细化场景描述获取更精准的查询。")
+        if not notes:
+            return None
+        return "；".join(notes)

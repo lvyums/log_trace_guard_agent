@@ -1,8 +1,7 @@
 """全局依赖注入 — 请求校验 + 上下文注入"""
 
-import re
 import time
-from fastapi import Request, HTTPException
+from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from core.context_manager import ContextManager
@@ -35,29 +34,6 @@ async def log_request_duration(request: Request, response: JSONResponse):
         f"[RESP] {request.method} {request.url.path} "
         f"status={response.status_code} duration={duration}ms"
     )
-
-
-def validate_log_line(log_line: str) -> dict:
-    """日志行通用校验规则"""
-    errors = []
-
-    # 非空校验
-    if not log_line or not log_line.strip():
-        return {"valid": False, "error": "日志内容不能为空"}
-
-    stripped = log_line.strip()
-
-    # 超长校验
-    if len(stripped) > settings.max_log_length:
-        return {"valid": False, "error": f"日志长度超过上限({settings.max_log_length}字符)"}
-
-    # 纯乱码/无意义字符校验
-    # 可打印字符占比低于 30% 判为乱码
-    printable = sum(1 for c in stripped if c.isprintable() or c in "\n\r\t")
-    if len(stripped) > 0 and printable / len(stripped) < 0.3:
-        return {"valid": False, "error": "日志内容包含大量乱码或不可识别字符"}
-
-    return {"valid": True, "error": None}
 
 
 async def get_context(request: Request) -> ContextManager:

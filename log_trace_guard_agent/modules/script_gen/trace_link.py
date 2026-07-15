@@ -5,40 +5,53 @@ from typing import Optional
 
 from modules.script_gen.script_strategy import BaseScriptStrategy
 from common.json_util import JsonConfigLoader
+from common.logger import LogManager
+from app.schemas.risk_level import RiskLevel
 from app.settings import settings
+
+logger = LogManager.get_logger()
 
 
 class TraceLinkStrategy(BaseScriptStrategy):
-    """攻击链路溯源策略 — 基于日志关联 + 攻击阶段判定"""
+    """攻击链路溯源策略 — 基于日志关联 + 攻击阶段判定 + RAG知识库增强"""
 
     strategy_type = "trace"
     strategy_name = "攻击链路溯源"
 
-    # 攻击阶段链
-    ATTACK_STAGES = [
-        "侦查探测",
-        "初始入侵",
-        "权限提升",
-        "横向移动",
-        "持久化驻留",
-        "数据窃取/破坏",
-    ]
+    def __init__(self):
+        self._attack_stages = []
+        self._attack_patterns = {}
+        self._high_risk_events = []
+        self._medium_risk_events = []
+        self._low_risk_events = []
+        self._event_descriptions = {}
+        self._load_config()
 
-    # IP 关联场景
-    ATTACK_PATTERNS = {
-        "port_scan": re.compile(r"(?i)(scan|nmap|masscan|SYN|port.*probe)"),
-        "brute_force": re.compile(r"(?i)(failed password|invalid user|login failed|authentication failure)"),
-        "sql_injection": re.compile(r"(?i)(union.*select|select.*from|1=1|'|--\s|%27)"),
-        "xss": re.compile(r"(?i)(<script|<img|onerror|alert\(|%3Cscript)"),
-        "webshell": re.compile(r"(?i)(webshell|cmd=|exec=|passthru|system\()"),
-        "data_exfil": re.compile(r"(?i)(select.*into outfile|dump|export|curl.*-d|wget.*-O)"),
-        "lateral_move": re.compile(r"(?i)(psexec|wmiexec|smbexec|3389|rdp|ssh.*from.*to)"),
-    }
+    def _load_config(self):
+        """加载外部配置"""
+        config_path = f"{settings.rule_data_dir}/script_gen_trace_patterns.json"
+        config = JsonConfigLoader.load(config_path) or {}
 
-    # 风险等级判断
-    HIGH_RISK_EVENTS = ["sql_injection", "webshell", "data_exfil", "lateral_move"]
-    MEDIUM_RISK_EVENTS = ["brute_force", "xss"]
-    LOW_RISK_EVENTS = ["port_scan"]
+        self._attack_stages = config.get("attack_stages", [
+            "侦查探测", "初始入侵", "权限提升", "横向移动",
+            "持久化驻留", "数据窃取/破坏",
+        ])
+
+        raw_patterns = config.get("attack_patterns", {})
+        self._attack_patterns = {}
+        for atype, pattern_str in raw_patterns.items():
+            try:
+                self._attack_patterns[atype] = re.compile(pattern_str)
+            except re.error as e:
+                logger.warning(f"攻击模式正则编译失败 [{atype}]: {e}")
+                self._attack_patterns[atype] = re.compile(r"(?i)nothing_to_match")
+
+        risk_levels = config.get("risk_levels", {})
+        self._high_risk_events = set(risk_levels.get("high", ["sql_injection", "webshell", "data_exfil", "lateral_move"]))
+        self._medium_risk_events = set(risk_levels.get("medium", ["brute_force", "xss"]))
+        self._low_risk_events = set(risk_levels.get("low", ["port_scan"]))
+
+        self._event_descriptions = config.get("event_descriptions", {})
 
     def can_handle(self, params: dict) -> bool:
         return bool(params.get("logs"))
@@ -71,8 +84,19 @@ class TraceLinkStrategy(BaseScriptStrategy):
         # 4. 判定攻击阶段
         attack_stage = self._identify_attack_stage(events)
 
-        # 5. 生成总结
+        # 5. 尝试 RAG 知识库增强总结
         summary = self._generate_summary(events, entry_point, attack_stage, attack_type)
+
+        # 6. 尝试 RAG 补充攻击链路知识
+        if not events:
+            rag_events, rag_note = self._try_rag_trace(logs, attack_type)
+            if rag_events:
+                events = rag_events
+                if not attack_stage or attack_stage == "未检测到攻击行为":
+                    attack_stage = self._identify_attack_stage(events)
+                summary = self._generate_summary(events, entry_point, attack_stage, attack_type)
+                if summary:
+                    summary += "（注：部分数据来自知识库检索，建议人工验证）"
 
         return {
             "attack_chain": events,
@@ -81,6 +105,32 @@ class TraceLinkStrategy(BaseScriptStrategy):
             "attack_stage": attack_stage,
             "summary": summary,
         }
+
+    def _try_rag_trace(self, logs: list, attack_type: Optional[str]) -> tuple[list, Optional[str]]:
+        """尝试通过 RAG 知识库获取攻击链路信息"""
+        try:
+            from core.ai_base.rag_factory import RAGFactory
+
+            query = attack_type or " ".join(logs)[:200]
+            rag = RAGFactory.get_rag("scripts")
+            if rag:
+                results = rag.search(query=query, top_k=3)
+                if results:
+                    events = []
+                    for r in results:
+                        events.append({
+                            "timestamp": None,
+                            "event_type": r.get("title", "knowledge"),
+                            "source": "知识库",
+                            "target": None,
+                            "action": r.get("description", r.get("content", "")[:100]),
+                            "risk_level": RiskLevel.INFO.value,
+                            "detail": r.get("content", "")[:200],
+                        })
+                    return events, "已检索知识库相关攻击链路信息"
+        except Exception as e:
+            logger.warning(f"溯源RAG检索失败: {e}")
+        return [], None
 
     def _analyze_log_event(self, log_line: str) -> Optional[dict]:
         """分析单条日志，提取事件"""
@@ -96,23 +146,23 @@ class TraceLinkStrategy(BaseScriptStrategy):
 
         # 识别攻击类型
         event_type = "unknown"
-        for atype, pattern in self.ATTACK_PATTERNS.items():
+        for atype, pattern in self._attack_patterns.items():
             if pattern.search(log_lower):
                 event_type = atype
                 break
 
-        # 风险等级
-        if event_type in self.HIGH_RISK_EVENTS:
-            risk_level = "high"
-        elif event_type in self.MEDIUM_RISK_EVENTS:
-            risk_level = "medium"
-        elif event_type in self.LOW_RISK_EVENTS:
-            risk_level = "low"
+        # 风险等级 — 配置驱动
+        if event_type in self._high_risk_events:
+            risk_level = RiskLevel.HIGH.value
+        elif event_type in self._medium_risk_events:
+            risk_level = RiskLevel.MEDIUM.value
+        elif event_type in self._low_risk_events:
+            risk_level = RiskLevel.LOW.value
         else:
-            risk_level = "info"
+            risk_level = RiskLevel.INFO.value
 
         # 动作描述
-        action = self._describe_action(event_type, log_line)
+        action = self._event_descriptions.get(event_type, f"异常行为: {log_line[:80]}")
 
         return {
             "timestamp": timestamp,
@@ -137,48 +187,37 @@ class TraceLinkStrategy(BaseScriptStrategy):
                 return m.group(1)
         return None
 
-    def _describe_action(self, event_type: str, log_line: str) -> str:
-        """生成事件行为描述"""
-        descriptions = {
-            "port_scan": "端口扫描探测",
-            "brute_force": "爆破攻击尝试",
-            "sql_injection": "SQL注入攻击",
-            "xss": "XSS跨站脚本攻击",
-            "webshell": "Webshell上传/执行",
-            "data_exfil": "数据泄露行为",
-            "lateral_move": "横向移动尝试",
-        }
-        return descriptions.get(event_type, f"异常行为: {log_line[:80]}")
-
     def _identify_entry_point(self, events: list, logs: list) -> Optional[str]:
         """识别攻击入口 IP"""
-        # 取第一个出现的 source IP 作为入口
         for event in events:
             if event.get("source"):
                 return event["source"]
         return None
 
     def _identify_attack_stage(self, events: list) -> str:
-        """判定攻击阶段"""
+        """判定攻击阶段 — 根据事件风险等级递增判断"""
         if not events:
             return "未检测到攻击行为"
 
-        has_high = any(e.get("risk_level") == "high" for e in events)
-        has_medium = any(e.get("risk_level") == "medium" for e in events)
+        has_high = any(e.get("risk_level") == RiskLevel.HIGH.value for e in events)
+        has_medium = any(e.get("risk_level") == RiskLevel.MEDIUM.value for e in events)
+        has_low = any(e.get("risk_level") == RiskLevel.LOW.value for e in events)
         has_lateral = any(e.get("event_type") == "lateral_move" for e in events)
         has_exfil = any(e.get("event_type") == "data_exfil" for e in events)
 
         if has_exfil:
             return "数据窃取/破坏"
-        elif has_lateral:
+        if has_lateral:
             return "横向移动"
-        elif has_high:
+        if has_high:
             return "权限提升/入侵"
-        elif has_medium:
+        if has_medium:
             return "初始入侵"
-        elif has_medium:
+        if has_low:
             return "侦查探测"
-        return "未检测到攻击行为"
+
+        # 有事件但无风险等级标记
+        return "可疑行为（待进一步分析）"
 
     def _generate_summary(self, events: list, entry_point: Optional[str], stage: str, attack_type: Optional[str]) -> str:
         """生成溯源总结"""
@@ -186,18 +225,19 @@ class TraceLinkStrategy(BaseScriptStrategy):
             return "未检测到攻击行为，日志中无已知攻击特征。"
 
         total = len(events)
-        high_count = sum(1 for e in events if e.get("risk_level") == "high")
-        medium_count = sum(1 for e in events if e.get("risk_level") == "medium")
+        high_count = sum(1 for e in events if e.get("risk_level") == RiskLevel.HIGH.value)
+        medium_count = sum(1 for e in events if e.get("risk_level") == RiskLevel.MEDIUM.value)
 
         summary = (
-            f"溯源分析发现 **{total}** 条异常事件（高危 {high_count}，中危 {medium_count}），"
-            f"攻击阶段判定为 **{stage}**。"
+            f"溯源分析发现 {total} 条异常事件"
         )
+        if high_count > 0 or medium_count > 0:
+            summary += f"（高危 {high_count}，中危 {medium_count}）"
+        summary += f"，攻击阶段判定为 {stage}。"
         if entry_point:
             summary += f" 攻击入口: {entry_point}。"
         if attack_type:
             summary += f" 已知攻击类型: {attack_type}。"
 
         summary += " 建议对高危事件进行人工复核，并排查受影响资产的安全状态。"
-
         return summary

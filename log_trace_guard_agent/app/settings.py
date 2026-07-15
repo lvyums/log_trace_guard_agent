@@ -60,10 +60,10 @@ class Settings(BaseSettings):
     service_reload: bool = True
 
     # ── LLM 配置 ──
-    llm_api_key: str = ""
-    llm_base_url: str = "https://api.deepseek.com"
-    llm_model_name: str = "deepseek-chat"
-    llm_light_model_name: str = "deepseek-chat"
+    llm_api_key: str = "webray-key-6c3c51b69d2b28e1635295d442297ab6"
+    llm_base_url: str = "https://raytoken.com.cn/v1"
+    llm_model_name: str = "deepseek-v4-flash"
+    llm_light_model_name: str = "deepseek-v4-flash"
     llm_temperature: float = 0.1
     llm_timeout: int = 10
     llm_retry_count: int = 1

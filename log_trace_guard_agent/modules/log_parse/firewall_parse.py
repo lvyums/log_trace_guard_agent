@@ -59,8 +59,10 @@ class FirewallParser(BaseParser):
 
             groups = match.groups()
 
-            # 模式1: iptables BLOCK/DROP（含 SRC/DST/SPT/DPT）
+            # 模式1: iptables BLOCK/DROP（含 SRC/DST/SPT/DPT）— 仅当不含 ACCEPT/ALLOW 关键词时
             if len(groups) == 6 and "SRC=" in log_line:
+                if "ACCEPT" in log_line.upper() or "ALLOW" in log_line.upper():
+                    continue  # 放过 ACCEPT/ALLOW 给模式2处理
                 result.timestamp = parse_log_time(log_line) or groups[0]
                 result.src_ip = groups[1]
                 result.dst_ip = groups[2]

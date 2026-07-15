@@ -11,6 +11,7 @@ from core.rule_engine.regex_rule import RegexRuleEngine
 from core.rule_engine.risk_baseline import RiskBaseline
 from app.schemas.context_schema import ModuleStatus
 from app.settings import settings, RiskLevel
+from common.json_util import JsonConfigLoader
 from common.logger import LogManager
 from common.result_util import Result
 from common.str_util import clean_syslog_prefix, is_gibberish, normalize_whitespace
@@ -260,9 +261,11 @@ class LogParseService:
 
     @staticmethod
     def _extract_features(log_line: str) -> Optional[tuple]:
-        """多特征加权识别日志类型（配置驱动）"""
-        from common.json_util import JsonConfigLoader
+        """多特征加权识别日志类型（配置驱动）
 
+        特征数据从 data/rule_data/log_features.json 加载，
+        外部修改 JSON 即可调整特征规则，无需改代码。
+        """
         config_path = f"{settings.rule_data_dir}/log_features.json"
         features = JsonConfigLoader.load(config_path)
         if not features:
