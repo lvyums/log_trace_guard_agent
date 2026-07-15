@@ -12,10 +12,13 @@
 6. 新增场景仅新增策略文件，不修改原有核心代码；
 ====================================================
 """
+import os
 import uvicorn
 import time
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 
@@ -25,11 +28,16 @@ from core.rule_engine.regex_rule import RegexRuleEngine
 from modules.log_parse.router import router as log_parse_router
 from modules.log_collect.router import router as log_collect_router
 from modules.script_gen.router import router as script_gen_router
+from modules.compliance.router import router as compliance_router
+from modules.training.router import router as training_router
 from app.exceptions import AppException, global_exception_handler, make_response
 from app.settings import settings
 from app.dependencies import validate_request, log_request_duration
 
 logger = LogManager.get_logger()
+
+# 静态文件目录
+STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 
 
 @asynccontextmanager
@@ -48,6 +56,15 @@ app = FastAPI(
     description="AI驱动的日志分析与安全实训平台",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+# CORS 中间件（开发阶段允许所有来源）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 全局异常注册
@@ -92,11 +109,16 @@ async def global_middleware(request: Request, call_next):
 app.include_router(log_parse_router)
 app.include_router(log_collect_router)
 app.include_router(script_gen_router)
+app.include_router(compliance_router)
+app.include_router(training_router)
 
 
 @app.get("/")
 async def root():
-    """根路径 — 健康检查"""
+    """根路径 — 返回前端页面"""
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
     return make_response(data={
         "service": "日志溯源卫士智能体",
         "version": "0.1.0",
@@ -108,6 +130,11 @@ async def root():
 async def health():
     """健康检查接口"""
     return make_response(data={"status": "healthy"})
+
+
+# 挂载静态文件（放在最后，避免覆盖 API 路由）
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 if __name__ == "__main__":

@@ -107,8 +107,12 @@ class RegexGenStrategy(BaseScriptStrategy):
             from core.ai_base.rag_factory import RAGFactory
             import asyncio
 
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
                 # 在同步上下文中创建新任务
                 try:
                     rag = RAGFactory.get_rag("scripts")

@@ -1,0 +1,216 @@
+{
+  "S001": {
+    "T001-1": {
+      "correct_answer": {
+        "device_types": ["SSH服务器日志", "Web服务器日志", "防火墙日志"],
+        "evidence": ["sshd进程标识", "HTTP请求格式", "DROP/IPTables防火墙标识"],
+        "reasoning": "每条日志的开头标识和格式完全不同"
+      },
+      "key_fields": {"device_type": ["ssh", "web", "firewall"]},
+      "scoring_rules": {
+        "required_fields": ["device_type"],
+        "min_match_rate": 0.6,
+        "weight": 1.0
+      }
+    },
+    "T001-2": {
+      "correct_answer": {
+        "timestamp": "Mar 15 09:23:45",
+        "src_ip": "192.168.1.100",
+        "dst_ip": "webserver",
+        "username": "root",
+        "status": "Failed",
+        "reasoning": "SSH登录失败日志，源IP为攻击者IP，目标为本地服务器"
+      },
+      "key_fields": {"timestamp": ["Mar 15"], "src_ip": ["192.168.1.100"], "status": ["Failed", "failure"]},
+      "scoring_rules": {
+        "required_fields": ["src_ip", "status"],
+        "min_match_rate": 0.6,
+        "weight": 1.0
+      }
+    },
+    "T001-3": {
+      "correct_answer": {
+        "is_anomaly": true,
+        "attack_type": "SSH暴力破解",
+        "risk_level": "P1_中危",
+        "evidence": "5分钟内12次失败登录，尝试多个用户名",
+        "reasoning": "高频失败登录（12次/5分钟）+ 多用户名尝试 = 典型的SSH暴力破解特征"
+      },
+      "key_fields": {"is_anomaly": ["true", "是"], "attack_type": ["SSH暴力破解", "暴力破解", "爆破"], "risk_level": ["中危", "高危", "P1"]},
+      "scoring_rules": {
+        "required_fields": ["is_anomaly", "attack_type"],
+        "min_match_rate": 0.6,
+        "weight": 1.5
+      }
+    }
+  },
+  "S002": {
+    "T002-1": {
+      "correct_answer": {
+        "protocol": "Syslog + Filebeat",
+        "architecture": "集中式日志采集架构",
+        "tool_stack": "Rsyslog（网络设备）+ Filebeat（服务器）+ Logstash（解析）+ Elasticsearch（存储）",
+        "reasoning": "50台服务器推荐Filebeat Agent采集，网络设备使用Syslog推送，数据库使用Audit Log插件"
+      },
+      "key_fields": {"protocol": ["Syslog", "Filebeat", "syslog"], "architecture": ["集中", "采集"], "tool_stack": ["Filebeat", "Logstash", "Elasticsearch"]},
+      "scoring_rules": {
+        "required_fields": ["protocol", "architecture"],
+        "min_match_rate": 0.4,
+        "weight": 1.0
+      }
+    },
+    "T002-2": {
+      "correct_answer": {
+        "config_content": "auth.* @@192.168.100.1:514",
+        "reasoning": "使用 @@ 表示TCP协议（单@为UDP），指定远程日志服务器IP和端口"
+      },
+      "key_fields": {"config_content": ["@@", "192.168.100.1", "514", "auth"]},
+      "scoring_rules": {
+        "required_fields": ["config_content"],
+        "min_match_rate": 0.5,
+        "weight": 1.0
+      }
+    }
+  },
+  "S003": {
+    "T003-1": {
+      "correct_answer": {
+        "regex_pattern": "^(?P<ip>\\S+)\\s+\\S+\\s+\\S+\\s+\\[(?P<time>[^\\]]+)\\]\\s+\"(?P<method>\\S+)\\s+(?P<url>\\S+)\\s+\\S+\"\\s+(?P<status>\\d+)",
+        "captured_groups": ["ip", "time", "method", "url", "status"],
+        "reasoning": "标准的Apache/Nginx combined日志格式，使用命名捕获组提取关键字段"
+      },
+      "key_fields": {"regex_pattern": ["ip", "time", "method", "url", "status", "\\S+", "\\d+"]},
+      "scoring_rules": {
+        "required_fields": ["regex_pattern", "captured_groups"],
+        "min_match_rate": 0.5,
+        "weight": 1.5
+      }
+    },
+    "T003-2": {
+      "correct_answer": {
+        "es_query_dsl": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"src_ip.keyword\":\"10.0.0.50\"}},{\"term\":{\"status\":\"Failed\"}}],\"filter\":[{\"range\":{\"@timestamp\":{\"gte\":\"now-24h\"}}}]}},\"sort\":[{\"@timestamp\":{\"order\":\"desc\"}}],\"size\":100}",
+        "reasoning": "使用bool查询组合条件，term精确匹配，range时间过滤，sort排序，size限制结果数"
+      },
+      "key_fields": {"es_query_dsl": ["bool", "term", "range", "now-24h", "sort", "size"]},
+      "scoring_rules": {
+        "required_fields": ["es_query_dsl"],
+        "min_match_rate": 0.6,
+        "weight": 1.5
+      }
+    },
+    "T003-3": {
+      "correct_answer": {
+        "filter_rule": "NOT (src_ip:127.0.0.1 OR src_ip:10.0.0.2)",
+        "reasoning": "使用逻辑NOT排除健康检查IP，保留所有其他日志"
+      },
+      "key_fields": {"filter_rule": ["NOT", "127.0.0.1", "10.0.0.2"]},
+      "scoring_rules": {
+        "required_fields": ["filter_rule"],
+        "min_match_rate": 0.5,
+        "weight": 1.0
+      }
+    }
+  },
+  "S004": {
+    "T004-1": {
+      "correct_answer": {
+        "is_attack": true,
+        "attack_type": "SQL注入",
+        "payload": "1' OR '1'='1 / UNION SELECT 1,2,3,4",
+        "evidence": "1. 第一步: id=1' 返回500错误，验证了注入点；2. 第二步: 1' OR '1'='1 返回200+更多数据，确认注入存在；3. 第三步: UNION SELECT 探测字段数",
+        "reasoning": "典型的SQL注入三步探测法：确认注入点→验证注入→字段探测"
+      },
+      "key_fields": {"is_attack": ["true", "是"], "attack_type": ["SQL注入", "sql"], "payload": ["OR", "UNION", "SELECT"]},
+      "scoring_rules": {
+        "required_fields": ["is_attack", "attack_type"],
+        "min_match_rate": 0.6,
+        "weight": 1.5
+      }
+    },
+    "T004-2": {
+      "correct_answer": {
+        "attack_chain": [
+          {"time": "09:50", "action": "端口扫描", "stage": "信息收集"},
+          {"time": "09:52-09:53", "action": "目录探测", "stage": "信息收集"},
+          {"time": "09:55-09:56", "action": "SQL注入探测", "stage": "漏洞利用"},
+          {"time": "09:58", "action": "上传WebShell", "stage": "权限获取"},
+          {"time": "10:00", "action": "执行系统命令", "stage": "权限维持"}
+        ],
+        "entry_point": "Web应用SQL注入漏洞",
+        "affected_assets": ["10.0.0.1:80 Web服务器"],
+        "attack_stage": "已获得Web服务器控制权（命令执行阶段）",
+        "reasoning": "扫描发现Web服务→探测敏感路径→发现SQL注入→上传WebShell→执行远程命令"
+      },
+      "key_fields": {"entry_point": ["SQL注入", "Web"], "attack_stage": ["命令执行", "控制权", "已获得"]},
+      "scoring_rules": {
+        "required_fields": ["entry_point", "attack_stage", "attack_chain"],
+        "min_match_rate": 0.5,
+        "weight": 2.0
+      }
+    }
+  },
+  "S005": {
+    "T005-1": {
+      "correct_answer": {
+        "is_lateral": true,
+        "technique": "Pass-the-Hash / 凭据窃取横向移动",
+        "compromised_assets": ["192.168.1.100（初始入口）", "10.0.0.1（第一跳板）", "10.0.0.50（第二目标）"],
+        "c2_server": "203.0.113.5:443",
+        "attack_chain_summary": "入口(192.168.1.100)→SSH爆破入10.0.0.1→内网扫描→SMB横向到10.0.0.50→下载payload→C2通信",
+        "reasoning": "典型的横向移动攻击流程：初始入口 → 内部扫描 → 凭据窃取 → 横向移动 → payload执行 → C2通信"
+      },
+      "key_fields": {"is_lateral": ["true", "是"], "technique": ["横向", "Pass", "Hash", "凭据"], "compromised_assets": ["10.0.0.1", "10.0.0.50"], "c2_server": ["203.0.113.5"]},
+      "scoring_rules": {
+        "required_fields": ["is_lateral", "technique", "compromised_assets"],
+        "min_match_rate": 0.5,
+        "weight": 2.0
+      }
+    }
+  },
+  "S006": {
+    "T006-1": {
+      "correct_answer": {
+        "gaps": [
+          "日志留存仅30天，不足180天（等保三级要求6个月）",
+          "未配置日志备份，违反GB-004要求",
+          "未启用防篡改机制，违反GB-003要求",
+          "未配置NTP时钟同步，违反GB-006要求",
+          "未配置审计机制，违反GB-005要求",
+          "未配置实时告警系统，违反GB-007要求"
+        ],
+        "risk_levels": {"high": 3, "medium": 3},
+        "remediation_priority": ["1. 扩展日志存储至6个月（P0）", "2. 启用日志防篡改（P0）", "3. 配置日志备份（P0）", "4. 部署NTP时钟同步（P1）", "5. 建立审计机制（P1）", "6. 部署告警系统（P1）"],
+        "reasoning": "等保三级对日志管理有6项硬性要求，当前企业仅满足0项"
+      },
+      "key_fields": {"gaps": ["留存", "备份", "防篡改", "NTP", "审计", "告警"], "remediation_priority": ["P0", "P1"]},
+      "scoring_rules": {
+        "required_fields": ["gaps", "remediation_priority"],
+        "min_match_rate": 0.4,
+        "weight": 1.5
+      }
+    },
+    "T006-2": {
+      "correct_answer": {
+        "steps": [
+          "第1-2周：采购和部署日志存储扩容方案（NAS/对象存储）",
+          "第1-2周：配置日志防篡改（WORM存储/日志签名）",
+          "第3-4周：配置日志轮转和备份策略（每日增量+每周全量）",
+          "第5-6周：部署NTP服务器并配置全网设备同步",
+          "第7-8周：部署堡垒机建立审计机制",
+          "第9-12周：部署SIEM/告警系统，配置告警规则"
+        ],
+        "budget": "10万元（存储扩容3万 + 堡垒机3万 + SIEM基础版3万 + 其他1万）",
+        "timeline": "3个月（12周）",
+        "responsible": "安全运维团队2人（1人负责基础设施，1人负责安全配置）",
+        "reasoning": "按风险优先级排序，优先解决日志留存和防篡改等核心合规项"
+      },
+      "key_fields": {"steps": ["存储", "防篡改", "备份", "NTP", "堡垒机", "SIEM", "告警"], "budget": ["10", "万"], "timeline": ["3个月", "12周"]},
+      "scoring_rules": {
+        "required_fields": ["steps", "budget", "timeline"],
+        "min_match_rate": 0.4,
+        "weight": 1.5
+      }
+    }
+  }
+}

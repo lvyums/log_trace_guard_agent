@@ -110,6 +110,14 @@ class Settings(BaseSettings):
     arch_small_log_volume: str = "small"
     arch_medium_device_count: int = 100
 
+    # ── 模块二：合规审计配置 ──
+    compliance_standards_data_path: str = "./data/rule_data/compliance_standards.json"
+    compliance_baselines_data_path: str = "./data/rule_data/compliance_baselines.json"
+
+    # ── 模块五：交互式实训配置 ──
+    training_scenarios_data_path: str = "./data/rule_data/training_scenarios.json"
+    training_standard_answers_data_path: str = "./data/rule_data/training_standard_answers.json"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

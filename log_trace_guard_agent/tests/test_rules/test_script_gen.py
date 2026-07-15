@@ -497,7 +497,7 @@ class TestConfigLoading:
         """验证场景关键词配置文件存在"""
         path = os.path.join(project_root, "data/rule_data/script_gen_scene_keywords.json")
         assert os.path.exists(path), f"配置文件不存在: {path}"
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         assert "regex" in data
         assert "es_query" in data
@@ -507,7 +507,7 @@ class TestConfigLoading:
         """验证兜底规则配置文件存在"""
         path = os.path.join(project_root, "data/rule_data/script_gen_fallback_rules.json")
         assert os.path.exists(path)
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         assert "ssh" in data or "default" in data
 
@@ -515,7 +515,7 @@ class TestConfigLoading:
         """验证时间映射配置文件存在"""
         path = os.path.join(project_root, "data/rule_data/script_gen_time_map.json")
         assert os.path.exists(path)
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         assert "last_24h" in data
         assert "default" in data
@@ -524,7 +524,7 @@ class TestConfigLoading:
         """验证溯源模式配置文件存在"""
         path = os.path.join(project_root, "data/rule_data/script_gen_trace_patterns.json")
         assert os.path.exists(path)
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         assert "attack_patterns" in data
         assert "risk_levels" in data
@@ -534,7 +534,7 @@ class TestConfigLoading:
         """验证平台兜底配置文件存在"""
         path = os.path.join(project_root, "data/rule_data/script_gen_platform_fallback.json")
         assert os.path.exists(path)
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         assert "name" in data
 
@@ -542,7 +542,7 @@ class TestConfigLoading:
         """验证评分阈值配置文件存在"""
         path = os.path.join(project_root, "data/rule_data/script_gen_scoring.json")
         assert os.path.exists(path)
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         assert "regex" in data
         assert "es_query" in data

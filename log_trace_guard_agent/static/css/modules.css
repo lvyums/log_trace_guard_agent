@@ -1,0 +1,333 @@
+/* ═══════════════════════════════════════════════════
+   MODULES — 模块特定样式
+   ═══════════════════════════════════════════════════ */
+
+/* ── Tab 导航 ── */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--n-200);
+  margin-bottom: var(--space-4);
+}
+
+.tab {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--n-500);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.tab:hover {
+  color: var(--n-700);
+}
+
+.tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* ── 风险等级卡片 ── */
+.risk-card {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border-left: 4px solid;
+}
+
+.risk-card.critical {
+  border-left-color: var(--risk-critical);
+  background: rgba(224, 49, 49, 0.05);
+}
+
+.risk-card.high {
+  border-left-color: var(--risk-high);
+  background: rgba(247, 103, 7, 0.05);
+}
+
+.risk-card.medium {
+  border-left-color: var(--risk-medium);
+  background: rgba(252, 196, 25, 0.05);
+}
+
+.risk-card.low {
+  border-left-color: var(--risk-low);
+  background: rgba(81, 207, 102, 0.05);
+}
+
+.risk-card.noise {
+  border-left-color: var(--risk-noise);
+  background: rgba(134, 142, 150, 0.05);
+}
+
+.risk-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.risk-level {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.risk-confidence {
+  font-size: var(--text-sm);
+  color: var(--n-500);
+}
+
+.risk-details {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.risk-detail-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.risk-detail-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--n-600);
+  min-width: 80px;
+}
+
+.risk-detail-value {
+  font-size: var(--text-sm);
+  color: var(--n-800);
+}
+
+/* ── 攻击链路时间线 ── */
+.timeline {
+  position: relative;
+  padding-left: var(--space-6);
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--n-200);
+}
+
+.timeline-item {
+  position: relative;
+  padding-bottom: var(--space-4);
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--space-6) + 4px);
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  border: 2px solid var(--n-50);
+}
+
+.timeline-item.critical::before {
+  background: var(--risk-critical);
+}
+
+.timeline-item.high::before {
+  background: var(--risk-high);
+}
+
+.timeline-time {
+  font-size: var(--text-xs);
+  color: var(--n-500);
+  font-family: var(--font-code);
+}
+
+.timeline-content {
+  margin-top: var(--space-1);
+}
+
+.timeline-event {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--n-800);
+}
+
+.timeline-detail {
+  font-size: var(--text-xs);
+  color: var(--n-600);
+  margin-top: var(--space-1);
+}
+
+/* ── 日志输入区 ── */
+.log-input-area {
+  position: relative;
+}
+
+.log-input-area textarea {
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  tab-size: 4;
+}
+
+.log-input-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* ── 结果展示区 ── */
+.result-area {
+  margin-top: var(--space-4);
+}
+
+.result-area-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.result-area-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--n-700);
+}
+
+/* ── 设备匹配卡片 ── */
+.device-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--n-50);
+  border: 1px solid var(--n-200);
+  border-radius: var(--radius-md);
+}
+
+.device-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--n-100);
+  border-radius: var(--radius-md);
+  color: var(--accent-primary);
+}
+
+.device-info {
+  flex: 1;
+}
+
+.device-name {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--n-800);
+}
+
+.device-meta {
+  font-size: var(--text-xs);
+  color: var(--n-500);
+  margin-top: var(--space-1);
+}
+
+/* ── 正则结果 ── */
+.regex-item {
+  padding: var(--space-3);
+  background: var(--n-50);
+  border: 1px solid var(--n-200);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+}
+
+.regex-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.regex-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--n-800);
+}
+
+.regex-pattern {
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  color: var(--n-700);
+  background: var(--n-100);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  word-break: break-all;
+}
+
+.regex-meta {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--n-500);
+}
+
+/* ── 架构推荐 ── */
+.arch-card {
+  padding: var(--space-4);
+  background: var(--n-50);
+  border: 1px solid var(--n-200);
+  border-radius: var(--radius-md);
+}
+
+.arch-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--n-800);
+  margin-bottom: var(--space-3);
+}
+
+.arch-section {
+  margin-bottom: var(--space-4);
+}
+
+.arch-section-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--n-600);
+  margin-bottom: var(--space-2);
+}
+
+.arch-list {
+  list-style: none;
+}
+
+.arch-list li {
+  font-size: var(--text-sm);
+  color: var(--n-700);
+  padding: var(--space-1) 0;
+  padding-left: var(--space-4);
+  position: relative;
+}
+
+.arch-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--accent-primary);
+}
+
+.arch-pros li::before {
+  content: '✓';
+  color: var(--success);
+}
+
+.arch-cons li::before {
+  content: '✗';
+  color: var(--error);
+}
