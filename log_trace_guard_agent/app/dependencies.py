@@ -8,7 +8,6 @@ from fastapi.responses import JSONResponse
 from core.context_manager import ContextManager
 from app.settings import settings
 from common.logger import LogManager
-from app.exceptions import make_response
 
 logger = LogManager.get_logger()
 

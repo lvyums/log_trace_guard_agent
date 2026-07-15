@@ -65,7 +65,8 @@ class LogParserFactory:
         if parser is None:
             logger.warning(f"无法识别日志类型: {log_line[:50]}")
             return None
-        return parser.parse_fields(log_line)
+        fields = parser.parse_fields(log_line)
+        return fields.model_dump()
 
     @classmethod
     def get_registered_types(cls) -> list[str]:

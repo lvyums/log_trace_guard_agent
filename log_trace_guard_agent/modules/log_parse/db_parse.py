@@ -1,9 +1,8 @@
 """数据库审计日志解析器 — 支持 MySQL / PostgreSQL / SQL Server 审计格式"""
 
 import re
-from datetime import datetime
 
-from modules.log_parse.base_parser import BaseParser
+from modules.log_parse.base_parser import BaseParser, ParsedLogFields
 from common.time_util import parse_log_time
 
 
@@ -62,23 +61,14 @@ class DBParser(BaseParser):
                 return True
         return False
 
-    def parse_fields(self, log_line: str) -> dict:
-        result = {
-            "timestamp": parse_log_time(log_line),
-            "src_ip": None,
-            "dst_ip": None,
-            "src_port": None,
-            "dst_port": "3306",
-            "user": None,
-            "url": None,
-            "method": None,
-            "command": None,
-            "status": "unknown",
-            "device_type": "db",
-            "sql_statement": None,
-            "db_name": None,
-            "is_dangerous": False,
-        }
+    def parse_fields(self, log_line: str) -> ParsedLogFields:
+        result = ParsedLogFields(
+            timestamp=parse_log_time(log_line),
+            dst_port="3306",
+            device_type="db",
+            status="unknown",
+            raw_log=log_line[:500],
+        )
 
         for pattern in self.PATTERNS:
             match = pattern.search(log_line)
@@ -89,80 +79,76 @@ class DBParser(BaseParser):
 
             # 模式1: MySQL general_log
             if len(groups) == 4 and groups[2] in ("Connect", "Query", "Quit", "Execute"):
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
+                result.timestamp = parse_log_time(log_line) or groups[0]
                 operation = groups[2].lower()
                 content = groups[3].strip()
 
                 if operation == "connect":
-                    # 尝试提取用户（格式: root@localhost on mydb）
                     user_match = re.search(r"(\S+)@", content)
                     if user_match:
-                        result["user"] = user_match.group(1)
+                        result.user = user_match.group(1)
                     else:
                         user_match = re.search(r"(\S+)\s+on", content)
                         if user_match:
-                            result["user"] = user_match.group(1)
+                            result.user = user_match.group(1)
                 elif operation in ("query", "execute"):
-                    result["sql_statement"] = content
-                    result["command"] = content[:200]
-                    result["method"] = operation.upper()
-                    result["is_dangerous"] = self._check_dangerous(content)
+                    result.sql_statement = content
+                    result.command = content[:200]
+                    result.method = operation.upper()
+                    result.is_dangerous = self._check_dangerous(content)
 
             # 模式2: MySQL slow_log
             elif len(groups) == 3 and "User@Host" in log_line:
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["user"] = groups[1]
-                result["src_ip"] = groups[2]
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.user = groups[1]
+                result.src_ip = groups[2]
 
             # 模式3: PostgreSQL log
             elif len(groups) == 3 and groups[1] in ("LOG", "ERROR", "WARNING", "FATAL", "INFO"):
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
+                result.timestamp = parse_log_time(log_line) or groups[0]
                 log_level = groups[1].upper()
                 content = groups[2]
 
-                # 提取连接信息
                 host_match = re.search(r"host=([\d.]+)", content)
                 user_match = re.search(r"user=(\S+)", content)
                 if host_match:
-                    result["src_ip"] = host_match.group(1)
+                    result.src_ip = host_match.group(1)
                 if user_match:
-                    result["user"] = user_match.group(1)
+                    result.user = user_match.group(1)
 
-                # 提取 SQL
                 sql_match = re.search(r"statement:\s*(.*)", content, re.IGNORECASE)
                 if sql_match:
-                    result["sql_statement"] = sql_match.group(1).strip()
-                    result["command"] = result["sql_statement"][:200]
-                    result["is_dangerous"] = self._check_dangerous(result["sql_statement"])
+                    result.sql_statement = sql_match.group(1).strip()
+                    result.command = result.sql_statement[:200]
+                    result.is_dangerous = self._check_dangerous(result.sql_statement)
 
                 if log_level in ("ERROR", "FATAL"):
-                    result["status"] = "error"
+                    result.status = "error"
 
             # 模式4: SQL Server Audit
             elif len(groups) == 4 and "[" in log_line:
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
+                result.timestamp = parse_log_time(log_line) or groups[0]
                 content = groups[2]
                 if groups[3]:
-                    result["src_ip"] = groups[3]
+                    result.src_ip = groups[3]
 
-                # 提取用户
                 user_match = re.search(r"for user '(\S+)'", content)
                 if user_match:
-                    result["user"] = user_match.group(1)
+                    result.user = user_match.group(1)
 
                 if "login failed" in content.lower():
-                    result["status"] = "failed"
+                    result.status = "failed"
                 else:
-                    result["status"] = "success"
+                    result.status = "success"
 
             # 模式5: 通用审计格式
             elif len(groups) == 6 and "|" in log_line:
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["src_ip"] = groups[1]
-                result["user"] = groups[2]
-                result["method"] = groups[3].upper()
-                result["status"] = groups[5]
-                result["is_dangerous"] = groups[3].upper() in ("DROP", "TRUNCATE", "DELETE", "UPDATE")
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.src_ip = groups[1]
+                result.user = groups[2]
+                result.method = groups[3].upper()
+                result.status = groups[5]
+                result.is_dangerous = groups[3].upper() in ("DROP", "TRUNCATE", "DELETE", "UPDATE")
 
             break
 

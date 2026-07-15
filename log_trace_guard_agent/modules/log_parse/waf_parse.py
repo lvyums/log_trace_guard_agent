@@ -1,9 +1,8 @@
 """WAF 攻击日志解析器 — 支持常见 WAF 格式（ModSecurity / 商用 WAF）"""
 
 import re
-from datetime import datetime
 
-from modules.log_parse.base_parser import BaseParser
+from modules.log_parse.base_parser import BaseParser, ParsedLogFields
 from common.time_util import parse_log_time
 
 
@@ -55,7 +54,6 @@ class WAFParser(BaseParser):
 
     def can_parse(self, log_line: str) -> bool:
         log_lower = log_line.lower()
-        # WAF 特征关键词
         waf_keywords = ["waf", "blocked", "attack detected", "violation", "[error]"]
         if any(kw in log_lower for kw in waf_keywords):
             return True
@@ -64,22 +62,14 @@ class WAFParser(BaseParser):
                 return True
         return False
 
-    def parse_fields(self, log_line: str) -> dict:
-        result = {
-            "timestamp": parse_log_time(log_line),
-            "src_ip": None,
-            "dst_ip": None,
-            "src_port": None,
-            "dst_port": "80",
-            "user": None,
-            "url": None,
-            "method": None,
-            "command": None,
-            "status": "blocked",
-            "device_type": "waf",
-            "attack_type": None,
-            "attack_action": None,
-        }
+    def parse_fields(self, log_line: str) -> ParsedLogFields:
+        result = ParsedLogFields(
+            timestamp=parse_log_time(log_line),
+            dst_port="80",
+            status="blocked",
+            device_type="waf",
+            raw_log=log_line[:500],
+        )
 
         for pattern in self.PATTERNS:
             match = pattern.search(log_line)
@@ -90,35 +80,35 @@ class WAFParser(BaseParser):
 
             # 模式1: ModSecurity 格式
             if len(groups) == 2 and "attack" in log_line.lower():
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["src_ip"] = groups[1]
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.src_ip = groups[1]
 
             # 模式2: 通用 WAF 格式
             elif len(groups) == 5:
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["src_ip"] = groups[1]
-                result["method"] = groups[2]
-                result["url"] = groups[3]
-                result["attack_type"] = self._classify_attack(groups[4])
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.src_ip = groups[1]
+                result.method = groups[2]
+                result.url = groups[3]
+                result.attack_type = self._classify_attack(groups[4])
 
             # 模式3: JSON-like 格式
             elif len(groups) == 3 and "src_ip" in log_line:
-                result["src_ip"] = groups[0]
-                result["attack_action"] = groups[1]
-                result["url"] = groups[2]
+                result.src_ip = groups[0]
+                result.attack_action = groups[1]
+                result.url = groups[2]
 
             # 模式4: 商用 WAF Syslog
             elif len(groups) == 4:
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["src_ip"] = groups[1]
-                result["url"] = groups[2]
-                result["attack_type"] = self._classify_attack(groups[3])
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.src_ip = groups[1]
+                result.url = groups[2]
+                result.attack_type = self._classify_attack(groups[3])
 
             break
 
         # 从日志内容补充攻击类型
-        if not result["attack_type"]:
-            result["attack_type"] = self._extract_attack_from_content(log_line)
+        if not getattr(result, "attack_type", None):
+            result.attack_type = self._extract_attack_from_content(log_line)
 
         return self.validate(result)
 

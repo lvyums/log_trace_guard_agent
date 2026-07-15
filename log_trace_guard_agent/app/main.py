@@ -21,6 +21,7 @@ from core.ai_base.llm_factory import LLMFactory
 from core.rule_engine.regex_rule import RegexRuleEngine
 from modules.log_parse.router import router as log_parse_router
 from modules.log_collect.router import router as log_collect_router
+from modules.script_gen.router import router as script_gen_router
 from app.exceptions import AppException, global_exception_handler, make_response
 from app.settings import settings
 from app.dependencies import validate_request, log_request_duration
@@ -87,6 +88,7 @@ async def global_middleware(request: Request, call_next):
 # 路由注册
 app.include_router(log_parse_router)
 app.include_router(log_collect_router)
+app.include_router(script_gen_router)
 
 
 @app.get("/")

@@ -1,9 +1,8 @@
 """防火墙流量日志解析器 — 支持 iptables / pf / 商用防火墙 Syslog 格式"""
 
 import re
-from datetime import datetime
 
-from modules.log_parse.base_parser import BaseParser
+from modules.log_parse.base_parser import BaseParser, ParsedLogFields
 from common.time_util import parse_log_time
 
 
@@ -45,22 +44,13 @@ class FirewallParser(BaseParser):
                 return True
         return False
 
-    def parse_fields(self, log_line: str) -> dict:
-        result = {
-            "timestamp": parse_log_time(log_line),
-            "src_ip": None,
-            "dst_ip": None,
-            "src_port": None,
-            "dst_port": None,
-            "user": None,
-            "url": None,
-            "method": None,
-            "command": None,
-            "status": "unknown",
-            "device_type": "firewall",
-            "protocol": None,
-            "action": None,
-        }
+    def parse_fields(self, log_line: str) -> ParsedLogFields:
+        result = ParsedLogFields(
+            timestamp=parse_log_time(log_line),
+            device_type="firewall",
+            status="unknown",
+            raw_log=log_line[:500],
+        )
 
         for pattern in self.PATTERNS:
             match = pattern.search(log_line)
@@ -71,50 +61,50 @@ class FirewallParser(BaseParser):
 
             # 模式1: iptables BLOCK/DROP（含 SRC/DST/SPT/DPT）
             if len(groups) == 6 and "SRC=" in log_line:
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["src_ip"] = groups[1]
-                result["dst_ip"] = groups[2]
-                result["protocol"] = groups[3]
-                result["src_port"] = groups[4]
-                result["dst_port"] = groups[5]
-                result["action"] = "block"
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.src_ip = groups[1]
+                result.dst_ip = groups[2]
+                result.protocol = groups[3]
+                result.src_port = groups[4]
+                result.dst_port = groups[5]
+                result.action = "block"
 
             # 模式2: iptables ACCEPT（含动作关键字）
             elif len(groups) == 5 and groups[1] in ("ACCEPT", "DROP", "REJECT"):
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["action"] = groups[1].lower()
-                result["src_ip"] = groups[2]
-                result["dst_ip"] = groups[3]
-                result["protocol"] = groups[4]
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.action = groups[1].lower()
+                result.src_ip = groups[2]
+                result.dst_ip = groups[3]
+                result.protocol = groups[4]
 
             # 模式3: pf 格式
             elif len(groups) == 5 and "pf:" in log_line:
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["action"] = "block"  # pf 默认 action
-                result["src_ip"] = groups[1]
-                result["dst_ip"] = groups[2]
-                result["protocol"] = groups[3]
-                result["dst_port"] = groups[4]
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.action = "block"
+                result.src_ip = groups[1]
+                result.dst_ip = groups[2]
+                result.protocol = groups[3]
+                result.dst_port = groups[4]
 
             # 模式4: 商用防火墙 Syslog
             elif len(groups) == 7 and "->" in log_line:
-                result["timestamp"] = parse_log_time(log_line) or groups[0]
-                result["action"] = groups[1].lower()
-                result["protocol"] = groups[2]
-                result["src_ip"] = groups[3]
-                result["src_port"] = groups[4]
-                result["dst_ip"] = groups[5]
-                result["dst_port"] = groups[6]
+                result.timestamp = parse_log_time(log_line) or groups[0]
+                result.action = groups[1].lower()
+                result.protocol = groups[2]
+                result.src_ip = groups[3]
+                result.src_port = groups[4]
+                result.dst_ip = groups[5]
+                result.dst_port = groups[6]
 
             break
 
         # 统一状态映射
-        action = result.get("action", "")
+        action = getattr(result, "action", "") or ""
         if action in ("block", "drop", "deny", "reject"):
-            result["status"] = "blocked"
+            result.status = "blocked"
         elif action in ("accept", "pass", "allow"):
-            result["status"] = "allowed"
+            result.status = "allowed"
         else:
-            result["status"] = "unknown"
+            result.status = "unknown"
 
         return self.validate(result)

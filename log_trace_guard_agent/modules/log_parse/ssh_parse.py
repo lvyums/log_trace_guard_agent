@@ -3,7 +3,7 @@
 import re
 from datetime import datetime
 
-from modules.log_parse.base_parser import BaseParser
+from modules.log_parse.base_parser import BaseParser, ParsedLogFields
 from common.time_util import parse_log_time
 
 
@@ -51,20 +51,13 @@ class SSHParser(BaseParser):
                 return True
         return "sshd" in log_line.lower() or "sudo" in log_line.lower()
 
-    def parse_fields(self, log_line: str) -> dict:
-        result = {
-            "timestamp": parse_log_time(log_line),
-            "src_ip": None,
-            "dst_ip": None,
-            "src_port": None,
-            "dst_port": "22",
-            "user": None,
-            "url": None,
-            "method": None,
-            "command": None,
-            "status": "unknown",
-            "device_type": "ssh",
-        }
+    def parse_fields(self, log_line: str) -> ParsedLogFields:
+        result = ParsedLogFields(
+            timestamp=parse_log_time(log_line),
+            dst_port="22",
+            device_type="ssh",
+            raw_log=log_line[:500],
+        )
 
         for pattern in self.PATTERNS:
             match = pattern.search(log_line)
@@ -77,27 +70,27 @@ class SSHParser(BaseParser):
             if "Accepted" in log_line or "Failed" in log_line:
                 if len(groups) == 4:
                     # 完整格式: timestamp, user, ip, port
-                    result["timestamp"] = parse_log_time(match.group(1)) or result["timestamp"]
-                    result["user"] = groups[1]
-                    result["src_ip"] = groups[2]
-                    result["src_port"] = groups[3]
+                    result.timestamp = parse_log_time(match.group(1)) or result.timestamp
+                    result.user = groups[1]
+                    result.src_ip = groups[2]
+                    result.src_port = groups[3]
                 elif len(groups) == 3:
                     # 清洗后格式: user, ip, port
-                    result["user"] = groups[0]
-                    result["src_ip"] = groups[1]
-                    result["src_port"] = groups[2]
-                result["status"] = "success" if "Accepted" in log_line else "failed"
+                    result.user = groups[0]
+                    result.src_ip = groups[1]
+                    result.src_port = groups[2]
+                result.status = "success" if "Accepted" in log_line else "failed"
             elif "sudo" in log_line.lower():
                 if len(groups) == 3:
                     # 完整格式: timestamp, user, command
-                    result["timestamp"] = parse_log_time(match.group(1)) or result["timestamp"]
-                    result["user"] = groups[1]
-                    result["command"] = groups[2]
+                    result.timestamp = parse_log_time(match.group(1)) or result.timestamp
+                    result.user = groups[1]
+                    result.command = groups[2]
                 elif len(groups) == 2:
                     # 清洗后格式: user, command
-                    result["user"] = groups[0]
-                    result["command"] = groups[1]
-                result["status"] = "command_executed"
+                    result.user = groups[0]
+                    result.command = groups[1]
+                result.status = "command_executed"
 
             break
 

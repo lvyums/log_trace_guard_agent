@@ -1,0 +1,143 @@
+{
+  "ssh": [
+    {
+      "name": "SSH爆破检测",
+      "pattern": "(?i)(Failed password|Invalid user|authentication failure|Connection closed by authenticating user).*from\\s+([\\d.]+)",
+      "description": "检测SSH爆破攻击，匹配登录失败和认证错误",
+      "match_example": "sshd[1234]: Failed password for root from 192.168.1.1 port 22",
+      "priority": 80
+    },
+    {
+      "name": "SSH登录成功检测",
+      "pattern": "(?i)(Accepted password|Accepted publickey|session opened).*from\\s+([\\d.]+)",
+      "description": "检测SSH登录成功事件，用于基线对比",
+      "match_example": "sshd[1234]: Accepted password for root from 192.168.1.1 port 22",
+      "priority": 60
+    },
+    {
+      "name": "SSH可疑用户检测",
+      "pattern": "(?i)Invalid user\\s+(\\S+).*from\\s+([\\d.]+)",
+      "description": "检测SSH登录尝试使用不存在的用户（扫描特征）",
+      "match_example": "sshd[1235]: Invalid user admin from 10.0.0.5 port 22",
+      "priority": 75
+    },
+    {
+      "name": "SSH爆破高频检测",
+      "pattern": "(?i)(Failed password).*from\\s+([\\d.]+).*port\\s+(\\d+)",
+      "description": "配合频率统计，检测短时间内大量登录失败（爆破攻击）",
+      "match_example": "sshd[1236]: Failed password for root from 192.168.1.100 port 22",
+      "priority": 85
+    }
+  ],
+  "web": [
+    {
+      "name": "SQL注入检测-联合查询",
+      "pattern": "(?i)(union.*select|union.*all.*select|union.*distinct).*from",
+      "description": "检测SQL注入联合查询攻击",
+      "match_example": "GET /user?id=1 UNION SELECT * FROM users HTTP/1.1",
+      "priority": 85
+    },
+    {
+      "name": "SQL注入检测-恒真条件",
+      "pattern": "(?i)(\\bOR\\b|\\bAND\\b).*(1=1|1=2|\\'1\\'\\s*=\\s*\\'1|\\\"1\\\"\\s*=\\s*\\\"1)",
+      "description": "检测SQL注入恒真/恒假条件绕过",
+      "match_example": "GET /login?user=admin' OR '1'='1 HTTP/1.1",
+      "priority": 85
+    },
+    {
+      "name": "XSS检测-反射型",
+      "pattern": "(?i)(<script[^>]*>|<img[^>]+onerror|<svg[^>]+onload|<input[^>]+onfocus|alert\\(|prompt\\(|confirm\\(|%3Cscript|%3Cimg|%3Csvg)",
+      "description": "检测反射型XSS攻击特征",
+      "match_example": "GET /search?q=<script>alert('xss')</script> HTTP/1.1",
+      "priority": 82
+    },
+    {
+      "name": "路径穿越检测",
+      "pattern": "(\\.\\./|\\.\\.\\\\|%2e%2e%2f|%2e%2e%5c|..%252f|..%255c)",
+      "description": "检测路径穿越/目录遍历攻击",
+      "match_example": "GET /../../etc/passwd HTTP/1.1",
+      "priority": 75
+    }
+  ],
+  "port_scan": [
+    {
+      "name": "端口扫描检测-SYN扫描",
+      "pattern": "(?i)(SYN.*scan|SYN.*flood|half-open|stealth.*scan)",
+      "description": "检测SYN半连接扫描攻击",
+      "match_example": "SRC=192.168.1.100 DST=10.0.0.1 PROTO=TCP SPT=54321 DPT=22",
+      "priority": 70
+    },
+    {
+      "name": "端口扫描检测-多端口",
+      "pattern": "(?i)(nmap|masscan|zmap|unicornscan|scan.*port|port.*scan|port.*probe)",
+      "description": "检测常见扫描工具和端口探测行为",
+      "match_example": "nmap scan report 192.168.1.100 ports 1-1000",
+      "priority": 70
+    },
+    {
+      "name": "端口扫描检测-全连接",
+      "pattern": "(?i)(connect.*scan|full.*connect|TCP.*connect)",
+      "description": "检测全连接扫描行为",
+      "match_example": "TCP connect scan from 192.168.1.100 to 10.0.0.1:22",
+      "priority": 65
+    }
+  ],
+  "malware": [
+    {
+      "name": "Webshell检测-一句话木马",
+      "pattern": "(?i)(eval\\(\\s*\\$_(POST|GET|REQUEST|COOKIE)|base64_decode\\(\\s*\\$_(POST|GET|REQUEST)|assert\\(\\s*\\$_(POST|GET))",
+      "description": "检测PHP一句话木马特征",
+      "match_example": "POST /shell.php?cmd=eval($_POST['cmd']) HTTP/1.1",
+      "priority": 90
+    },
+    {
+      "name": "Webshell检测-系统命令执行",
+      "pattern": "(?i)(system\\(|exec\\(|shell_exec\\(|passthru\\(|popen\\(|proc_open\\(|pcntl_exec\\()",
+      "description": "检测Webshell系统命令执行函数调用",
+      "match_example": "system('id')",
+      "priority": 88
+    },
+    {
+      "name": "C2通信检测",
+      "pattern": "(?i)(\\.(top|xyz|gq|cf|ml|ga|tk)$|beacon|heartbeat|command.*control|C2)",
+      "description": "检测可疑C2通信域名和特征",
+      "priority": 75
+    }
+  ],
+  "privilege": [
+    {
+      "name": "提权检测-sudo滥用",
+      "pattern": "(?i)(sudo\\s+.*-u\\s+root|sudo\\s+.*su\\s+-|sudo\\s+.*/bin/bash|sudo\\s+.*/bin/sh)",
+      "description": "检测sudo提权到root行为",
+      "match_example": "sudo: root : COMMAND=/bin/su -",
+      "priority": 80
+    },
+    {
+      "name": "提权检测-SUID文件",
+      "pattern": "(?i)(chmod\\s+u\\+s|chmod\\s+4777|chmod\\s+6755|setuid|setgid)",
+      "description": "检测SUID/SGID设置操作（提权特征）",
+      "match_example": "chmod u+s /usr/bin/find",
+      "priority": 75
+    }
+  ],
+  "lateral": [
+    {
+      "name": "横向移动检测-PsExec",
+      "pattern": "(?i)(psexec|psexecsvc|PAExec|paexec)",
+      "description": "检测PsExec横向移动工具",
+      "priority": 85
+    },
+    {
+      "name": "横向移动检测-WMI",
+      "pattern": "(?i)(wmic|wmiexec|wmi.*process|Invoke-WmiMethod|Get-WmiObject)",
+      "description": "检测WMI横向移动行为",
+      "priority": 80
+    },
+    {
+      "name": "横向移动检测-SMB",
+      "pattern": "(?i)(smbexec|smb.*exec|admin\\$|IPC\\$|ADMIN\\$|IPC\\$)",
+      "description": "检测SMB协议横向移动行为",
+      "priority": 80
+    }
+  ]
+}

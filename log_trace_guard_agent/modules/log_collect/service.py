@@ -9,6 +9,7 @@ from core.context_manager import ContextManager, ModuleContext
 from app.exceptions import ParamInvalidException
 from app.schemas.context_schema import ModuleStatus
 from app.settings import settings
+from common.json_util import JsonConfigLoader
 from common.logger import LogManager
 from common.result_util import Result
 
@@ -267,8 +268,6 @@ def _get_rag_supplements(device_type: str, device_model: str) -> list[str]:
 
 def _recommend_arch_by_threshold(device_count: int, daily_log_volume: str, settings) -> dict:
     """根据配置化阈值推荐架构（模板从外部 JSON 加载）"""
-    from common.json_util import JsonConfigLoader
-
     config_path = f"{settings.rule_data_dir}/arch_templates.json"
     templates = JsonConfigLoader.load(config_path)
     if not templates:

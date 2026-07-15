@@ -1,0 +1,159 @@
+{
+  "ssh_brute": {
+    "scene_label": "SSH爆破攻击",
+    "explanation": "基于SSH认证日志，检索所有登录失败记录，按源IP聚合统计爆破次数",
+    "query_template": {
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "bool": {
+                "should": [
+                  {"match_phrase": {"message": "Failed password"}},
+                  {"match_phrase": {"message": "Invalid user"}},
+                  {"match_phrase": {"message": "authentication failure"}}
+                ]
+              }
+            }
+          ],
+          "filter": []
+        }
+      },
+      "aggs": {
+        "brute_force_ips": {
+          "terms": {"field": "source.ip", "size": 20, "order": {"_count": "desc"}},
+          "aggs": {
+            "failure_count": {"value_count": {"field": "_id"}},
+            "latest_attempt": {"max": {"field": "@timestamp"}}
+          }
+        }
+      },
+      "size": 0
+    }
+  },
+  "sql_injection": {
+    "scene_label": "SQL注入攻击",
+    "explanation": "检测SQL注入攻击特征，包括联合查询、恒真条件、注释符绕过等",
+    "query_template": {
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "bool": {
+                "should": [
+                  {"match": {"url": "union select"}},
+                  {"match": {"url": "1=1"}},
+                  {"wildcard": {"url": {"value": "*%27*"}}},
+                  {"wildcard": {"url": {"value": "*--*"}}}
+                ]
+              }
+            },
+            {"match": {"event.type": "http"}}
+          ],
+          "filter": []
+        }
+      },
+      "size": 100
+    }
+  },
+  "web_attack": {
+    "scene_label": "Web攻击事件",
+    "explanation": "检索所有Web攻击事件，包括扫描、注入、路径穿越等",
+    "query_template": {
+      "query": {
+        "bool": {
+          "must": [
+            {"exists": {"field": "url"}},
+            {
+              "bool": {
+                "should": [
+                  {"match": {"response.status": "403"}},
+                  {"match": {"response.status": "404"}},
+                  {"range": {"response.status": {"gte": 500}}}
+                ]
+              }
+            }
+          ],
+          "filter": []
+        }
+      },
+      "size": 100
+    }
+  },
+  "abnormal_traffic": {
+    "scene_label": "异常流量检测",
+    "explanation": "基于流量统计，检测异常流量峰值和异常连接模式",
+    "query_template": {
+      "query": {
+        "bool": {
+          "must": [
+            {"range": {"bytes": {"gte": 1000000}}}
+          ],
+          "filter": []
+        }
+      },
+      "aggs": {
+        "top_source_ips": {
+          "terms": {"field": "source.ip", "size": 10, "order": {"_count": "desc"}}
+        },
+        "traffic_over_time": {
+          "date_histogram": {"field": "@timestamp", "interval": "5m"},
+          "aggs": {
+            "total_bytes": {"sum": {"field": "bytes"}}
+          }
+        }
+      },
+      "size": 0
+    }
+  },
+  "data_exfil": {
+    "scene_label": "数据泄露检测",
+    "explanation": "检测异常数据导出行为，包括大量查询、文件导出、外传请求",
+    "query_template": {
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "bool": {
+                "should": [
+                  {"match_phrase": {"message": "INTO OUTFILE"}},
+                  {"match_phrase": {"message": "mysqldump"}},
+                  {"match_phrase": {"message": "pg_dump"}},
+                  {"match": {"url": "export"}},
+                  {"match": {"url": "download"}}
+                ]
+              }
+            }
+          ],
+          "filter": []
+        }
+      },
+      "size": 100
+    }
+  },
+  "lateral_move": {
+    "scene_label": "横向移动检测",
+    "explanation": "检测内网横向移动行为，包括PsExec、WMI、SMB等协议",
+    "query_template": {
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "bool": {
+                "should": [
+                  {"match_phrase": {"message": "psexec"}},
+                  {"match_phrase": {"message": "wmic"}},
+                  {"match_phrase": {"message": "smbexec"}},
+                  {"match": {"destination.port": "445"}},
+                  {"match": {"destination.port": "3389"}}
+                ]
+              }
+            }
+          ],
+          "filter": []
+        }
+      },
+      "size": 100
+    }
+  }
+}

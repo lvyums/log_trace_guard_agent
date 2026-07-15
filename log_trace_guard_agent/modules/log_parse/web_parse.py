@@ -2,7 +2,7 @@
 
 import re
 
-from modules.log_parse.base_parser import BaseParser
+from modules.log_parse.base_parser import BaseParser, ParsedLogFields
 from common.time_util import parse_log_time
 
 
@@ -23,49 +23,40 @@ class WebParser(BaseParser):
     def can_parse(self, log_line: str) -> bool:
         return bool(self.COMBINED_PATTERN.search(log_line) or self.COMMON_PATTERN.search(log_line))
 
-    def parse_fields(self, log_line: str) -> dict:
-        result = {
-            "timestamp": parse_log_time(log_line),
-            "src_ip": None,
-            "dst_ip": None,
-            "src_port": None,
-            "dst_port": "80",
-            "user": None,
-            "url": None,
-            "method": None,
-            "command": None,
-            "status": "unknown",
-            "device_type": "web",
-            "user_agent": None,
-            "body_bytes": None,
-            "http_version": None,
-        }
+    def parse_fields(self, log_line: str) -> ParsedLogFields:
+        result = ParsedLogFields(
+            timestamp=parse_log_time(log_line),
+            dst_port="80",
+            device_type="web",
+            raw_log=log_line[:500],
+        )
 
         # 尝试 Combined 格式
         match = self.COMBINED_PATTERN.search(log_line)
         if match:
-            result["src_ip"] = match.group(1)
-            result["user"] = match.group(2) if match.group(2) != "-" else None
-            result["timestamp"] = parse_log_time(log_line) or match.group(3)
-            result["method"] = match.group(4)
-            result["url"] = match.group(5)
-            result["http_version"] = match.group(6)
-            result["status"] = match.group(7)
-            result["body_bytes"] = match.group(8)
-            result["user_agent"] = match.group(10)
+            result.src_ip = match.group(1)
+            result.user = match.group(2) if match.group(2) != "-" else None
+            result.timestamp = parse_log_time(log_line) or match.group(3)
+            result.method = match.group(4)
+            result.url = match.group(5)
+            # Extra fields via model_config["extra"] = "allow"
+            result.http_version = match.group(6)
+            result.status = match.group(7)
+            result.body_bytes = match.group(8)
+            result.user_agent = match.group(10)
             return self.validate(result)
 
         # 尝试 Common 格式
         match = self.COMMON_PATTERN.search(log_line)
         if match:
-            result["src_ip"] = match.group(1)
-            result["user"] = match.group(2) if match.group(2) != "-" else None
-            result["timestamp"] = parse_log_time(log_line) or match.group(3)
-            result["method"] = match.group(4)
-            result["url"] = match.group(5)
-            result["http_version"] = match.group(6)
-            result["status"] = match.group(7)
-            result["body_bytes"] = match.group(8)
+            result.src_ip = match.group(1)
+            result.user = match.group(2) if match.group(2) != "-" else None
+            result.timestamp = parse_log_time(log_line) or match.group(3)
+            result.method = match.group(4)
+            result.url = match.group(5)
+            result.http_version = match.group(6)
+            result.status = match.group(7)
+            result.body_bytes = match.group(8)
             return self.validate(result)
 
         return self.validate(result)
