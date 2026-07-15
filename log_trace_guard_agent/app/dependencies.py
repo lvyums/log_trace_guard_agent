@@ -63,8 +63,18 @@ def validate_log_line(log_line: str) -> dict:
 
 async def get_context(request: Request) -> ContextManager:
     """请求级 Context 注入"""
+    # 尝试从请求体提取用户输入，保留原始输入到上下文
+    user_input = ""
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            # 优先取 log_line，其次取 symptom，兜底取任意文本字段
+            user_input = body.get("log_line") or body.get("symptom") or body.get("field_name") or ""
+    except Exception:
+        pass
+
     ctx = ContextManager.create(
-        user_input="",
+        user_input=user_input,
         input_type="text",
     )
     return ctx

@@ -1,0 +1,29 @@
+{
+  "lightweight": {
+    "recommended_arch": "轻量级单机汇聚",
+    "architecture_desc": "适用于小型园区/中小企业，日志量 < 5GB/天",
+    "components": ["Syslog 服务器", "Filebeat 采集器", "单机 Elasticsearch", "Kibana 可视化"],
+    "data_flow": ["设备 → Syslog/Filebeat → ES → Kibana"],
+    "estimated_cost": "低（开源方案，服务器成本 < 2万）",
+    "pros": ["部署简单", "维护成本低", "快速上线"],
+    "cons": ["扩展性有限", "单点故障风险", "查询性能受限"]
+  },
+  "elk_cluster": {
+    "recommended_arch": "ELK 分布式集群",
+    "architecture_desc": "适用于中型企业，日志量 5-50GB/天",
+    "components": ["Kafka 缓冲层", "Logstash 解析", "ES 集群(3节点)", "Kibana 可视化", "Filebeat 采集器"],
+    "data_flow": ["设备 → Filebeat → Kafka → Logstash → ES → Kibana"],
+    "estimated_cost": "中等（服务器成本 5-15万）",
+    "pros": ["高可用", "可扩展", "性能优秀"],
+    "cons": ["运维复杂度较高", "需要专业团队"]
+  },
+  "enterprise_siem": {
+    "recommended_arch": "企业级 SIEM 架构",
+    "architecture_desc": "适用于大型政企/园区，日志量 > 50GB/天",
+    "components": ["Kafka 集群", "Flink 实时计算", "ES 集群(6+节点)", "SIEM 平台", "SOAR 编排", "告警中心"],
+    "data_flow": ["设备 → 采集代理 → Kafka → Flink → ES/SIEM → 告警/SOAR"],
+    "estimated_cost": "高（服务器成本 30万+，含商业 SIEM 授权）",
+    "pros": ["高性能", "高可用", "智能化", "合规审计"],
+    "cons": ["成本高", "需要专业安全团队", "建设周期长"]
+  }
+}

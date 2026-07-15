@@ -1,5 +1,14 @@
 """FastAPI 主入口"""
-
+"""
+===== 项目强制开发约束（所有模块开发必须遵守）=====
+1. modules业务模块禁止互相import，跨模块数据走core上下文；
+2. 工厂必须使用register注册模式，禁止内部硬编码策略实例；
+3. 映射表、阈值、故障库禁止写死代码，统一放settings或data/rule_data；
+4. 所有入参使用schemas Pydantic校验，未知场景必须兜底；
+5. 通用逻辑复用common工具，禁止重复造轮子；
+6. 新增场景仅新增策略文件，不修改原有核心代码；
+====================================================
+"""
 import uvicorn
 import time
 from fastapi import FastAPI, Request

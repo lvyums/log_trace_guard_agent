@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Optional, Any
+from typing import Optional, Any, Union
 from threading import Lock
 
 from common.logger import LogManager
@@ -18,7 +18,7 @@ class JsonConfigLoader:
     _lock = Lock()
 
     @classmethod
-    def load(cls, file_path: str, use_cache: bool = True) -> Optional[dict]:
+    def load(cls, file_path: str, use_cache: bool = True) -> Optional[Union[dict, list]]:
         """加载 JSON 配置文件，支持缓存"""
         abs_path = os.path.abspath(file_path)
 

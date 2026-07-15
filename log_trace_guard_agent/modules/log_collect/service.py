@@ -7,6 +7,8 @@ from modules.log_collect.device_match import DeviceMatcher
 from modules.log_collect.fault_fix import FaultFixer
 from core.context_manager import ContextManager, ModuleContext
 from app.exceptions import ParamInvalidException
+from app.schemas.context_schema import ModuleStatus
+from app.settings import settings
 from common.logger import LogManager
 from common.result_util import Result
 
@@ -34,7 +36,6 @@ class LogCollectService:
         confidence = recommendation.get("match_confidence", 0)
 
         # 低置信度附加人工确认提示
-        from app.settings import settings
         low_confidence_note = None
         if confidence < settings.match_confidence_threshold:
             low_confidence_note = f"匹配置信度较低({confidence:.1f}分)，建议人工确认设备类型"
@@ -48,7 +49,7 @@ class LogCollectService:
         if context:
             ctx = ModuleContext(
                 module_id="log_collect",
-                status="success" if plan else "warning",
+                status=ModuleStatus.SUCCESS if plan else ModuleStatus.WARNING,
                 input={"device_type": device_type, "device_model": device_model, "scale": scale},
                 output={"recommendation": recommendation},
             )
@@ -90,7 +91,7 @@ class LogCollectService:
         if context:
             ctx = ModuleContext(
                 module_id="log_collect",
-                status="success",
+                status=ModuleStatus.SUCCESS,
                 input={"device_type": device_type, "scale": scale},
                 output={"plan": plan_dict},
             )
@@ -135,7 +136,7 @@ class LogCollectService:
         if context:
             ctx = ModuleContext(
                 module_id="log_collect",
-                status="success",
+                status=ModuleStatus.SUCCESS,
                 input={"batch_size": len(devices)},
                 output={"items": items, "protocol_summary": protocol_summary},
             )
@@ -194,7 +195,7 @@ class LogCollectService:
         if context:
             ctx = ModuleContext(
                 module_id="log_collect",
-                status="success",
+                status=ModuleStatus.SUCCESS,
                 input={"symptom": symptom, "device_type": device_type, "protocol": protocol},
                 output={"diagnosis": result},
             )
@@ -211,8 +212,6 @@ class LogCollectService:
     @staticmethod
     async def recommend_architecture(device_count: int, daily_log_volume: str = "small", budget: str = "low", team_skill: str = "basic", context: Optional[ContextManager] = None) -> Result:
         """架构推荐 — 阈值从 settings.py 配置化读取"""
-        from app.settings import settings
-
         if device_count < 1:
             raise ParamInvalidException("设备数量必须大于0")
         if daily_log_volume not in ("small", "medium", "large"):
@@ -224,7 +223,7 @@ class LogCollectService:
         if context:
             ctx = ModuleContext(
                 module_id="log_collect",
-                status="success",
+                status=ModuleStatus.SUCCESS,
                 input={"device_count": device_count, "daily_log_volume": daily_log_volume},
                 output={"architecture": arch},
             )
@@ -267,34 +266,17 @@ def _get_rag_supplements(device_type: str, device_model: str) -> list[str]:
 
 
 def _recommend_arch_by_threshold(device_count: int, daily_log_volume: str, settings) -> dict:
-    """根据配置化阈值推荐架构"""
+    """根据配置化阈值推荐架构（模板从外部 JSON 加载）"""
+    from common.json_util import JsonConfigLoader
+
+    config_path = f"{settings.rule_data_dir}/arch_templates.json"
+    templates = JsonConfigLoader.load(config_path)
+    if not templates:
+        return {"recommended_arch": "未知", "architecture_desc": "配置加载失败，请联系管理员"}
+
     if device_count <= settings.arch_small_device_count and daily_log_volume == settings.arch_small_log_volume:
-        return {
-            "recommended_arch": "轻量级单机汇聚",
-            "architecture_desc": "适用于小型园区/中小企业，日志量 < 5GB/天",
-            "components": ["Syslog 服务器", "Filebeat 采集器", "单机 Elasticsearch", "Kibana 可视化"],
-            "data_flow": ["设备 → Syslog/Filebeat → ES → Kibana"],
-            "estimated_cost": "低（开源方案，服务器成本 < 2万）",
-            "pros": ["部署简单", "维护成本低", "快速上线"],
-            "cons": ["扩展性有限", "单点故障风险", "查询性能受限"],
-        }
+        return templates.get("lightweight", {})
     elif device_count <= settings.arch_medium_device_count and daily_log_volume in ("small", "medium"):
-        return {
-            "recommended_arch": "ELK 分布式集群",
-            "architecture_desc": "适用于中型企业，日志量 5-50GB/天",
-            "components": ["Kafka 缓冲层", "Logstash 解析", "ES 集群(3节点)", "Kibana 可视化", "Filebeat 采集器"],
-            "data_flow": ["设备 → Filebeat → Kafka → Logstash → ES → Kibana"],
-            "estimated_cost": "中等（服务器成本 5-15万）",
-            "pros": ["高可用", "可扩展", "性能优秀"],
-            "cons": ["运维复杂度较高", "需要专业团队"],
-        }
+        return templates.get("elk_cluster", {})
     else:
-        return {
-            "recommended_arch": "企业级 SIEM 架构",
-            "architecture_desc": "适用于大型政企/园区，日志量 > 50GB/天",
-            "components": ["Kafka 集群", "Flink 实时计算", "ES 集群(6+节点)", "SIEM 平台", "SOAR 编排", "告警中心"],
-            "data_flow": ["设备 → 采集代理 → Kafka → Flink → ES/SIEM → 告警/SOAR"],
-            "estimated_cost": "高（服务器成本 30万+，含商业 SIEM 授权）",
-            "pros": ["高性能", "高可用", "智能化", "合规审计"],
-            "cons": ["成本高", "需要专业安全团队", "建设周期长"],
-        }
+        return templates.get("enterprise_siem", {})

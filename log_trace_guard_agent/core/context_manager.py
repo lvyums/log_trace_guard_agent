@@ -1,20 +1,13 @@
 """模块间上下文传递管理 — 按请求ID隔离，支持TTL过期清理"""
 
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 from threading import Lock
 
+from app.schemas.context_schema import ModuleContextSchema, ModuleStatus
 
-@dataclass
-class ModuleContext:
-    """单个模块的处理上下文"""
-    module_id: str
-    status: str = "unused"  # "unused" | "success" | "partial" | "warning" | "error"
-    input: dict = field(default_factory=dict)
-    output: Optional[dict] = None
-    error_info: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.now)
+# 向后兼容别名
+ModuleContext = ModuleContextSchema
 
 
 class ContextManager:
@@ -31,7 +24,7 @@ class ContextManager:
         self.user_id: Optional[str] = None
         self.input_type = input_type
         self.user_input = user_input
-        self.module_results: dict[str, ModuleContext] = {}
+        self.module_results: dict[str, ModuleContextSchema] = {}
         self.created_at = datetime.now()
         self.expires_at = datetime.now() + timedelta(seconds=ttl_seconds)
         self.meta = {
@@ -81,12 +74,12 @@ class ContextManager:
         """检查当前上下文是否过期"""
         return datetime.now() > self.expires_at
 
-    def set_module_result(self, module_id: str, result: ModuleContext):
+    def set_module_result(self, module_id: str, result: ModuleContextSchema):
         """设置模块处理结果"""
         result.created_at = datetime.now()
         self.module_results[module_id] = result
 
-    def get_module_result(self, module_id: str) -> Optional[ModuleContext]:
+    def get_module_result(self, module_id: str) -> Optional[ModuleContextSchema]:
         """获取模块处理结果"""
         return self.module_results.get(module_id)
 
@@ -94,14 +87,16 @@ class ContextManager:
         """检查上游依赖模块的状态"""
         result = self.module_results.get(module_id)
         if result is None:
-            return "unused"
-        return result.status
+            return ModuleStatus.UNUSED.value
+        return result.status.value if isinstance(result.status, ModuleStatus) else result.status
 
     def get_upstream_output(self, module_id: str) -> Optional[dict]:
         """安全获取上游模块输出，未处理返回 None"""
         result = self.module_results.get(module_id)
-        if result and result.status in ("success", "partial"):
-            return result.output
+        if result:
+            status_val = result.status.value if isinstance(result.status, ModuleStatus) else result.status
+            if status_val in ("success", "partial"):
+                return result.output
         return None
 
     def to_dict(self) -> dict:
@@ -112,7 +107,7 @@ class ContextManager:
             "module_results": {
                 k: {
                     "module_id": v.module_id,
-                    "status": v.status,
+                    "status": v.status.value if isinstance(v.status, ModuleStatus) else v.status,
                     "error_info": v.error_info,
                 }
                 for k, v in self.module_results.items()

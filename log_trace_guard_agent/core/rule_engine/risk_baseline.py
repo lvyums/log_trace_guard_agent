@@ -1,10 +1,11 @@
-"""风险基线池 — 标准化风险分级 + 规则统一管理"""
+"""风险基线池 — 标准化风险分级 + 规则统一管理（外部配置驱动）"""
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
 from common.logger import LogManager
+from common.json_util import JsonConfigLoader
 
 logger = LogManager.get_logger()
 
@@ -54,70 +55,39 @@ class RiskBaseline:
 
     @classmethod
     def _register_default_rules(cls):
-        """注册默认风险规则"""
-        defaults = [
-            # ── SSH 类 ──
-            RiskRule(
-                rule_id="SSH-001", name="SSH暴力破解",
-                risk_level="P1_中危", device_type="ssh",
-                condition={"field": "status", "value": "failed", "operator": "eq"},
-                confidence=0.85, attack_type="SSH暴力破解",
-                risk_desc="SSH登录失败，可能为密码暴力破解尝试",
-                suggestion="建议检查源IP信誉，配置登录失败锁定策略，启用SSH密钥认证",
-            ),
-            RiskRule(
-                rule_id="SSH-002", name="SSH高危命令执行",
-                risk_level="P0_高危", device_type="ssh",
-                condition={"field": "command", "keywords": ["rm", "wget", "curl", "chmod", "useradd", "passwd", "mv /etc"], "operator": "contains_any"},
-                confidence=0.95, attack_type="高危命令执行",
-                risk_desc="SSH会话中执行了高危命令，可能为权限维持或后门植入",
-                suggestion="立即确认操作人身份，核查命令执行上下文，审计近期登录记录",
-            ),
-            RiskRule(
-                rule_id="SSH-003", name="SSH异常时间登录",
-                risk_level="P2_低危", device_type="ssh",
-                condition={"field": "status", "value": "success", "operator": "eq"},
-                confidence=0.30, attack_type="异常时间登录",
-                risk_desc="SSH登录成功，时间异常需结合上下文判断",
-                suggestion="建议确认是否为运维人员正常操作",
-            ),
-            # ── Web 类 ──
-            RiskRule(
-                rule_id="WEB-001", name="Web敏感路径访问",
-                risk_level="P0_高危", device_type="web",
-                condition={"field": "url", "keywords": ["wp-admin", "admin.php", "eval", "cmd=", "system(", "exec(", "../", "passwd"], "operator": "contains_any"},
-                confidence=0.90, attack_type="Web攻击",
-                risk_desc="访问敏感路径，可能为Web攻击或漏洞探测",
-                suggestion="建议检查Web日志中同一源IP的其他请求，确认是否存在扫描行为，及时修补漏洞",
-            ),
-            RiskRule(
-                rule_id="WEB-002", name="Web异常状态码",
-                risk_level="P1_中危", device_type="web",
-                condition={"field": "status", "operator": "startswith", "value": ["4", "5"]},
-                confidence=0.70, attack_type="Web异常访问",
-                risk_desc="HTTP状态码异常，可能为访问错误或扫描探测",
-                suggestion="建议结合URL路径判断是否为正常业务访问",
-            ),
-            RiskRule(
-                rule_id="WEB-003", name="Web扫描探测",
-                risk_level="P2_低危", device_type="web",
-                condition={"field": "user_agent", "keywords": ["python-requests", "curl", "wget", "nmap", "sqlmap"], "operator": "contains_any"},
-                confidence=0.75, attack_type="扫描探测",
-                risk_desc="使用自动化工具访问，可能为扫描探测行为",
-                suggestion="建议确认源IP是否在已知扫描器列表中",
-            ),
-            # ── 通用类 ──
-            RiskRule(
-                rule_id="GEN-001", name="非工作时间活动",
-                risk_level="P3_噪音", device_type="any",
-                condition={"field": "time_range", "operator": "always_true"},
-                confidence=0.10, attack_type="",
-                risk_desc="常规日志记录，无异常特征",
-                suggestion="",
-            ),
-        ]
-        for rule in defaults:
-            cls._rules[rule.rule_id] = rule
+        """从外部 JSON 配置文件加载风险规则"""
+        from app.settings import settings
+        config_path = f"{settings.rule_data_dir}/risk_rules.json"
+        try:
+            rules_data = JsonConfigLoader.load(config_path)
+            if not rules_data:
+                logger.warning(f"风险规则配置为空: {config_path}")
+                return
+            for item in rules_data:
+                rule = RiskRule(
+                    rule_id=item["rule_id"],
+                    name=item["name"],
+                    risk_level=item["risk_level"],
+                    device_type=item["device_type"],
+                    condition=item["condition"],
+                    weight=item.get("weight", 1.0),
+                    confidence=item.get("confidence", 0.9),
+                    attack_type=item.get("attack_type", ""),
+                    risk_desc=item.get("risk_desc", ""),
+                    suggestion=item.get("suggestion", ""),
+                )
+                cls._rules[rule.rule_id] = rule
+            logger.info(f"从配置文件加载 {len(rules_data)} 条风险规则: {config_path}")
+        except Exception as e:
+            logger.error(f"加载风险规则配置失败: {e}")
+
+    @classmethod
+    def reload_rules(cls):
+        """热加载风险规则配置"""
+        cls._rules.clear()
+        cls._initialized = False
+        cls.initialize()
+        logger.info("风险规则配置已热加载")
 
     @classmethod
     def get_rule(cls, rule_id: str) -> Optional[RiskRule]:
@@ -181,22 +151,22 @@ class RiskBaseline:
 
         if operator == "eq":
             if value == cond.get("value"):
-                return cls._build_match(rule, value)
+                return cls._build_match(rule, value, field)
 
         elif operator == "startswith":
             prefixes = cond.get("value", [])
             if any(str(value).startswith(p) for p in prefixes):
-                return cls._build_match(rule, value)
+                return cls._build_match(rule, value, field)
 
         elif operator == "contains_any":
             keywords = cond.get("keywords", [])
             if any(kw in str(value) for kw in keywords):
-                return cls._build_match(rule, value)
+                return cls._build_match(rule, value, field)
 
         return None
 
     @classmethod
-    def _build_match(cls, rule: RiskRule, matched_value) -> RiskMatchResult:
+    def _build_match(cls, rule: RiskRule, matched_value, field_name: str = "") -> RiskMatchResult:
         return RiskMatchResult(
             rule_id=rule.rule_id,
             risk_level=rule.risk_level,
@@ -204,7 +174,7 @@ class RiskBaseline:
             attack_type=rule.attack_type,
             risk_desc=rule.risk_desc,
             suggestion=rule.suggestion,
-            matched_fields={"value": matched_value},
+            matched_fields={field_name or "value": matched_value},
         )
 
     @classmethod
@@ -217,5 +187,4 @@ class RiskBaseline:
         for key, val in updates.items():
             if hasattr(rule, key):
                 setattr(rule, key, val)
-        rule.updated_at = datetime.now().isoformat()
         logger.info(f"规则 {rule_id} 已更新")

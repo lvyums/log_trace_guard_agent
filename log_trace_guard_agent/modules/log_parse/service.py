@@ -9,6 +9,8 @@ from core.ai_base.rag_factory import RAGFactory
 from core.context_manager import ContextManager, ModuleContext
 from core.rule_engine.regex_rule import RegexRuleEngine
 from core.rule_engine.risk_baseline import RiskBaseline
+from app.schemas.context_schema import ModuleStatus
+from app.settings import RiskLevel
 from common.logger import LogManager
 from common.result_util import Result
 from common.str_util import clean_syslog_prefix, is_gibberish, normalize_whitespace
@@ -63,7 +65,7 @@ class LogParseService:
         # 4. 更新上下文
         ctx = ModuleContext(
             module_id="log_parse",
-            status="success" if device_type != "unknown" else "warning",
+            status=ModuleStatus.SUCCESS if device_type != "unknown" else ModuleStatus.WARNING,
             input={"log_line": cleaned},
             output={"device_type": device_type, "confidence": confidence, "reason": identify_reason},
         )
@@ -87,8 +89,20 @@ class LogParseService:
         # 2. 解析日志
         parsed = LogParserFactory.parse(cleaned)
         if parsed is None:
-            LogManager.log_parse_failure(log_line, "无法识别日志格式")
-            return Result.fail("无法识别日志格式，请确认日志类型")
+            # 兜底：返回通用解析结果 + 人工复核提示
+            fallback = {
+                "timestamp": None,
+                "src_ip": None,
+                "dst_ip": None,
+                "user": None,
+                "status": None,
+                "device_type": "unknown",
+                "raw_log": cleaned[:500],
+                "missing_fields": ["timestamp", "src_ip", "user", "status"],
+                "fallback_note": "无法识别日志格式，已返回通用解析结果，建议人工复核",
+            }
+            LogManager.log_parse_failure(log_line, "无法识别日志格式，使用兜底解析")
+            return Result.ok(fallback)
 
         # 3. 标记缺失字段
         missing = []
@@ -103,7 +117,7 @@ class LogParseService:
         # 4. 更新上下文
         ctx = ModuleContext(
             module_id="log_parse",
-            status="success" if len(missing) < 3 else "partial",
+            status=ModuleStatus.SUCCESS if len(missing) < 3 else ModuleStatus.PARTIAL,
             input={"log_line": cleaned},
             output=parsed,
         )
@@ -119,7 +133,7 @@ class LogParseService:
 
         if not matches:
             return Result.ok({
-                "risk_level": "P3_噪音",
+                "risk_level": RiskLevel.P3_NOISE.value,
                 "confidence": 0.0,
                 "attack_type": None,
                 "risk_desc": "未命中任何风险规则，行为正常",
@@ -147,7 +161,7 @@ class LogParseService:
     async def batch_parse(logs: list[str], do_assess: bool = False, context: Optional[ContextManager] = None) -> Result:
         """批量解析：多条日志一次性识别、解析、可选风险研判"""
         items = []
-        risk_counts = {"P0_高危": 0, "P1_中危": 0, "P2_低危": 0, "P3_噪音": 0}
+        risk_counts = {RiskLevel.P0_HIGH: 0, RiskLevel.P1_MEDIUM: 0, RiskLevel.P2_LOW: 0, RiskLevel.P3_NOISE: 0}
 
         for i, log_line in enumerate(logs):
             item = {"index": i, "log_line": log_line[:100], "parse_result": None, "risk_result": None, "error": None}
@@ -165,20 +179,27 @@ class LogParseService:
             if do_assess:
                 risk = await LogParseService.assess_risk(parse_result["data"], context or ContextManager.create(""))
                 item["risk_result"] = risk["data"]
-                if risk["data"]["risk_level"] in risk_counts:
-                    risk_counts[risk["data"]["risk_level"]] += 1
+                risk_level_val = risk["data"]["risk_level"]
+                for level in RiskLevel:
+                    if level.value == risk_level_val:
+                        risk_counts[level] += 1
+                        break
 
             items.append(item)
 
         success_count = sum(1 for i in items if i["error"] is None)
         fail_count = len(items) - success_count
 
+        risk_summary = None
+        if do_assess:
+            risk_summary = {level.value: count for level, count in risk_counts.items()}
+
         return Result.ok({
             "total": len(logs),
             "success_count": success_count,
             "fail_count": fail_count,
             "items": items,
-            "risk_summary": risk_counts if do_assess else None,
+            "risk_summary": risk_summary,
         })
 
     @staticmethod
@@ -239,31 +260,16 @@ class LogParseService:
 
     @staticmethod
     def _extract_features(log_line: str) -> Optional[tuple]:
-        """多特征加权识别日志类型"""
-        from core.rule_engine.risk_baseline import RiskBaseline
-        RiskBaseline.initialize()
+        """多特征加权识别日志类型（配置驱动）"""
+        from app.settings import settings
+        from common.json_util import JsonConfigLoader
+
+        config_path = f"{settings.rule_data_dir}/log_features.json"
+        features = JsonConfigLoader.load(config_path)
+        if not features:
+            return None
 
         log_lower = log_line.lower()
-
-        # 特征权重表
-        features = {
-            "ssh": [
-                ("sshd", 0.8),
-                ("ssh", 0.6),
-                ("sudo", 0.7),
-                ("accepted", 0.5),
-                ("failed password", 0.7),
-                ("publickey", 0.6),
-            ],
-            "web": [
-                ("http/1.", 0.8),
-                ("get /", 0.6),
-                ("post /", 0.6),
-                ("mozilla", 0.5),
-                ("200", 0.2),
-                ("404", 0.3),
-            ],
-        }
 
         best_type = "unknown"
         best_score = 0.0
@@ -272,7 +278,9 @@ class LogParseService:
         for dtype, feats in features.items():
             score = 0.0
             matched = []
-            for keyword, weight in feats:
+            for feat in feats:
+                keyword = feat["keyword"]
+                weight = feat["weight"]
                 if keyword in log_lower:
                     score += weight
                     matched.append(keyword)

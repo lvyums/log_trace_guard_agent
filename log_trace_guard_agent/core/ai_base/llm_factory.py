@@ -74,18 +74,28 @@ class LightweightClient(BaseLLMClient):
 
 
 class LLMFactory:
-    """大模型工厂 — 统一创建和管理 LLM 客户端"""
+    """大模型工厂 — 统一创建和管理 LLM 客户端（注册模式）"""
 
-    _main_llm: Optional[BaseLLMClient] = None
-    _light_llm: Optional[BaseLLMClient] = None
+    _registry: dict[str, type[BaseLLMClient]] = {}
+    _instances: dict[str, BaseLLMClient] = {}
+
+    @classmethod
+    def register(cls, model_type: str, client_class: type[BaseLLMClient]):
+        """注册 LLM 客户端类"""
+        cls._registry[model_type] = client_class
+        logger.info(f"注册 LLM 客户端: {model_type} -> {client_class.__name__}")
 
     @classmethod
     def create(cls, model_type: str = "main") -> BaseLLMClient:
         """根据配置返回对应 LLM 实例"""
         from app.settings import settings
 
+        client_class = cls._registry.get(model_type)
+        if not client_class:
+            raise ValueError(f"未知模型类型: {model_type}，已注册: {list(cls._registry.keys())}")
+
         if model_type == "main":
-            return DeepSeekClient(
+            return client_class(
                 api_key=settings.llm_api_key,
                 base_url=settings.llm_base_url,
                 model_name=settings.llm_model_name,
@@ -93,33 +103,43 @@ class LLMFactory:
                 timeout=settings.llm_timeout,
             )
         elif model_type == "light":
-            return LightweightClient(
+            return client_class(
                 api_key=settings.llm_api_key,
                 base_url=settings.llm_base_url,
                 model_name=settings.llm_light_model_name,
                 temperature=settings.llm_temperature,
                 timeout=settings.llm_timeout,
             )
-        raise ValueError(f"未知模型类型: {model_type}")
+        return client_class(
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            model_name=settings.llm_model_name,
+            temperature=settings.llm_temperature,
+            timeout=settings.llm_timeout,
+        )
 
     @classmethod
     async def get_main_llm(cls) -> BaseLLMClient:
         """获取主力模型（单例）"""
-        if cls._main_llm is None:
-            cls._main_llm = cls.create("main")
-        return cls._main_llm
+        if "main" not in cls._instances:
+            cls._instances["main"] = cls.create("main")
+        return cls._instances["main"]
 
     @classmethod
     async def get_light_llm(cls) -> BaseLLMClient:
         """获取轻量模型（单例）"""
-        if cls._light_llm is None:
-            cls._light_llm = cls.create("light")
-        return cls._light_llm
+        if "light" not in cls._instances:
+            cls._instances["light"] = cls.create("light")
+        return cls._instances["light"]
 
     @classmethod
     async def close_all(cls):
         """关闭所有 LLM 客户端"""
-        if cls._main_llm:
-            await cls._main_llm.close()
-        if cls._light_llm:
-            await cls._light_llm.close()
+        for instance in cls._instances.values():
+            await instance.close()
+        cls._instances.clear()
+
+
+# ── 默认注册 ──
+LLMFactory.register("main", DeepSeekClient)
+LLMFactory.register("light", LightweightClient)
