@@ -164,32 +164,63 @@ class LogCollectService:
         if not symptom or not symptom.strip():
             raise ParamInvalidException("故障症状描述不能为空")
 
-        diagnosis = FaultFixer.diagnose(
+        best_diagnosis, candidates = FaultFixer.diagnose(
             symptom=symptom,
             protocol=protocol,
             device_type=device_type,
             error_log=error_log,
         )
 
-        if diagnosis is None:
+        # 关键词匹配不足时，降级调用大模型智能诊断
+        use_llm = best_diagnosis is None or best_diagnosis.match_score < 30
+        if use_llm:
+            logger.info(f"关键词匹配不足 ({best_diagnosis.match_score if best_diagnosis else 0}), 降级到 LLM 诊断")
+            llm_diagnosis = await FaultFixer.diagnose_with_llm(
+                symptom=symptom,
+                protocol=protocol,
+                device_type=device_type,
+                error_log=error_log,
+            )
+            if llm_diagnosis:
+                best_diagnosis = llm_diagnosis
+
+        if best_diagnosis is None:
+            # 无精确匹配 — 显示 Top-N 候选，降低挫败感
+            top_candidates = []
+            for c in candidates[:3]:
+                top_candidates.append({
+                    "fault_type": c.diagnosis.fault_type,
+                    "match_score": c.diagnosis.match_score,
+                    "matched_keywords": c.matched_keywords[:5],
+                })
             result = {
                 "fault_type": "未识别",
-                "fault_desc": f"未匹配到已知故障类型，症状描述: {symptom}",
+                "fault_desc": f"未精确匹配到已知故障类型，症状描述: {symptom}",
                 "match_score": 0,
                 "possible_causes": ["请提供更多故障细节以便精准诊断"],
-                "fix_steps": ["建议联系技术支持获取帮助"],
+                "fix_steps": ["建议参考以下相近故障排查方案"],
                 "prevention": [],
                 "severity": "unknown",
+                "candidates": top_candidates,
             }
         else:
             result = {
-                "fault_type": diagnosis.fault_type,
-                "fault_desc": diagnosis.fault_desc,
-                "match_score": diagnosis.match_score,
-                "possible_causes": diagnosis.possible_causes,
-                "fix_steps": diagnosis.fix_steps,
-                "prevention": diagnosis.prevention,
-                "severity": diagnosis.severity,
+                "fault_type": best_diagnosis.fault_type,
+                "fault_desc": best_diagnosis.fault_desc,
+                "match_score": best_diagnosis.match_score,
+                "possible_causes": best_diagnosis.possible_causes,
+                "fix_steps": best_diagnosis.fix_steps,
+                "prevention": best_diagnosis.prevention,
+                "severity": best_diagnosis.severity,
+                "candidates": [
+                    {
+                        "fault_type": c.diagnosis.fault_type,
+                        "match_score": c.diagnosis.match_score,
+                        "matched_keywords": c.matched_keywords[:5],
+                    }
+                    for c in candidates[1:4]
+                    if c.score > 0
+                ],
             }
 
         # 更新上下文
