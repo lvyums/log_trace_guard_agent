@@ -1,7 +1,128 @@
 {
   "description": "采集故障诊断知识库，支持热加载和后台新增",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "entries": {
+    "ssh_connect_failure": {
+      "fault_type": "SSH连接失败",
+      "fault_desc": "SSH远程连接超时或被拒绝，无法登录服务器",
+      "severity": "high",
+      "keywords": ["ssh", "超时", "连接失败", "连不上", "无法登录", "timeout",
+                    "connection refused", "拒绝连接", "登录不上", "ssh连接"],
+      "protocol_hints": ["ssh"],
+      "possible_causes": [
+        "SSH服务未启动或崩溃",
+        "防火墙策略阻止了SSH端口（默认22）",
+        "网络链路不通或路由错误",
+        "SSH密钥认证失败或凭据错误",
+        "服务器负载过高导致连接超时",
+        "SSH服务配置了IP白名单限制"
+      ],
+      "fix_steps": [
+        "1. 检查SSH服务状态: systemctl status sshd",
+        "2. 检查端口监听: ss -tlnp | grep :22",
+        "3. 测试网络连通性: ping <target_ip>",
+        "4. 检查防火墙策略: iptables -L -n | grep 22",
+        "5. 查看SSH日志: tail -100 /var/log/auth.log",
+        "6. 检查SSH配置: /etc/ssh/sshd_config",
+        "7. 重启SSH服务: systemctl restart sshd"
+      ],
+      "prevention": [
+        "配置SSH keepalive防止超时断开",
+        "使用堡垒机统一入口管理SSH访问",
+        "配置SSH登录监控告警"
+      ]
+    },
+    "network_timeout": {
+      "fault_type": "网络超时",
+      "fault_desc": "网络连接超时，设备之间无法正常通信",
+      "severity": "high",
+      "keywords": ["超时", "timeout", "ping不通", "网络不通", "连接不上",
+                    "断连", "丢包", "延迟高", "网络延迟", "time out"],
+      "protocol_hints": ["tcp", "udp", "syslog"],
+      "possible_causes": [
+        "网络链路中断或光缆故障",
+        "交换机/路由器配置错误",
+        "带宽不足导致拥塞丢包",
+        "路由环路或MTU配置不当",
+        "NAT/防火墙规则限制",
+        "DNS解析失败"
+      ],
+      "fix_steps": [
+        "1. 测试基础连通性: ping -c 10 <target_ip>",
+        "2. 检查路由表: traceroute <target_ip>",
+        "3. 检查带宽使用率: iftop / nload",
+        "4. 检查防火墙规则: iptables -L -n -v",
+        "5. 检查DNS解析: nslookup <hostname>",
+        "6. 查看系统日志: dmesg | tail -50",
+        "7. 联系网络管理员排查链路层"
+      ],
+      "prevention": [
+        "配置网络监控（Zabbix / Prometheus）",
+        "建设冗余链路（主备切换）",
+        "配置网络质量告警阈值"
+      ]
+    },
+    "ssh_auth_failure": {
+      "fault_type": "SSH认证失败",
+      "fault_desc": "SSH登录时认证失败，密码或密钥验证不通过",
+      "severity": "medium",
+      "keywords": ["认证失败", "密码错误", "密钥不对", "auth fail",
+                    "permission denied", "publickey", "authentication failure",
+                    "ssh认证", "登录失败", "认证拒绝"],
+      "protocol_hints": ["ssh"],
+      "possible_causes": [
+        "用户名或密码错误",
+        "SSH密钥未添加到目标服务器的 authorized_keys",
+        "密钥权限配置不当（需为600）",
+        "SSH服务端禁用了密码认证（PasswordAuthentication no）",
+        "SSH服务端禁用了密钥认证（PubkeyAuthentication no）",
+        "账号被锁定或过期"
+      ],
+      "fix_steps": [
+        "1. 确认用户名和密码正确",
+        "2. 检查SSH密钥: ssh-keygen -lf ~/.ssh/id_rsa.pub",
+        "3. 确认公钥已添加到目标服务器: cat ~/.ssh/authorized_keys",
+        "4. 检查密钥权限: chmod 600 ~/.ssh/authorized_keys",
+        "5. 检查SSH服务认证配置: grep -E 'PasswordAuthentication|PubkeyAuthentication' /etc/ssh/sshd_config",
+        "6. 检查账号状态: passwd -S <username>",
+        "7. 查看认证日志: tail -50 /var/log/auth.log"
+      ],
+      "prevention": [
+        "使用SSH证书认证替代密码认证",
+        "定期轮换SSH密钥",
+        "配置失败登录锁定策略（fail2ban）"
+      ]
+    },
+    "port_unreachable": {
+      "fault_type": "端口无法访问",
+      "fault_desc": "目标端口不可达，服务未监听或防火墙拦截",
+      "severity": "high",
+      "keywords": ["端口不通", "端口拒绝", "refused", "无法访问端口",
+                    "端口未监听", "端口关闭", "connect refused",
+                    "connection refused", "端口被墙"],
+      "protocol_hints": ["tcp", "udp"],
+      "possible_causes": [
+        "目标服务未启动或崩溃",
+        "服务监听的端口与实际请求端口不一致",
+        "防火墙/安全组规则阻止了端口",
+        "SELinux/AppArmor阻止了端口绑定",
+        "服务绑定到了127.0.0.1（仅本地访问）而非0.0.0.0"
+      ],
+      "fix_steps": [
+        "1. 检查服务监听端口: ss -tlnp | grep <port>",
+        "2. 确认服务状态: systemctl status <service>",
+        "3. 检查防火墙: iptables -L -n | grep <port>",
+        "4. 检查服务绑定地址: netstat -anp | grep <port>",
+        "5. 查看服务日志: journalctl -u <service> -n 50",
+        "6. 测试端口连通性: nc -zv <target_ip> <port>",
+        "7. 检查SELinux: getenforce; ausearch -m avc -ts recent"
+      ],
+      "prevention": [
+        "配置服务端口监控告警",
+        "使用systemd自动重启服务",
+        "定期审计防火墙规则"
+      ]
+    },
     "log_lost": {
       "fault_type": "日志丢失",
       "fault_desc": "采集到的日志数量明显少于设备实际产生的日志量",

@@ -1,13 +1,27 @@
-"""向量库管理 — ChromaDB 封装"""
+"""向量库管理 — ChromaDB 封装（含免下载兜底）"""
 
+import hashlib
 from typing import Optional
 
 import chromadb
+from chromadb.api.types import EmbeddingFunction, Embeddings
 from chromadb.config import Settings as ChromaSettings
 
 from common.logger import LogManager
 
 logger = LogManager.get_logger()
+
+
+class SimpleEmbeddingFunction(EmbeddingFunction):
+    """简易哈希嵌入函数 — 免下载、免模型，仅用于开发测试环境"""
+
+    def __call__(self, texts: list[str]) -> Embeddings:
+        result = []
+        for text in texts:
+            h = hashlib.md5(text.encode("utf-8"))
+            vec = [int(h.hexdigest()[i:i+2], 16) / 255.0 for i in range(0, 32, 2)]
+            result.append(vec)
+        return result
 
 
 class VectorStore:
@@ -21,18 +35,20 @@ class VectorStore:
         self._init_client()
 
     def _init_client(self):
-        """初始化 ChromaDB 客户端并加载集合"""
+        """初始化 ChromaDB 客户端并加载集合（使用免下载嵌入函数）"""
         try:
             self._client = chromadb.PersistentClient(
                 path=self.persist_dir,
                 settings=ChromaSettings(anonymized_telemetry=False),
             )
-            # 获取或创建集合
+            # 使用自定义嵌入函数，避免下载 ONNX 模型
+            ef = SimpleEmbeddingFunction()
             try:
-                self._collection = self._client.get_collection(self.collection_name)
+                self._collection = self._client.get_collection(self.collection_name, embedding_function=ef)
             except Exception:
-                # 集合不存在时创建新集合
-                self._collection = self._client.create_collection(self.collection_name)
+                self._collection = self._client.create_collection(
+                    self.collection_name, embedding_function=ef
+                )
                 logger.info(f"创建新集合: {self.collection_name}")
         except Exception as e:
             logger.error(f"ChromaDB 初始化失败: {e}")

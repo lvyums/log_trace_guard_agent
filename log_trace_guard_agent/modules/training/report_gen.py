@@ -67,7 +67,15 @@ class ReportGenerator:
 
         # 收集任务记录
         task_records = []
-        for sid, tasks in records.items():
+        # 根据 scenario_id 是否传入，records 结构不同：
+        # 有 scenario_id: {task_id: [records]}
+        # 无 scenario_id: {scenario_id: {task_id: [records]}}
+        if scenario_id:
+            scenarios_data = {scenario_id: records}
+        else:
+            scenarios_data = records
+
+        for sid, tasks in scenarios_data.items():
             scenario = TaskEngine.get_scenario(sid)
             scenario_name = scenario.get("name", sid) if scenario else sid
 
