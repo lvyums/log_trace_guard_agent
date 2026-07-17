@@ -34,7 +34,7 @@ const LogParseIdentify = {
       this.loading = true;
       this.result = null;
       try {
-        const res = await Api.logParse.identify({ log_text: this.input });
+        const res = await Api.logParse.identify({ log_line: this.input });
         if (res.success) {
           this.result = res.data;
         } else {
@@ -119,9 +119,8 @@ const LogParseIdentify = {
           <el-descriptions-item label="设备类型">
             <risk-badge :level="'normal'" :label="result.device_type || '未知'" />
           </el-descriptions-item>
-          <el-descriptions-item label="日志格式">{{ result.log_format || 'syslog' }}</el-descriptions-item>
-          <el-descriptions-item label="置信度">{{ result.confidence ? Math.round(result.confidence * 100) + '%' : '-' }}</el-descriptions-item>
-          <el-descriptions-item label="匹配来源">{{ result.match_source || '规则匹配' }}</el-descriptions-item>
+          <el-descriptions-item label="置信度">{{ result.confidence ? Math.round(result.confidence) + '%' : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="识别依据">{{ result.identify_reason || '规则匹配' }}</el-descriptions-item>
         </el-descriptions>
 
         <div v-if="result.fields && Object.keys(result.fields).length" style="margin-top:16px">

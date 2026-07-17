@@ -20,7 +20,10 @@ const TrainingReport = {
     async loadReport() {
       this.loading = true;
       try {
-        const res = await Api.training.report({});
+        const res = await Api.training.report({
+          student_id: 'student_default',
+          scenario_id: '',
+        });
         if (res.success) {
           this.report = res.data;
         } else {
@@ -34,17 +37,20 @@ const TrainingReport = {
     },
     loadSampleReport() {
       this.report = {
-        total_sessions: 12,
-        completed: 10,
-        avg_score: 78,
-        total_time: '4h 30m',
-        details: [
-          { scenario: 'SSH暴力破解检测', score: 90, time: '15min', status: 'completed' },
-          { scenario: 'Web攻击日志分析', score: 75, time: '25min', status: 'completed' },
-          { scenario: '内网横向移动追踪', score: 60, time: '40min', status: 'completed' },
-          { scenario: '日志采集架构设计', score: 85, time: '20min', status: 'completed' },
-          { scenario: '合规基线检查', score: 70, time: '18min', status: 'completed' },
+        total_tasks: 12,
+        completed_tasks: 10,
+        average_score: 78,
+        overall_grade: 'B',
+        task_records: [
+          { task_id: '1', title: 'SSH暴力破解检测', score: 90, grade: 'A', attempts: 1, status: 'completed' },
+          { task_id: '2', title: 'Web攻击日志分析', score: 75, grade: 'B', attempts: 2, status: 'completed' },
+          { task_id: '3', title: '内网横向移动追踪', score: 60, grade: 'C', attempts: 3, status: 'completed' },
         ],
+        weaknesses: [
+          { category: '风险研判', description: '对高级攻击手法判断不准确', score: 60, suggestion: '建议加强攻击原理学习' },
+        ],
+        improvement_plan: '重点提升风险研判能力，建议完成中级实训场景后再挑战高级场景。',
+        summary: '学员已完成12次实训，平均分78分，整体表现良好。',
       };
     },
     exportReport() {
@@ -84,25 +90,25 @@ const TrainingReport = {
           <!-- 统计卡片 -->
           <div class="training-stats">
             <div class="training-stat-card">
-              <div class="training-stat-value">{{ report.total_sessions }}</div>
-              <div class="training-stat-label">总实训次数</div>
+              <div class="training-stat-value">{{ report.total_tasks }}</div>
+              <div class="training-stat-label">总任务数</div>
             </div>
             <div class="training-stat-card">
-              <div class="training-stat-value" style="color:var(--risk-normal)">{{ report.completed }}</div>
+              <div class="training-stat-value" style="color:var(--risk-normal)">{{ report.completed_tasks }}</div>
               <div class="training-stat-label">已完成</div>
             </div>
             <div class="training-stat-card">
-              <div class="training-stat-value" style="color:var(--risk-p1)">{{ report.avg_score }}</div>
+              <div class="training-stat-value" style="color:var(--risk-p1)">{{ report.average_score }}</div>
               <div class="training-stat-label">平均分</div>
             </div>
           </div>
 
           <!-- 详细记录 -->
-          <div v-if="report.details && report.details.length" style="margin-top:20px">
-            <div style="font-weight:600;margin-bottom:12px">详细记录</div>
-            <el-table :data="report.details" border size="small" class="g-table">
+          <div v-if="report.task_records && report.task_records.length" style="margin-top:20px">
+            <div style="font-weight:600;margin-bottom:12px">任务记录</div>
+            <el-table :data="report.task_records" border size="small" class="g-table">
               <el-table-column type="index" label="#" width="50" />
-              <el-table-column prop="scenario" label="实训场景" />
+              <el-table-column prop="title" label="任务" />
               <el-table-column prop="score" label="得分" width="80">
                 <template #default="{ row }">
                   <span :style="{ color: row.score >= 80 ? 'var(--risk-normal)' : row.score >= 60 ? 'var(--risk-p1)' : 'var(--risk-p0)' }">
@@ -110,13 +116,23 @@ const TrainingReport = {
                   </span>
                 </template>
               </el-table-column>
-              <el-table-column prop="time" label="用时" width="80" />
+              <el-table-column prop="grade" label="等级" width="60" />
               <el-table-column prop="status" label="状态" width="80">
                 <template #default="{ row }">
                   <risk-badge :level="row.status === 'completed' ? 'normal' : 'P2'" :label="row.status === 'completed' ? '已完成' : '进行中'" />
                 </template>
               </el-table-column>
             </el-table>
+          </div>
+
+          <!-- 薄弱项 -->
+          <div v-if="report.weaknesses && report.weaknesses.length" style="margin-top:20px">
+            <div style="font-weight:600;margin-bottom:12px">薄弱项分析</div>
+            <div v-for="(w, i) in report.weaknesses" :key="i" class="g-card" style="margin-bottom:8px;padding:12px">
+              <div style="font-weight:500;font-size:13px;margin-bottom:4px">{{ w.category }} ({{ w.score }}分)</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">{{ w.description }}</div>
+              <div style="font-size:12px;color:var(--primary)">建议：{{ w.suggestion }}</div>
+            </div>
           </div>
         </div>
 

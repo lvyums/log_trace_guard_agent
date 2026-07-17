@@ -75,10 +75,10 @@ const ScriptGenOptimize = {
           </div>
         </div>
         <code-block :code="result.optimized || result.optimized_script" :lang="scriptType === 'regex' ? 'python' : 'bash'" title="优化后脚本" />
-        <div v-if="result.improvements" style="margin-top:12px">
-          <div style="font-weight:600;margin-bottom:8px;font-size:13px">优化改进</div>
-          <div v-for="(imp, i) in result.improvements" :key="i" class="g-alert g-alert--success" style="margin-bottom:8px">
-            {{ imp }}
+        <div v-if="result.explanation" style="margin-top:12px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">优化说明</div>
+          <div class="g-alert g-alert--success" style="margin-bottom:8px">
+            {{ result.explanation }}
           </div>
         </div>
       </div>

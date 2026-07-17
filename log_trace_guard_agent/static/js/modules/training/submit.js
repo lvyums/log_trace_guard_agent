@@ -39,8 +39,11 @@ const TrainingSubmit = {
       this.result = null;
       try {
         const res = await Api.training.submit({
-          scenario_id: this.scenarioId,
-          answers: this.answers,
+          scenario_id: String(this.scenarioId),
+          task_id: 'task_' + this.scenarioId,
+          submit_type: 'conclusion',
+          content: this.answers,
+          student_id: 'student_default',
         });
         if (res.success) {
           this.result = res.data;
@@ -54,8 +57,8 @@ const TrainingSubmit = {
       }
     },
     getCorrectionClass(item) {
-      if (item.correct) return 'g-correction--correct';
-      if (item.missed) return 'g-correction--miss';
+      if (item.status === 'correct') return 'g-correction--correct';
+      if (item.status === 'partial') return 'g-correction--miss';
       return 'g-correction--wrong';
     },
   },
@@ -126,28 +129,28 @@ const TrainingSubmit = {
           <div class="g-card-title" style="margin:16px 0 12px"><el-icon><TrophyBase /></el-icon> 评分结果</div>
 
           <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
-            <el-descriptions-item label="总分">{{ result.score || 0 }} / {{ result.total || 100 }}</el-descriptions-item>
+            <el-descriptions-item label="总分">{{ result.score || 0 }} / 100</el-descriptions-item>
             <el-descriptions-item label="等级">
-              <risk-badge :level="result.score >= 80 ? 'normal' : result.score >= 60 ? 'P2' : 'P0'"
-                         :label="result.score >= 80 ? '优秀' : result.score >= 60 ? '合格' : '不合格'" />
+              <risk-badge :level="result.score >= 90 ? 'normal' : result.score >= 70 ? 'P2' : 'P0'"
+                         :label="result.grade || (result.score >= 90 ? 'A' : result.score >= 70 ? 'B' : 'C')" />
             </el-descriptions-item>
           </el-descriptions>
 
           <!-- 分层纠错 -->
-          <div v-if="result.corrections">
-            <div v-for="(item, i) in result.corrections" :key="i" class="g-correction" :class="getCorrectionClass(item)">
-              <el-icon v-if="item.correct"><CircleCheckFilled /></el-icon>
-              <el-icon v-else-if="item.missed"><WarningFilled /></el-icon>
+          <div v-if="result.checks">
+            <div v-for="(item, i) in result.checks" :key="i" class="g-correction" :class="getCorrectionClass(item)">
+              <el-icon v-if="item.status === 'correct'"><CircleCheckFilled /></el-icon>
+              <el-icon v-else-if="item.status === 'partial'"><WarningFilled /></el-icon>
               <el-icon v-else><CircleCloseFilled /></el-icon>
               <div>
-                <div style="font-weight:500">{{ item.label }}</div>
+                <div style="font-weight:500">{{ item.field }}</div>
                 <div style="font-size:12px;opacity:0.8;margin-top:2px">{{ item.detail }}</div>
               </div>
             </div>
           </div>
 
           <knowledge-panel title="知识点详解">
-            <p>{{ result.knowledge || '请根据评分反馈复习相关知识点，重点关注标记为错误和遗漏的部分。' }}</p>
+            <p>{{ result.analysis || '请根据评分反馈复习相关知识点，重点关注标记为错误和遗漏的部分。' }}</p>
           </knowledge-panel>
         </div>
       </div>

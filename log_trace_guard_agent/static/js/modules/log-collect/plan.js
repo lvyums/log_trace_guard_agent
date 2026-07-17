@@ -95,7 +95,7 @@ const LogCollectPlan = {
           <div class="g-card-title"><el-icon><Document /></el-icon> 采集方案</div>
         </div>
 
-        <div v-if="result.plan_title" style="font-weight:600;font-size:15px;margin-bottom:12px">{{ result.plan_title }}</div>
+        <div style="font-weight:600;font-size:15px;margin-bottom:12px">{{ result.device_type }} 采集方案</div>
 
         <div v-if="result.steps && result.steps.length" style="margin-bottom:16px">
           <div style="font-weight:600;margin-bottom:8px;font-size:13px">实施步骤</div>
@@ -105,10 +105,10 @@ const LogCollectPlan = {
           </div>
         </div>
 
-        <div v-if="result.config">
+        <div v-if="result.config_template">
           <div style="font-weight:600;margin-bottom:8px;font-size:13px">配置代码</div>
-          <code-block :code="typeof result.config === 'string' ? result.config : JSON.stringify(result.config, null, 2)"
-                      :lang="result.config_format || 'bash'" />
+          <code-block :code="typeof result.config_template === 'string' ? result.config_template : JSON.stringify(result.config_template, null, 2)"
+                      lang="bash" />
         </div>
 
         <result-guide :content="APP_CONFIG.guidance.resultGuides.collectPlan" />

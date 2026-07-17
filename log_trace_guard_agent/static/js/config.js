@@ -261,7 +261,10 @@ var Utils = {
   // 风险等级映射
   getRiskLevel(level) {
     const map = { 'critical': 'P0', 'high': 'P1', 'medium': 'P2', 'low': 'P3', 'normal': 'normal' };
-    return APP_CONFIG.riskLevels[map[level] || level] || APP_CONFIG.riskLevels.normal;
+    // 也支持后端返回的完整中文值: P0_高危, P1_中危, P2_低危, P3_噪音
+    const chineseMap = { 'P0_高危': 'P0', 'P1_中危': 'P1', 'P2_低危': 'P2', 'P3_噪音': 'P3' };
+    const key = chineseMap[level] || map[level] || level;
+    return APP_CONFIG.riskLevels[key] || APP_CONFIG.riskLevels.normal;
   },
 
   // 复制文本到剪贴板

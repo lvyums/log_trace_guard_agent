@@ -8,15 +8,15 @@ const ComplianceBaseline = {
   data() {
     return {
       form: {
-        org_name: '',
-        asset_type: '',
-        os_type: '',
-        service_list: '',
-        standard: '等保2.0三级',
+        asset_count: 10,
+        business_type: '互联网',
+        device_types: 'web,db,firewall',
+        monitor_scenarios: '入侵检测,异常登录,数据泄露',
+        industry: '互联网',
       },
       loading: false,
       result: null,
-      standardOptions: ['等保2.0二级', '等保2.0三级', '等保2.0四级', '网安法', '数据安全法'],
+      industryOptions: ['互联网', '金融', '政府', '教育', '医疗', '能源', '制造业', '其他'],
     };
   },
   methods: {
@@ -32,22 +32,28 @@ const ComplianceBaseline = {
     },
     fillExample() {
       this.form = {
-        org_name: 'XX科技有限公司',
-        asset_type: 'Web应用服务器',
-        os_type: 'CentOS 7.9',
-        service_list: 'Nginx, MySQL, Redis',
-        standard: '等保2.0三级',
+        asset_count: 50,
+        business_type: '互联网金融',
+        device_types: 'web,db,firewall,waf,server',
+        monitor_scenarios: '入侵检测,异常登录,数据泄露,恶意软件',
+        industry: '金融',
       };
     },
     async submit() {
-      if (!this.form.org_name || !this.form.asset_type) {
-        ElementPlus.ElMessageBox.alert('请填写组织名称和资产类型', '提示', { type: 'warning' });
+      if (!this.form.asset_count || !this.form.business_type) {
+        ElementPlus.ElMessageBox.alert('请填写资产数量和组织类型', '提示', { type: 'warning' });
         return;
       }
       this.loading = true;
       this.result = null;
       try {
-        const res = await Api.compliance.baseline(this.form);
+        const res = await Api.compliance.baseline({
+          asset_count: this.form.asset_count,
+          business_type: this.form.business_type,
+          device_types: this.form.device_types.split(',').map(s => s.trim()).filter(s => s),
+          monitor_scenarios: this.form.monitor_scenarios.split(',').map(s => s.trim()).filter(s => s),
+          industry: this.form.industry,
+        });
         if (res.success) {
           this.result = res.data;
         } else {
@@ -75,25 +81,21 @@ const ComplianceBaseline = {
           <el-button size="small" type="primary" plain @click="fillExample">填充示例</el-button>
         </div>
         <el-form :model="form" label-position="top" size="default" class="compliance-form">
-          <el-form-item label="组织名称">
-            <tip-wrapper :tip="{ label: '组织名称', desc: '填写需要进行合规检查的组织或单位名称' }">
-              <el-input v-model="form.org_name" placeholder="如：XX科技有限公司" />
-            </tip-wrapper>
+          <el-form-item label="资产数量">
+            <el-input-number v-model="form.asset_count" :min="1" :max="100000" style="width:100%" />
           </el-form-item>
-          <el-form-item label="资产类型">
-            <tip-wrapper :tip="{ label: '资产类型', desc: '选择需要检查的资产类型', example: 'Web服务器、数据库、防火墙等' }">
-              <el-input v-model="form.asset_type" placeholder="如：Web应用服务器" />
-            </tip-wrapper>
+          <el-form-item label="业务类型">
+            <el-input v-model="form.business_type" placeholder="如：互联网、金融、政府" />
           </el-form-item>
-          <el-form-item label="操作系统">
-            <el-input v-model="form.os_type" placeholder="如：CentOS 7.9" />
+          <el-form-item label="设备类型（逗号分隔）">
+            <el-input v-model="form.device_types" placeholder="如：web,db,firewall,waf" />
           </el-form-item>
-          <el-form-item label="部署服务">
-            <el-input v-model="form.service_list" placeholder="如：Nginx, MySQL, Redis" />
+          <el-form-item label="监控场景（逗号分隔）">
+            <el-input v-model="form.monitor_scenarios" placeholder="如：入侵检测,异常登录,数据泄露" />
           </el-form-item>
-          <el-form-item label="合规标准">
-            <el-select v-model="form.standard" style="width:100%">
-              <el-option v-for="s in standardOptions" :key="s" :label="s" :value="s" />
+          <el-form-item label="所属行业">
+            <el-select v-model="form.industry" style="width:100%">
+              <el-option v-for="ind in industryOptions" :key="ind" :label="ind" :value="ind" />
             </el-select>
           </el-form-item>
         </el-form>

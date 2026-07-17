@@ -17,7 +17,7 @@ const RiskBadge = {
     },
   },
   template: `
-    <span class="risk-badge" :class="'risk-badge--' + (level === 'critical' ? 'p0' : level === 'high' ? 'p1' : level === 'medium' ? 'p2' : level === 'low' ? 'p3' : level === 'normal' ? 'normal' : level)"
+    <span class="risk-badge" :class="'risk-badge--' + (level === 'critical' || level === 'P0_高危' ? 'p0' : level === 'high' || level === 'P1_中危' ? 'p1' : level === 'medium' || level === 'P2_低危' ? 'p2' : level === 'low' || level === 'P3_噪音' ? 'p3' : level === 'normal' ? 'normal' : level)"
           :style="{ background: risk.bg, color: risk.color }">
       {{ displayLabel }}
     </span>
@@ -42,7 +42,7 @@ const RiskCard = {
       return Utils.getRiskLevel(this.level);
     },
     confidencePercent() {
-      return this.confidence ? Math.round(this.confidence * 100) : null;
+      return this.confidence ? Math.round(this.confidence) : null;
     },
   },
   template: `
@@ -51,7 +51,7 @@ const RiskCard = {
         <el-icon><WarningFilled /></el-icon>
         <span>低置信度识别结果（{{ confidencePercent }}%），建议人工复核确认</span>
       </div>
-      <div v-if="level === 'critical' || level === 'high'" class="g-alert g-alert--danger" style="margin-bottom:12px">
+      <div v-if="level === 'critical' || level === 'high' || level === 'P0_高危' || level === 'P1_中危'" class="g-alert g-alert--danger" style="margin-bottom:12px">
         <el-icon><CircleCloseFilled /></el-icon>
         <div>
           <div style="font-weight:600">高危风险 — 请立即处置</div>

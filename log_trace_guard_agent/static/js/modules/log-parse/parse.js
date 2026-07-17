@@ -25,7 +25,7 @@ const LogParseParse = {
       this.loading = true;
       this.result = null;
       try {
-        const res = await Api.logParse.parse({ log_text: this.input });
+        const res = await Api.logParse.parse({ log_line: this.input });
         if (res.success) {
           this.result = res.data;
         } else {
@@ -99,10 +99,13 @@ const LogParseParse = {
       if (!this.result) return [];
       const obj = this.result.parsed_fields || this.result.fields || this.result;
       if (typeof obj !== 'object') return [];
-      return Object.entries(obj).map(([name, value]) => ({
-        name,
-        value: typeof value === 'object' ? JSON.stringify(value) : String(value),
-      }));
+      const excludeFields = ['missing_fields', 'raw_log', 'fallback_note', 'device_type'];
+      return Object.entries(obj)
+        .filter(([name]) => !excludeFields.includes(name) && !name.endsWith('_missing'))
+        .map(([name, value]) => ({
+          name,
+          value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+        }));
     },
   },
 };

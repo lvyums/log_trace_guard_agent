@@ -7,60 +7,49 @@ const LogParseBatch = {
   props: { mode: String },
   data() {
     return {
-      fileList: [],
+      input: '',
+      doAssess: true,
       loading: false,
       result: null,
-      showConfirm: false,
     };
   },
   computed: {
-    fileCount() {
-      return this.fileList.length;
+    logLines() {
+      if (!this.input.trim()) return [];
+      return this.input.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    },
+    totalCount() {
+      return this.logLines.length;
     },
   },
   methods: {
-    beforeUpload(file) {
-      const maxSize = 10 * 1024 * 1024;
-      if (file.size > maxSize) {
-        ElementPlus.ElMessage.warning(`${file.name} 超过10MB限制`);
-        return false;
-      }
-      const allowed = ['.txt', '.log', '.csv'];
-      const ext = '.' + file.name.split('.').pop().toLowerCase();
-      if (!allowed.includes(ext)) {
-        ElementPlus.ElMessage.warning(`不支持 ${ext} 格式，请上传 ${allowed.join(', ')}`);
-        return false;
-      }
-      return true;
+    fillSample() {
+      this.input = APP_CONFIG.sampleData.logs.join('\n');
     },
-    handleUploadChange(file, list) {
-      this.fileList = list;
-    },
-    submit() {
-      if (!this.fileList.length) {
-        ElementPlus.ElMessageBox.alert('请先上传日志文件', '提示', { type: 'warning' });
+    async submit() {
+      if (!this.totalCount) {
+        ElementPlus.ElMessageBox.alert('请输入日志内容', '提示', { type: 'warning' });
         return;
       }
-      this.showConfirm = true;
-    },
-    async confirmBatch() {
-      this.showConfirm = false;
+      if (this.totalCount > 100) {
+        ElementPlus.ElMessageBox.alert('单次最多批量解析100条日志，请分批处理', '提示', { type: 'warning' });
+        return;
+      }
       this.loading = true;
       this.result = null;
       try {
-        const formData = new FormData();
-        this.fileList.forEach(f => {
-          if (f.raw) formData.append('files', f.raw);
+        const res = await Api.logParse.batch({
+          logs: this.logLines,
+          assess: this.doAssess,
         });
-        const res = await Api.logParse.batch(formData);
         if (res.success) {
           this.result = res.data;
-          ElementPlus.ElMessage.success(`成功解析 ${res.data?.parsed_count || 0} 条日志`);
+          ElementPlus.ElMessage.success(`成功解析 ${res.data?.success_count || 0} 条日志`);
         } else {
           ElementPlus.ElMessage.error(res.msg);
         }
       } catch (e) {
-        ElementPlus.ElMessage.error('上传失败');
+        ElementPlus.ElMessage.error('请求失败');
       } finally {
         this.loading = false;
       }
@@ -69,32 +58,35 @@ const LogParseBatch = {
   template: `
     <div class="g-stack">
       <alert-guide type="info" title="批量分析前建议按设备分文件">
-        混合不同设备的日志会降低识别准确率。建议按设备类型分文件上传，每批处理同类型日志。系统会自动统计：风险分布、异常IP TOP10、攻击类型分布。
+        混合不同设备的日志会降低识别准确率。建议按设备类型分批输入，每批处理同类型日志。系统会自动统计：风险分布、异常IP TOP10、攻击类型分布。
       </alert-guide>
       <div class="g-card">
         <div class="g-card-header">
           <div>
             <div class="g-card-title"><el-icon><Grid /></el-icon> 批量解析</div>
-            <div class="g-card-desc">上传多个日志文件，批量进行解析分析</div>
+            <div class="g-card-desc">输入多条日志（每行一条），批量进行解析分析</div>
+          </div>
+          <div class="g-actions">
+            <el-button size="small" type="primary" plain @click="fillSample">
+              填充测试日志
+            </el-button>
           </div>
         </div>
 
-        <el-upload
-          drag multiple :auto-upload="false"
-          :before-upload="beforeUpload"
-          :on-change="handleUploadChange"
-          :file-list="fileList"
-          accept=".txt,.log,.csv"
-          :disabled="loading"
-        >
-          <el-icon style="font-size:40px;color:var(--text-tertiary);margin-bottom:8px"><UploadFilled /></el-icon>
-          <div style="color:var(--text-secondary);font-size:13px">拖拽文件到此处，或 <em style="color:var(--primary)">点击上传</em></div>
-          <div style="color:var(--text-tertiary);font-size:12px;margin-top:4px">支持 .txt .log .csv，单文件最大 10MB</div>
-        </el-upload>
+        <el-input v-model="input" type="textarea" :rows="6" placeholder="在此粘贴日志内容，每行一条日志..."
+                  class="log-input-area" :disabled="loading" />
+        <div class="g-input-guide">
+          <el-icon><InfoFilled /></el-icon>
+          <span>每行一条日志，最多100条。支持 syslog / JSON / CSV 格式。</span>
+        </div>
 
-        <div class="g-actions" style="margin-top:16px">
-          <el-button type="primary" @click="submit" :loading="loading" :disabled="!fileList.length">
-            <el-icon style="margin-right:4px"><Upload /></el-icon> 批量解析 ({{ fileCount }} 个文件)
+        <div style="margin-top:12px">
+          <el-checkbox v-model="doAssess">同时进行风险研判</el-checkbox>
+        </div>
+
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" @click="submit" :loading="loading" :disabled="!totalCount">
+            <el-icon style="margin-right:4px"><Upload /></el-icon> 批量解析 ({{ totalCount }} 条日志)
           </el-button>
         </div>
       </div>
@@ -104,28 +96,34 @@ const LogParseBatch = {
           <div class="g-card-title"><el-icon><DataBoard /></el-icon> 批量解析结果</div>
         </div>
         <el-descriptions :column="3" border size="small">
-          <el-descriptions-item label="总条数">{{ result.total_count || 0 }}</el-descriptions-item>
-          <el-descriptions-item label="成功解析">{{ result.parsed_count || 0 }}</el-descriptions-item>
-          <el-descriptions-item label="失败条数">{{ result.error_count || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="总条数">{{ result.total || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="成功解析">{{ result.success_count || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="失败条数">{{ result.fail_count || 0 }}</el-descriptions-item>
         </el-descriptions>
 
         <div v-if="result.items && result.items.length" style="margin-top:16px">
           <el-table :data="result.items" border size="small" class="g-table" max-height="400">
             <el-table-column type="index" label="#" width="50" />
-            <el-table-column prop="device_type" label="设备类型" width="120" />
-            <el-table-column prop="risk_level" label="风险等级" width="100">
+            <el-table-column label="日志摘要" width="200" show-overflow-tooltip>
               <template #default="{ row }">
-                <risk-badge :level="row.risk_level" />
+                {{ row.log_line || '-' }}
               </template>
             </el-table-column>
-            <el-table-column prop="summary" label="摘要" show-overflow-tooltip />
+            <el-table-column label="解析状态" width="100">
+              <template #default="{ row }">
+                <risk-badge :level="row.error ? 'P0' : 'normal'" :label="row.error ? '失败' : '成功'" />
+              </template>
+            </el-table-column>
+            <el-table-column prop="parse_result" label="设备类型" width="120">
+              <template #default="{ row }">
+                {{ row.parse_result?.device_type || '-' }}
+              </template>
+            </el-table-column>
           </el-table>
         </div>
 
-        <result-guide content="批量解析已完成。可在上方表格中查看每条日志的解析摘要，点击行可展开详情。高风险项建议优先人工复核。" />
+        <result-guide content="批量解析已完成。可在上方表格中查看每条日志的解析结果。高风险项建议优先人工复核。" />
       </div>
     </div>
-
-    <confirm-batch v-model:visible="showConfirm" :count="fileCount" desc="将批量解析上传的日志文件" @confirm="confirmBatch" />
   `,
 };

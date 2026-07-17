@@ -27,10 +27,7 @@ const LogParseAssess = {
       this.loading = true;
       this.result = null;
       try {
-        const res = await Api.logParse.assess({
-          log_text: this.input,
-          device_type: this.deviceType || undefined,
-        });
+        const res = await Api.logParse.assess({ log_line: this.input });
         if (res.success) {
           this.result = res.data;
         } else {
@@ -74,14 +71,14 @@ const LogParseAssess = {
 
       <div v-if="result" class="slide">
         <risk-card
-          :title="result.risk_title || '风险研判结果'"
+          :title="'风险研判结果'"
           :level="result.risk_level || 'normal'"
           :confidence="result.confidence"
-          :source="result.match_source"
-          :details="result.details"
-          :disposition="result.disposition"
+          :source="result.match_rule_ids ? '规则引擎: ' + result.match_rule_ids.join(', ') : '规则匹配'"
+          :details="result.attack_type ? { '攻击类型': result.attack_type, '风险描述': result.risk_desc, '处置建议': result.suggestion } : { '风险描述': result.risk_desc }"
+          :disposition="result.suggestion"
         />
-        <result-guide :content="result.disposition || APP_CONFIG.guidance.resultGuides.logParse" />
+        <result-guide :content="result.suggestion || APP_CONFIG.guidance.resultGuides.logParse" />
       </div>
     </div>
   `,

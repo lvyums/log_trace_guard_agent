@@ -35,11 +35,11 @@ const TrainingScenarios = {
     },
     loadSampleScenarios() {
       this.scenarios = [
-        { id: 1, title: 'SSH暴力破解检测', difficulty: '初级', category: '入侵检测', description: '分析SSH登录日志，识别暴力破解行为并溯源攻击IP', steps: 3 },
-        { id: 2, title: 'Web攻击日志分析', difficulty: '中级', category: 'Web安全', description: '分析WAF日志，识别SQL注入、XSS等Web攻击', steps: 5 },
-        { id: 3, title: '内网横向移动追踪', difficulty: '高级', category: '应急响应', description: '通过多源日志关联分析，追踪内网横向移动路径', steps: 7 },
-        { id: 4, title: '日志采集架构设计', difficulty: '中级', category: '架构设计', description: '根据企业需求设计完整的日志采集与存储架构', steps: 4 },
-        { id: 5, title: '合规基线检查', difficulty: '初级', category: '合规审计', description: '对服务器配置进行等保2.0三级合规自查', steps: 3 },
+        { scenario: { scenario_id: '1', name: 'SSH暴力破解检测', difficulty: '初级', category: '入侵检测', description: '分析SSH登录日志，识别暴力破解行为并溯源攻击IP' }, total_tasks: 3 },
+        { scenario: { scenario_id: '2', name: 'Web攻击日志分析', difficulty: '中级', category: 'Web安全', description: '分析WAF日志，识别SQL注入、XSS等Web攻击' }, total_tasks: 5 },
+        { scenario: { scenario_id: '3', name: '内网横向移动追踪', difficulty: '高级', category: '应急响应', description: '通过多源日志关联分析，追踪内网横向移动路径' }, total_tasks: 7 },
+        { scenario: { scenario_id: '4', name: '日志采集架构设计', difficulty: '中级', category: '架构设计', description: '根据企业需求设计完整的日志采集与存储架构' }, total_tasks: 4 },
+        { scenario: { scenario_id: '5', name: '合规基线检查', difficulty: '初级', category: '合规审计', description: '对服务器配置进行等保2.0三级合规自查' }, total_tasks: 3 },
       ];
     },
     selectScenario(s) {
@@ -80,19 +80,19 @@ const TrainingScenarios = {
         </div>
 
         <div v-else style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
-          <div v-for="s in scenarios" :key="s.id"
-               class="training-task-item" :class="{ active: selected?.id === s.id }"
+          <div v-for="s in scenarios" :key="s.scenario?.scenario_id || s.id"
+               class="training-task-item" :class="{ active: selected?.scenario?.scenario_id === s.scenario?.scenario_id }"
                @click="selectScenario(s)">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
               <div style="display:flex;align-items:center;gap:8px">
-                <span class="training-task-num">{{ s.id }}</span>
-                <span class="training-task-title">{{ s.title }}</span>
+                <span class="training-task-num">{{ s.scenario?.scenario_id || s.id }}</span>
+                <span class="training-task-title">{{ s.scenario?.name || s.title }}</span>
               </div>
-              <risk-badge :level="s.difficulty === '高级' ? 'P0' : s.difficulty === '中级' ? 'P1' : 'P3'"
-                         :label="s.difficulty" />
+              <risk-badge :level="(s.scenario?.difficulty || s.difficulty) === '高级' ? 'P0' : (s.scenario?.difficulty || s.difficulty) === '中级' ? 'P1' : 'P3'"
+                         :label="s.scenario?.difficulty || s.difficulty" />
             </div>
-            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">{{ s.category }} · {{ s.steps }}个步骤</div>
-            <div style="font-size:13px;color:var(--text-secondary)">{{ s.description }}</div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">{{ s.scenario?.category || s.category }} · {{ s.total_tasks || s.steps || 0 }}个步骤</div>
+            <div style="font-size:13px;color:var(--text-secondary)">{{ s.scenario?.description || s.description }}</div>
           </div>
         </div>
       </div>

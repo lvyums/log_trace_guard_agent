@@ -26,7 +26,11 @@ const ScriptGenRegex = {
       this.loading = true;
       this.result = null;
       try {
-        const res = await Api.scriptGen.regex({ log_sample: this.input, purpose: this.purpose });
+        const res = await Api.scriptGen.regex({
+          scenario: this.purpose || this.input,
+          log_sample: this.input,
+          device_type: '',
+        });
         if (res.success) {
           this.result = res.data;
         } else {
@@ -65,13 +69,24 @@ const ScriptGenRegex = {
 
       <div v-if="result" class="g-card slide">
         <div class="g-card-title" style="margin-bottom:12px"><el-icon><Finished /></el-icon> 生成结果</div>
-        <code-block :code="result.regex || result.pattern" lang="regex" title="正则表达式" />
-        <div v-if="result.test_result" style="margin-top:12px">
-          <div style="font-weight:600;margin-bottom:8px;font-size:13px">测试匹配结果</div>
-          <code-block :code="JSON.stringify(result.test_result, null, 2)" lang="json" />
+        <div v-if="result.regexes && result.regexes.length">
+          <div v-for="(r, i) in result.regexes" :key="i" style="margin-bottom:16px">
+            <div style="font-weight:600;font-size:13px;margin-bottom:6px">{{ r.name || '正则 ' + (i+1) }}</div>
+            <code-block :code="r.pattern" lang="regex" :title="'正则表达式'" />
+            <div v-if="r.description" style="font-size:12px;color:var(--text-secondary);margin-top:4px">{{ r.description }}</div>
+          </div>
+        </div>
+        <div v-else>
+          <code-block :code="result.pattern || '无匹配规则'" lang="regex" />
+        </div>
+        <div v-if="result.note" style="margin-top:12px">
+          <div class="g-alert g-alert--info">
+            <el-icon><InfoFilled /></el-icon>
+            <span>{{ result.note }}</span>
+          </div>
         </div>
         <knowledge-panel title="正则优化建议">
-          <p>{{ result.optimization || '生成的正则已针对性能优化。建议在大量日志场景下使用预编译正则以提高匹配速度。' }}</p>
+          <p>生成的正则已针对性能优化。建议在大量日志场景下使用预编译正则以提高匹配速度。</p>
         </knowledge-panel>
       </div>
     </div>

@@ -52,7 +52,7 @@ var Api = {
     identify: function(data) { return Api.post('/api/v1/log-parse/identify', data); },
     parse: function(data) { return Api.post('/api/v1/log-parse/parse', data); },
     assess: function(data) { return Api.post('/api/v1/log-parse/assess', data); },
-    batch: function(data) { return Api.upload('/api/v1/log-parse/parse/batch', data); },
+    batch: function(data) { return Api.post('/api/v1/log-parse/parse/batch', data); },
   },
 
   // Module 2: Log Collect (prefix: /api/v1/log-collect)
@@ -81,7 +81,7 @@ var Api = {
 
   // Module 5: Training (prefix: /api/v1/training)
   training: {
-    scenarios: function() { return Api.post('/api/v1/training/dispatch', { action: 'list_scenarios' }); },
+    scenarios: function() { return Api.post('/api/v1/training/dispatch', { scenario_id: '', category: '' }); },
     submit: function(data) { return Api.post('/api/v1/training/submit', data); },
     report: function(data) { return Api.post('/api/v1/training/report', data); },
   },

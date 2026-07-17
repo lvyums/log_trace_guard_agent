@@ -27,8 +27,10 @@ const ScriptGenEsquery = {
       this.result = null;
       try {
         const res = await Api.scriptGen.esQuery({
-          description: this.description,
+          search_scenario: this.description,
           index_pattern: this.indexPattern,
+          time_range: '',
+          filters: {},
         });
         if (res.success) {
           this.result = res.data;

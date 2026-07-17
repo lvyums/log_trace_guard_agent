@@ -7,36 +7,44 @@ const ComplianceCheck = {
   props: { mode: String },
   data() {
     return {
-      config: '',
-      checkType: 'log_retention',
+      form: {
+        log_retention_days: 30,
+        has_backup: false,
+        has_tamper_proof: false,
+        backup_frequency: 'daily',
+        device_count: 10,
+        has_audit_mechanism: false,
+        has_ntp: true,
+        audit_frequency: 'monthly',
+        has_alert_system: false,
+        has_bastion: false,
+        additional_info: '',
+      },
       loading: false,
       result: null,
-      checkOptions: [
-        { label: '日志留存', value: 'log_retention' },
-        { label: '访问控制', value: 'access_control' },
-        { label: '安全审计', value: 'security_audit' },
-        { label: '数据安全', value: 'data_security' },
-        { label: '综合检查', value: 'comprehensive' },
-      ],
     };
   },
   methods: {
     fillSample() {
-      this.config = 'syslog日志保留30天，无加密传输，管理员账户使用默认密码，未开启双因素认证';
-      this.checkType = 'comprehensive';
+      this.form = {
+        log_retention_days: 30,
+        has_backup: false,
+        has_tamper_proof: false,
+        backup_frequency: 'daily',
+        device_count: 20,
+        has_audit_mechanism: true,
+        has_ntp: true,
+        audit_frequency: 'weekly',
+        has_alert_system: false,
+        has_bastion: false,
+        additional_info: 'syslog日志无加密传输，管理员账户使用默认密码',
+      };
     },
     async submit() {
-      if (!this.config.trim()) {
-        ElementPlus.ElMessageBox.alert('请输入配置信息', '提示', { type: 'warning' });
-        return;
-      }
       this.loading = true;
       this.result = null;
       try {
-        const res = await Api.compliance.check({
-          config: this.config,
-          check_type: this.checkType,
-        });
+        const res = await Api.compliance.check(this.form);
         if (res.success) {
           this.result = res.data;
         } else {
@@ -58,19 +66,87 @@ const ComplianceCheck = {
         <div class="g-card-header">
           <div>
             <div class="g-card-title"><el-icon><CircleCheck /></el-icon> 合规自查</div>
-            <div class="g-card-desc">输入当前配置信息，检查是否满足合规要求</div>
+            <div class="g-card-desc">填写当前配置信息，检查是否满足合规要求</div>
           </div>
           <el-button size="small" type="primary" plain @click="fillSample">填充示例</el-button>
         </div>
-        <el-select v-model="checkType" style="width:160px;margin-bottom:12px">
-          <el-option v-for="c in checkOptions" :key="c.value" :label="c.label" :value="c.value" />
-        </el-select>
-        <el-input v-model="config" type="textarea" :rows="4" placeholder="描述当前安全配置..." :disabled="loading" />
-        <div class="g-input-guide">
-          <el-icon><InfoFilled /></el-icon>
-          <span>描述越详细检查越全面，可包含：日志留存、加密、认证、访问控制等</span>
-        </div>
-        <div class="g-actions" style="margin-top:12px">
+
+        <el-form label-position="top" size="default" class="compliance-form">
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="日志留存天数">
+                <el-input-number v-model="form.log_retention_days" :min="1" :max="3650" style="width:100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="设备数量">
+                <el-input-number v-model="form.device_count" :min="1" :max="100000" style="width:100%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="是否开启备份">
+                <el-switch v-model="form.has_backup" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="备份频率">
+                <el-select v-model="form.backup_frequency" style="width:100%">
+                  <el-option label="每天" value="daily" />
+                  <el-option label="每周" value="weekly" />
+                  <el-option label="每月" value="monthly" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="防篡改机制">
+                <el-switch v-model="form.has_tamper_proof" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="审计机制">
+                <el-switch v-model="form.has_audit_mechanism" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="NTP同步">
+                <el-switch v-model="form.has_ntp" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="审计频率">
+                <el-select v-model="form.audit_frequency" style="width:100%">
+                  <el-option label="每天" value="daily" />
+                  <el-option label="每周" value="weekly" />
+                  <el-option label="每月" value="monthly" />
+                  <el-option label="每季度" value="quarterly" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="告警系统">
+                <el-switch v-model="form.has_alert_system" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="堡垒机">
+                <el-switch v-model="form.has_bastion" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="补充描述（可选）">
+            <el-input v-model="form.additional_info" type="textarea" :rows="2" placeholder="其他安全配置描述..." />
+          </el-form-item>
+        </el-form>
+
+        <div class="g-actions">
           <el-button type="primary" @click="submit" :loading="loading">开始检查</el-button>
         </div>
       </div>

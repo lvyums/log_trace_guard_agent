@@ -80,15 +80,15 @@ const LogCollectMatch = {
           <div class="g-card-title"><el-icon><Connection /></el-icon> 匹配结果</div>
         </div>
         <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="设备类型">{{ result.device_type }}</el-descriptions-item>
-          <el-descriptions-item label="采集协议">{{ result.protocol }}</el-descriptions-item>
-          <el-descriptions-item label="匹配置信度">{{ result.confidence ? Math.round(result.confidence * 100) + '%' : '-' }}</el-descriptions-item>
-          <el-descriptions-item label="策略来源">{{ result.strategy_source || '工厂匹配' }}</el-descriptions-item>
+          <el-descriptions-item label="设备类型">{{ result.device_info?.device_type || result.plan?.device_type || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="采集协议">{{ result.plan?.protocol || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="匹配置信度">{{ result.match_confidence ? Math.round(result.match_confidence) + '%' : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="匹配来源">{{ result.match_source || '工厂匹配' }}</el-descriptions-item>
         </el-descriptions>
 
-        <div v-if="result.config_hint" style="margin-top:16px">
-          <div style="font-weight:600;margin-bottom:8px;font-size:13px">配置提示</div>
-          <code-block :code="result.config_hint" lang="bash" />
+        <div v-if="result.plan?.config_template" style="margin-top:16px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">配置模板</div>
+          <code-block :code="typeof result.plan.config_template === 'string' ? result.plan.config_template : JSON.stringify(result.plan.config_template, null, 2)" lang="bash" />
         </div>
 
         <result-guide content="设备匹配完成。请根据采集协议配置对应的日志采集方案。点击左侧菜单「采集方案」可生成完整配置。" />
