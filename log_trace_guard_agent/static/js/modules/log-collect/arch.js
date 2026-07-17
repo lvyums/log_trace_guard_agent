@@ -1,138 +1,110 @@
-/**
- * 架构推荐页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块二 · 架构推荐 — 根据企业规模推荐日志采集架构
+   ============================================ */
 
-window.Pages['arch'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">架构推荐</h1>
-    <p class="main-subtitle">根据企业规模推荐日志采集架构</p>
-  </div>
-
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">设备数量</label>
-      <input id="arch-count" class="input" type="number" value="100" min="1">
-    </div>
-    <div class="form-group">
-      <label class="form-label">日志量级</label>
-      <select id="arch-volume" class="input">
-        <option value="small">小型（<1GB/天）</option>
-        <option value="medium" selected>中型（1-10GB/天）</option>
-        <option value="large">大型（>10GB/天）</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">预算范围</label>
-      <select id="arch-budget" class="input">
-        <option value="low">低预算</option>
-        <option value="medium" selected>中等预算</option>
-        <option value="high">高预算</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">团队技能</label>
-      <select id="arch-skill" class="input">
-        <option value="basic">初级</option>
-        <option value="intermediate" selected>中级</option>
-        <option value="advanced">高级</option>
-      </select>
-    </div>
-    <button id="arch-btn" class="btn btn-primary">推荐架构</button>
-  </div>
-
-  <div id="arch-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">推荐方案</span>
-    </div>
-    <div id="arch-result-content"></div>
-  </div>
-`;
-
-window.PageInit['arch'] = () => {
-  const countInput = document.getElementById('arch-count');
-  const volumeSelect = document.getElementById('arch-volume');
-  const budgetSelect = document.getElementById('arch-budget');
-  const skillSelect = document.getElementById('arch-skill');
-  const btn = document.getElementById('arch-btn');
-  const resultArea = document.getElementById('arch-result');
-  const resultContent = document.getElementById('arch-result-content');
-
-  btn.addEventListener('click', async () => {
-    const deviceCount = parseInt(countInput.value) || 100;
-    const dailyLogVolume = volumeSelect.value;
-    const budget = budgetSelect.value;
-    const teamSkill = skillSelect.value;
-
-    btn.disabled = true;
-    btn.textContent = '推荐中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.logCollect.recommendArch(deviceCount, dailyLogVolume, budget, teamSkill);
-
-    btn.disabled = false;
-    btn.textContent = '推荐架构';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      
-      let html = '<div class="arch-card">';
-      html += `<div class="arch-title">${data.recommended_arch || '未知架构'}</div>`;
-      
-      if (data.architecture_desc) {
-        html += `<p style="font-size: 13px; color: var(--n-600); margin-bottom: 16px;">${data.architecture_desc}</p>`;
-      }
-      
-      if (data.components && data.components.length > 0) {
-        html += '<div class="arch-section">';
-        html += '<div class="arch-section-title">核心组件</div>';
-        html += '<ul class="arch-list">';
-        data.components.forEach(comp => {
-          html += `<li>${comp}</li>`;
+const LogCollectArch = {
+  name: 'LogCollectArch',
+  props: { mode: String },
+  data() {
+    return {
+      scale: 'small',
+      deviceCount: 10,
+      deviceTypes: [],
+      loading: false,
+      result: null,
+      scaleOptions: [
+        { label: '小型（<100人）', value: 'small' },
+        { label: '中型（100-1000人）', value: 'medium' },
+        { label: '大型（>1000人）', value: 'large' },
+      ],
+      deviceOptions: ['firewall', 'waf', 'ids', 'ips', 'router', 'switch', 'server', 'web', 'db'],
+    };
+  },
+  methods: {
+    fillExample() {
+      this.scale = 'medium';
+      this.deviceCount = 50;
+      this.deviceTypes = ['firewall', 'waf', 'ids', 'server'];
+    },
+    async submit() {
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.logCollect.arch({
+          scale: this.scale,
+          device_count: this.deviceCount,
+          device_types: this.deviceTypes,
         });
-        html += '</ul></div>';
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
       }
-      
-      if (data.data_flow && data.data_flow.length > 0) {
-        html += '<div class="arch-section">';
-        html += '<div class="arch-section-title">数据流向</div>';
-        html += `<div style="font-size: 13px; color: var(--n-700);">${data.data_flow.join(' → ')}</div>`;
-        html += '</div>';
-      }
-      
-      if (data.estimated_cost) {
-        html += '<div class="arch-section">';
-        html += '<div class="arch-section-title">预估成本</div>';
-        html += `<div style="font-size: 13px; color: var(--n-700);">${data.estimated_cost}</div>`;
-        html += '</div>';
-      }
-      
-      if (data.pros && data.pros.length > 0) {
-        html += '<div class="arch-section">';
-        html += '<div class="arch-section-title">优势</div>';
-        html += '<ul class="arch-list arch-pros">';
-        data.pros.forEach(pro => {
-          html += `<li>${pro}</li>`;
-        });
-        html += '</ul></div>';
-      }
-      
-      if (data.cons && data.cons.length > 0) {
-        html += '<div class="arch-section">';
-        html += '<div class="arch-section-title">劣势</div>';
-        html += '<ul class="arch-list arch-cons">';
-        data.cons.forEach(con => {
-          html += `<li>${con}</li>`;
-        });
-        html += '</ul></div>';
-      }
-      
-      html += '</div>';
-      resultContent.innerHTML = html;
-    } else {
-      alert(`推荐失败: ${result.msg}`);
-    }
-  });
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <alert-guide type="info" title="架构设计要考虑扩展性">
+        当前方案基于当前规模，但安全设备会持续增加。建议：预留30%的采集容量，选择支持水平扩展的架构(如Kafka分层)，避免未来重构。
+      </alert-guide>
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><Share /></el-icon> 架构推荐</div>
+            <div class="g-card-desc">根据企业规模和设备情况，推荐最优日志采集架构方案</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillExample">填充示例</el-button>
+        </div>
+
+        <el-form label-position="top" size="default">
+          <el-form-item label="企业规模">
+            <el-radio-group v-model="scale">
+              <el-radio-button v-for="s in scaleOptions" :key="s.value" :value="s.value">{{ s.label }}</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="安全设备数量">
+            <el-input-number v-model="deviceCount" :min="1" :max="10000" />
+          </el-form-item>
+          <el-form-item label="设备类型">
+            <el-select v-model="deviceTypes" multiple placeholder="选择涉及的设备类型" style="width:100%">
+              <el-option v-for="d in deviceOptions" :key="d" :label="d" :value="d" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+
+        <div class="g-actions">
+          <el-button type="primary" @click="submit" :loading="loading">推荐架构</el-button>
+        </div>
+      </div>
+
+      <div v-if="result" class="g-card slide">
+        <div class="g-card-header">
+          <div class="g-card-title"><el-icon><Share /></el-icon> 架构方案</div>
+        </div>
+
+        <div v-if="result.arch_name" style="font-weight:600;font-size:15px;margin-bottom:12px">{{ result.arch_name }}</div>
+        <div v-if="result.description" style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">{{ result.description }}</div>
+
+        <div v-if="result.topology" class="topology-container" style="margin-bottom:16px">
+          <pre style="font-family:var(--font-mono);font-size:12px;text-align:left;color:var(--text-secondary)">{{ result.topology }}</pre>
+        </div>
+
+        <div v-if="result.components && result.components.length" style="margin-bottom:16px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">组件清单</div>
+          <el-table :data="result.components" border size="small">
+            <el-table-column prop="name" label="组件" width="150" />
+            <el-table-column prop="role" label="职责" />
+            <el-table-column prop="recommendation" label="推荐选型" width="180" />
+          </el-table>
+        </div>
+
+        <result-guide content="以上为推荐的日志采集架构方案。拓扑图展示了数据流向，组件清单列出了各层所需设备。可根据实际环境调整。" />
+      </div>
+    </div>
+  `,
 };

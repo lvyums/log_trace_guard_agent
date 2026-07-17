@@ -1,112 +1,99 @@
-/**
- * 故障诊断页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块二 · 故障诊断 — 诊断日志采集中常见故障
+   ============================================ */
 
-window.Pages['fault'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">故障诊断</h1>
-    <p class="main-subtitle">多维度联合诊断日志采集故障</p>
-  </div>
-
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">故障症状</label>
-      <textarea id="fault-symptom" class="input" placeholder="描述故障现象...&#10;&#10;示例: SSH连接超时，无法登录服务器" style="min-height: 80px;"></textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">设备类型（可选）</label>
-      <select id="fault-type" class="input">
-        <option value="">自动识别</option>
-        <option value="server">服务器</option>
-        <option value="firewall">防火墙</option>
-        <option value="router">路由器</option>
-        <option value="db">数据库</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">错误日志（可选）</label>
-      <textarea id="fault-log" class="input" placeholder="粘贴错误日志片段..." style="min-height: 60px; font-family: var(--font-code); font-size: 11px;"></textarea>
-    </div>
-    <button id="fault-btn" class="btn btn-primary">诊断故障</button>
-  </div>
-
-  <div id="fault-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">诊断结果</span>
-    </div>
-    <div id="fault-result-content"></div>
-  </div>
-`;
-
-window.PageInit['fault'] = () => {
-  const symptomInput = document.getElementById('fault-symptom');
-  const typeSelect = document.getElementById('fault-type');
-  const logInput = document.getElementById('fault-log');
-  const btn = document.getElementById('fault-btn');
-  const resultArea = document.getElementById('fault-result');
-  const resultContent = document.getElementById('fault-result-content');
-
-  btn.addEventListener('click', async () => {
-    const symptom = symptomInput.value.trim();
-    const deviceType = typeSelect.value || null;
-    const errorLog = logInput.value.trim() || null;
-
-    if (!symptom) {
-      alert('请输入故障症状');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = '诊断中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.logCollect.diagnose(symptom, deviceType, null, errorLog);
-
-    btn.disabled = false;
-    btn.textContent = '诊断故障';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      
-      let html = '<div class="result-card">';
-      html += `<div class="result-row"><span class="result-label">故障类型</span><span class="result-value"><span class="badge badge-info">${data.fault_type}</span></span></div>`;
-      html += `<div class="result-row"><span class="result-label">严重程度</span><span class="result-value">${data.severity || '未知'}</span></div>`;
-      html += `<div class="result-row"><span class="result-label">匹配度</span><span class="result-value">${data.match_score || 0}%</span></div>`;
-      
-      if (data.possible_causes && data.possible_causes.length > 0) {
-        html += '<div style="margin-top: 16px;"><div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">可能原因</div>';
-        html += '<ol style="margin: 0; padding-left: 16px; font-size: 13px;">';
-        data.possible_causes.forEach(cause => {
-          html += `<li style="margin-bottom: 4px;">${cause}</li>`;
-        });
-        html += '</ol></div>';
+const LogCollectFault = {
+  name: 'LogCollectFault',
+  props: { mode: String },
+  data() {
+    return {
+      symptom: '',
+      deviceType: '',
+      loading: false,
+      result: null,
+      deviceOptions: APP_CONFIG.sampleData.deviceTypes,
+    };
+  },
+  methods: {
+    fillExample() {
+      this.symptom = '防火墙syslog日志采集不通，设备端已配置发送到10.0.0.100:514，但日志服务器未收到任何数据';
+      this.deviceType = 'firewall';
+    },
+    async submit() {
+      if (!this.symptom.trim()) {
+        ElementPlus.ElMessageBox.alert('请描述故障现象', '提示', { type: 'warning' });
+        return;
       }
-      
-      if (data.fix_steps && data.fix_steps.length > 0) {
-        html += '<div style="margin-top: 16px;"><div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">修复步骤</div>';
-        html += '<ol style="margin: 0; padding-left: 16px; font-size: 13px;">';
-        data.fix_steps.forEach(step => {
-          html += `<li style="margin-bottom: 4px;">${step}</li>`;
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.logCollect.fault({
+          symptom: this.symptom,
+          device_type: this.deviceType,
         });
-        html += '</ol></div>';
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
       }
-      
-      if (data.prevention && data.prevention.length > 0) {
-        html += '<div style="margin-top: 16px;"><div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">预防措施</div>';
-        html += '<ul style="margin: 0; padding-left: 16px; font-size: 13px; color: var(--n-600);">';
-        data.prevention.forEach(item => {
-          html += `<li style="margin-bottom: 4px;">${item}</li>`;
-        });
-        html += '</ul></div>';
-      }
-      
-      html += '</div>';
-      resultContent.innerHTML = html;
-    } else {
-      alert(`诊断失败: ${result.msg}`);
-    }
-  });
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <div style="padding:12px 16px;border-radius:6px;background:rgba(255,197,61,0.1);border:1px solid rgba(255,197,61,0.25);color:#B8860B;font-size:13px;margin-bottom:16px">
+        <strong>故障诊断前先确认基础条件</strong><br>
+        <span style="margin-top:4px;display:block">80%的采集故障是基础问题：①网络不通( ping目标IP ) ②端口未开放( telnet IP 514 ) ③防火墙拦截( 检查ACL )。先排除这三项再使用诊断工具。</span>
+      </div>
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><Warning /></el-icon> 故障诊断</div>
+            <div class="g-card-desc">描述日志采集中的故障现象，AI诊断原因并给出修复方案</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillExample">填充示例</el-button>
+        </div>
+        <el-input v-model="symptom" type="textarea" :rows="4" placeholder="描述故障现象，如：防火墙日志采集不通..."
+                  :disabled="loading" />
+        <div class="g-input-guide">
+          <el-icon><InfoFilled /></el-icon>
+          <span>描述越详细诊断越准确，建议包含：设备类型、协议、症状表现</span>
+        </div>
+        <div style="margin-top:12px">
+          <el-select v-model="deviceType" placeholder="设备类型（可选）" clearable size="small" style="width:200px">
+            <el-option v-for="d in deviceOptions" :key="d" :label="d" :value="d" />
+          </el-select>
+        </div>
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" @click="submit" :loading="loading">诊断</el-button>
+        </div>
+      </div>
+
+      <div v-if="result" class="g-card slide">
+        <div class="g-card-header">
+          <div class="g-card-title"><el-icon><FirstAidKit /></el-icon> 诊断结果</div>
+        </div>
+
+        <div v-if="result.possible_causes" style="margin-bottom:16px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">可能原因</div>
+          <div v-for="(cause, i) in result.possible_causes" :key="i" class="g-alert g-alert--warning" style="margin-bottom:8px">
+            <span>{{ i + 1 }}. {{ cause }}</span>
+          </div>
+        </div>
+
+        <div v-if="result.fix_steps">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">修复步骤</div>
+          <code-block :code="typeof result.fix_steps === 'string' ? result.fix_steps : JSON.stringify(result.fix_steps, null, 2)" lang="bash" />
+        </div>
+
+        <knowledge-panel title="故障排查知识">
+          <p>日志采集中常见故障包括：网络不通、端口未监听、防火墙策略拦截、日志格式不匹配、磁盘空间不足等。建议按网络层→传输层→应用层的顺序逐层排查。</p>
+        </knowledge-panel>
+      </div>
+    </div>
+  `,
 };

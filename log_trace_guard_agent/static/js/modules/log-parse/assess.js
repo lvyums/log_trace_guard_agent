@@ -1,110 +1,88 @@
-/**
- * 风险研判页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块一 · 风险研判 — 对日志内容进行安全风险评估
+   ============================================ */
 
-window.Pages['assess'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">风险研判</h1>
-    <p class="main-subtitle">分析日志中的安全风险</p>
-  </div>
-
-  <div class="card">
-    <div class="log-input-area">
-      <textarea id="assess-input" class="input" placeholder="粘贴日志内容...&#10;&#10;示例: Jul 15 11:30:01 server sshd[12345]: Failed password for root from 192.168.1.100 port 22 ssh2"></textarea>
-    </div>
-    <div class="log-input-actions">
-      <button id="assess-btn" class="btn btn-primary">分析风险</button>
-      <button id="assess-clear" class="btn btn-ghost">清空</button>
-    </div>
-  </div>
-
-  <div id="assess-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">风险研判结果</span>
-    </div>
-    <div id="assess-result-content"></div>
-  </div>
-`;
-
-window.PageInit['assess'] = () => {
-  const input = document.getElementById('assess-input');
-  const btn = document.getElementById('assess-btn');
-  const clearBtn = document.getElementById('assess-clear');
-  const resultArea = document.getElementById('assess-result');
-  const resultContent = document.getElementById('assess-result-content');
-
-  btn.addEventListener('click', async () => {
-    const logLine = input.value.trim();
-    if (!logLine) {
-      alert('请输入日志内容');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = '分析中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.logParse.assess(logLine);
-
-    btn.disabled = false;
-    btn.textContent = '分析风险';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      
-      // 解析风险等级
-      const riskLevel = data.risk_level || 'P3_噪音';
-      const riskClass = riskLevel.includes('高危') ? 'critical' : 
-                        riskLevel.includes('中危') ? 'high' : 
-                        riskLevel.includes('低危') ? 'medium' : 'noise';
-      
-      resultContent.innerHTML = `
-        <div class="risk-card ${riskClass}">
-          <div class="risk-header">
-            <span class="risk-level">${riskLevel}</span>
-            <span class="badge badge-${riskClass === 'critical' ? 'critical' : riskClass === 'high' ? 'high' : riskClass === 'medium' ? 'medium' : 'low'}">${riskLevel}</span>
-            <span class="risk-confidence">置信度: ${data.confidence}%</span>
+const LogParseAssess = {
+  name: 'LogParseAssess',
+  props: { mode: String },
+  data() {
+    return {
+      input: '',
+      deviceType: '',
+      loading: false,
+      result: null,
+      deviceOptions: APP_CONFIG.sampleData.deviceTypes,
+    };
+  },
+  methods: {
+    fillSample() {
+      this.input = APP_CONFIG.sampleData.logs[0];
+      this.deviceType = 'ssh';
+    },
+    async submit() {
+      if (!this.input.trim()) {
+        ElementPlus.ElMessageBox.alert('请输入日志内容', '提示', { type: 'warning' });
+        return;
+      }
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.logParse.assess({
+          log_text: this.input,
+          device_type: this.deviceType || undefined,
+        });
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
+      }
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <alert-guide type="warning" title="风险研判需要结合上下文">
+        单独一条日志的风险判断有局限性。建议：先在「日志识别」中确认设备类型，再在「结构化解析」中提取关键字段，最后在这里做综合研判。多维度输入能显著提高准确率。
+      </alert-guide>
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><Warning /></el-icon> 风险研判</div>
+            <div class="g-card-desc">对日志内容进行安全风险评估，标注风险等级与处置建议</div>
           </div>
-          <div class="risk-details">
-            ${data.attack_type ? `
-            <div class="risk-detail-row">
-              <span class="risk-detail-label">攻击类型</span>
-              <span class="risk-detail-value">${data.attack_type}</span>
-            </div>` : ''}
-            ${data.risk_desc ? `
-            <div class="risk-detail-row">
-              <span class="risk-detail-label">风险描述</span>
-              <span class="risk-detail-value">${data.risk_desc}</span>
-            </div>` : ''}
-            ${data.match_rule_ids && data.match_rule_ids.length > 0 ? `
-            <div class="risk-detail-row">
-              <span class="risk-detail-label">命中规则</span>
-              <span class="risk-detail-value">${data.match_rule_ids.join(', ')}</span>
-            </div>` : ''}
-            ${data.suggestion ? `
-            <div class="risk-detail-row">
-              <span class="risk-detail-label">处置建议</span>
-              <span class="risk-detail-value">${data.suggestion}</span>
-            </div>` : ''}
-          </div>
+          <el-button size="small" type="primary" plain @click="fillSample">填充测试日志</el-button>
         </div>
-      `;
-    } else {
-      alert(`分析失败: ${result.msg}`);
-    }
-  });
+        <el-input v-model="input" type="textarea" :rows="4" placeholder="粘贴待研判的日志..."
+                  :disabled="loading" @keyup.ctrl.enter="submit" />
+        <div class="g-input-guide">
+          <el-icon><InfoFilled /></el-icon>
+          <span>可选指定设备类型以提高研判精度</span>
+        </div>
+        <div style="margin-top:12px">
+          <el-select v-model="deviceType" placeholder="设备类型（可选）" clearable size="small" style="width:200px">
+            <el-option v-for="d in deviceOptions" :key="d" :label="d" :value="d" />
+          </el-select>
+        </div>
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" @click="submit" :loading="loading">风险研判</el-button>
+        </div>
+      </div>
 
-  clearBtn.addEventListener('click', () => {
-    input.value = '';
-    resultArea.style.display = 'none';
-  });
-
-  input.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'Enter') {
-      btn.click();
-    }
-  });
+      <div v-if="result" class="slide">
+        <risk-card
+          :title="result.risk_title || '风险研判结果'"
+          :level="result.risk_level || 'normal'"
+          :confidence="result.confidence"
+          :source="result.match_source"
+          :details="result.details"
+          :disposition="result.disposition"
+        />
+        <result-guide :content="result.disposition || APP_CONFIG.guidance.resultGuides.logParse" />
+      </div>
+    </div>
+  `,
 };

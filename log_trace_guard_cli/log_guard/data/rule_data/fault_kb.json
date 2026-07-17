@@ -1,0 +1,262 @@
+{
+  "description": "采集故障诊断知识库，支持热加载和后台新增",
+  "version": "1.1.0",
+  "entries": {
+    "ssh_connect_failure": {
+      "fault_type": "SSH连接失败",
+      "fault_desc": "SSH远程连接超时或被拒绝，无法登录服务器",
+      "severity": "high",
+      "keywords": ["ssh", "超时", "连接失败", "连不上", "无法登录", "timeout",
+                    "connection refused", "拒绝连接", "登录不上", "ssh连接"],
+      "protocol_hints": ["ssh"],
+      "possible_causes": [
+        "SSH服务未启动或崩溃",
+        "防火墙策略阻止了SSH端口（默认22）",
+        "网络链路不通或路由错误",
+        "SSH密钥认证失败或凭据错误",
+        "服务器负载过高导致连接超时",
+        "SSH服务配置了IP白名单限制"
+      ],
+      "fix_steps": [
+        "1. 检查SSH服务状态: systemctl status sshd",
+        "2. 检查端口监听: ss -tlnp | grep :22",
+        "3. 测试网络连通性: ping <target_ip>",
+        "4. 检查防火墙策略: iptables -L -n | grep 22",
+        "5. 查看SSH日志: tail -100 /var/log/auth.log",
+        "6. 检查SSH配置: /etc/ssh/sshd_config",
+        "7. 重启SSH服务: systemctl restart sshd"
+      ],
+      "prevention": [
+        "配置SSH keepalive防止超时断开",
+        "使用堡垒机统一入口管理SSH访问",
+        "配置SSH登录监控告警"
+      ]
+    },
+    "network_timeout": {
+      "fault_type": "网络超时",
+      "fault_desc": "网络连接超时，设备之间无法正常通信",
+      "severity": "high",
+      "keywords": ["超时", "timeout", "ping不通", "网络不通", "连接不上",
+                    "断连", "丢包", "延迟高", "网络延迟", "time out"],
+      "protocol_hints": ["tcp", "udp", "syslog"],
+      "possible_causes": [
+        "网络链路中断或光缆故障",
+        "交换机/路由器配置错误",
+        "带宽不足导致拥塞丢包",
+        "路由环路或MTU配置不当",
+        "NAT/防火墙规则限制",
+        "DNS解析失败"
+      ],
+      "fix_steps": [
+        "1. 测试基础连通性: ping -c 10 <target_ip>",
+        "2. 检查路由表: traceroute <target_ip>",
+        "3. 检查带宽使用率: iftop / nload",
+        "4. 检查防火墙规则: iptables -L -n -v",
+        "5. 检查DNS解析: nslookup <hostname>",
+        "6. 查看系统日志: dmesg | tail -50",
+        "7. 联系网络管理员排查链路层"
+      ],
+      "prevention": [
+        "配置网络监控（Zabbix / Prometheus）",
+        "建设冗余链路（主备切换）",
+        "配置网络质量告警阈值"
+      ]
+    },
+    "ssh_auth_failure": {
+      "fault_type": "SSH认证失败",
+      "fault_desc": "SSH登录时认证失败，密码或密钥验证不通过",
+      "severity": "medium",
+      "keywords": ["认证失败", "密码错误", "密钥不对", "auth fail",
+                    "permission denied", "publickey", "authentication failure",
+                    "ssh认证", "登录失败", "认证拒绝"],
+      "protocol_hints": ["ssh"],
+      "possible_causes": [
+        "用户名或密码错误",
+        "SSH密钥未添加到目标服务器的 authorized_keys",
+        "密钥权限配置不当（需为600）",
+        "SSH服务端禁用了密码认证（PasswordAuthentication no）",
+        "SSH服务端禁用了密钥认证（PubkeyAuthentication no）",
+        "账号被锁定或过期"
+      ],
+      "fix_steps": [
+        "1. 确认用户名和密码正确",
+        "2. 检查SSH密钥: ssh-keygen -lf ~/.ssh/id_rsa.pub",
+        "3. 确认公钥已添加到目标服务器: cat ~/.ssh/authorized_keys",
+        "4. 检查密钥权限: chmod 600 ~/.ssh/authorized_keys",
+        "5. 检查SSH服务认证配置: grep -E 'PasswordAuthentication|PubkeyAuthentication' /etc/ssh/sshd_config",
+        "6. 检查账号状态: passwd -S <username>",
+        "7. 查看认证日志: tail -50 /var/log/auth.log"
+      ],
+      "prevention": [
+        "使用SSH证书认证替代密码认证",
+        "定期轮换SSH密钥",
+        "配置失败登录锁定策略（fail2ban）"
+      ]
+    },
+    "port_unreachable": {
+      "fault_type": "端口无法访问",
+      "fault_desc": "目标端口不可达，服务未监听或防火墙拦截",
+      "severity": "high",
+      "keywords": ["端口不通", "端口拒绝", "refused", "无法访问端口",
+                    "端口未监听", "端口关闭", "connect refused",
+                    "connection refused", "端口被墙"],
+      "protocol_hints": ["tcp", "udp"],
+      "possible_causes": [
+        "目标服务未启动或崩溃",
+        "服务监听的端口与实际请求端口不一致",
+        "防火墙/安全组规则阻止了端口",
+        "SELinux/AppArmor阻止了端口绑定",
+        "服务绑定到了127.0.0.1（仅本地访问）而非0.0.0.0"
+      ],
+      "fix_steps": [
+        "1. 检查服务监听端口: ss -tlnp | grep <port>",
+        "2. 确认服务状态: systemctl status <service>",
+        "3. 检查防火墙: iptables -L -n | grep <port>",
+        "4. 检查服务绑定地址: netstat -anp | grep <port>",
+        "5. 查看服务日志: journalctl -u <service> -n 50",
+        "6. 测试端口连通性: nc -zv <target_ip> <port>",
+        "7. 检查SELinux: getenforce; ausearch -m avc -ts recent"
+      ],
+      "prevention": [
+        "配置服务端口监控告警",
+        "使用systemd自动重启服务",
+        "定期审计防火墙规则"
+      ]
+    },
+    "log_lost": {
+      "fault_type": "日志丢失",
+      "fault_desc": "采集到的日志数量明显少于设备实际产生的日志量",
+      "severity": "high",
+      "keywords": ["丢失", "日志少", "数量不对", "缺日志", "漏日志", "丢包", "不全", "少了"],
+      "protocol_hints": ["syslog", "udp"],
+      "possible_causes": [
+        "网络链路不稳定，UDP 传输丢包",
+        "Syslog 服务端缓冲区溢出",
+        "采集代理配置的过滤规则过于严格",
+        "设备端日志推送功能未开启或配置错误",
+        "磁盘空间不足导致日志被截断"
+      ],
+      "fix_steps": [
+        "1. 检查网络连通性: ping / traceroute 采集服务器",
+        "2. 检查 Syslog 服务端状态: systemctl status rsyslog",
+        "3. 查看 Syslog 缓冲区配置: /etc/rsyslog.conf 中 $WorkDirectory 和 $MainMsgQueueSize",
+        "4. 检查采集代理过滤规则是否误过滤",
+        "5. 确认设备端日志推送已开启",
+        "6. 检查磁盘空间: df -h",
+        "7. 将 UDP 改为 TCP 传输保证可靠性"
+      ],
+      "prevention": [
+        "生产环境建议使用 TCP 协议",
+        "配置 Syslog 缓冲区大小 >= 10000 条",
+        "定期检查磁盘空间使用率",
+        "配置日志采集监控告警"
+      ]
+    },
+    "format_error": {
+      "fault_type": "格式错乱",
+      "fault_desc": "采集到的日志格式异常，无法正确解析",
+      "severity": "medium",
+      "keywords": ["格式错", "乱码", "解析失败", "无法解析", "格式异常", "编码", "乱码"],
+      "protocol_hints": [],
+      "possible_causes": [
+        "设备日志格式与解析规则不匹配",
+        "多台设备日志格式不统一",
+        "日志传输过程中编码被破坏",
+        "Syslog 前缀被截断",
+        "自定义日志格式未配置解析规则"
+      ],
+      "fix_steps": [
+        "1. 获取原始日志样本，确认实际格式",
+        "2. 对比设备文档中的标准日志格式",
+        "3. 检查解析规则配置（Grokv2 / 正则）",
+        "4. 确认字符编码配置（UTF-8）",
+        "5. 更新或新增解析规则",
+        "6. 验证解析结果"
+      ],
+      "prevention": [
+        "统一设备日志格式标准",
+        "部署前验证日志格式兼容性",
+        "配置格式校验告警"
+      ]
+    },
+    "time_offset": {
+      "fault_type": "时间错位",
+      "fault_desc": "采集到的日志时间戳与实际发生时间不一致",
+      "severity": "medium",
+      "keywords": ["时间错", "时差", "时间不对", "时区", "ntp", "时间戳错", "时间偏移"],
+      "protocol_hints": [],
+      "possible_causes": [
+        "设备时钟未同步 NTP",
+        "时区配置不一致",
+        "日志传输延迟",
+        "采集服务器时钟偏差"
+      ],
+      "fix_steps": [
+        "1. 检查设备 NTP 配置: ntpq -p",
+        "2. 确认设备时区设置",
+        "3. 检查采集服务器时钟",
+        "4. 配置统一 NTP 服务器",
+        "5. 同步所有设备时钟"
+      ],
+      "prevention": [
+        "所有设备配置统一 NTP 服务器",
+        "定期校验时钟偏差",
+        "配置时钟偏差告警阈值"
+      ]
+    },
+    "transport_interrupt": {
+      "fault_type": "传输中断",
+      "fault_desc": "日志采集突然中断，无新日志入账",
+      "severity": "high",
+      "keywords": ["中断", "断开", "停止采集", "没有日志", "采集停", "进程挂", "连不上", "超时"],
+      "protocol_hints": ["syslog", "agent"],
+      "possible_causes": [
+        "采集代理进程崩溃",
+        "网络链路中断",
+        "Syslog 服务端宕机",
+        "防火墙策略变更阻断了采集端口",
+        "设备重启后日志推送未恢复"
+      ],
+      "fix_steps": [
+        "1. 检查采集代理进程状态: ps aux | grep filebeat",
+        "2. 查看采集代理日志: /var/log/filebeat/filebeat.log",
+        "3. 检查网络连通性",
+        "4. 检查 Syslog 服务端状态",
+        "5. 检查防火墙策略: iptables -L -n",
+        "6. 重启采集代理: systemctl restart filebeat"
+      ],
+      "prevention": [
+        "配置采集代理进程守护（systemd / supervisor）",
+        "配置采集中断监控告警",
+        "防火墙策略变更时同步更新采集端口白名单"
+      ]
+    },
+    "storage_failure": {
+      "fault_type": "无法入库",
+      "fault_desc": "日志采集成功但无法写入目标存储（ES/Kafka/数据库）",
+      "severity": "high",
+      "keywords": ["入库失败", "写入失败", "es报错", "kafka报错", "索引失败", "存储失败", "写不进去"],
+      "protocol_hints": [],
+      "possible_causes": [
+        "目标存储服务不可用",
+        "索引/Topic 不存在",
+        "存储空间不足",
+        "认证凭据过期",
+        "字段映射与目标存储 Schema 不匹配"
+      ],
+      "fix_steps": [
+        "1. 检查目标存储服务状态",
+        "2. 确认索引/Topic 是否存在",
+        "3. 检查存储空间: GET _cat/indices",
+        "4. 验证认证凭据有效性",
+        "5. 检查字段映射配置",
+        "6. 查看采集代理输出日志"
+      ],
+      "prevention": [
+        "配置存储空间监控告警",
+        "定期轮转索引并清理过期数据",
+        "配置认证凭据自动续期"
+      ]
+    }
+  }
+}

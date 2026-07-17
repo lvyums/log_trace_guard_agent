@@ -1,116 +1,76 @@
-/**
- * ES 查询生成页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块三 · ES查询生成 — 生成Elasticsearch查询语句
+   ============================================ */
 
-window.Pages['es-query'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">ES 查询生成</h1>
-    <p class="main-subtitle">根据自然语言生成 Elasticsearch 查询语句</p>
-  </div>
-
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">搜索场景</label>
-      <input id="es-scenario" class="input" placeholder="如: 查询过去1小时SSH暴力破解日志">
-    </div>
-    <div class="form-group">
-      <label class="form-label">索引模式（可选）</label>
-      <input id="es-index" class="input" placeholder="如: ssh-*, log-*">
-    </div>
-    <div class="form-group">
-      <label class="form-label">时间范围（可选）</label>
-      <select id="es-time" class="input">
-        <option value="">自动</option>
-        <option value="1h">1小时</option>
-        <option value="24h">24小时</option>
-        <option value="7d">7天</option>
-        <option value="30d">30天</option>
-      </select>
-    </div>
-    <button id="es-btn" class="btn btn-primary">生成查询</button>
-  </div>
-
-  <div id="es-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">生成结果</span>
-      <button id="es-copy" class="btn btn-sm btn-secondary">复制查询</button>
-    </div>
-    <div id="es-result-content"></div>
-  </div>
-`;
-
-window.PageInit['es-query'] = () => {
-  const scenarioInput = document.getElementById('es-scenario');
-  const indexInput = document.getElementById('es-index');
-  const timeSelect = document.getElementById('es-time');
-  const btn = document.getElementById('es-btn');
-  const copyBtn = document.getElementById('es-copy');
-  const resultArea = document.getElementById('es-result');
-  const resultContent = document.getElementById('es-result-content');
-
-  let generatedQuery = '';
-
-  btn.addEventListener('click', async () => {
-    const scenario = scenarioInput.value.trim();
-    const indexPattern = indexInput.value.trim();
-    const timeRange = timeSelect.value;
-
-    if (!scenario) {
-      alert('请输入搜索场景');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = '生成中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.scriptGen.esQuery(scenario, indexPattern, timeRange);
-
-    btn.disabled = false;
-    btn.textContent = '生成查询';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      generatedQuery = data.query || '';
-      
-      let html = '';
-      
-      if (generatedQuery) {
-        html += '<div class="code-block">';
-        html += '<div class="code-block-header">';
-        html += '<span class="code-block-lang">Elasticsearch DSL</span>';
-        html += '</div>';
-        html += `<pre>${escapeHtml(generatedQuery)}</pre>`;
-        html += '</div>';
+const ScriptGenEsquery = {
+  name: 'ScriptGenEsquery',
+  props: { mode: String },
+  data() {
+    return {
+      description: '',
+      indexPattern: '',
+      loading: false,
+      result: null,
+    };
+  },
+  methods: {
+    fillSample() {
+      this.description = '查询最近1小时内来源IP为192.168.1.x网段的SSH登录失败事件，按时间倒序，返回前50条';
+      this.indexPattern = 'logstash-ssh-*';
+    },
+    async submit() {
+      if (!this.description.trim()) {
+        ElementPlus.ElMessageBox.alert('请描述查询需求', '提示', { type: 'warning' });
+        return;
       }
-      
-      if (data.explanation) {
-        html += '<div style="margin-top: 16px; padding: 12px; background: var(--n-100); border-radius: 6px; font-size: 13px;">';
-        html += `<div style="font-weight: 600; margin-bottom: 8px;">查询逻辑说明</div>`;
-        html += `<div style="color: var(--n-600);">${data.explanation}</div>`;
-        html += '</div>';
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.scriptGen.esQuery({
+          description: this.description,
+          index_pattern: this.indexPattern,
+        });
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
       }
-      
-      resultContent.innerHTML = html;
-    } else {
-      alert(`生成失败: ${result.msg}`);
-    }
-  });
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <alert-guide type="info" title="ES查询用于安全事件检索">
+        生成的DSL可直接在Kibana Dev Tools中执行。如果返回结果太多，建议添加时间范围过滤和size限制。大规模检索时使用scroll API避免超时。
+      </alert-guide>
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><Search /></el-icon> ES 查询生成</div>
+            <div class="g-card-desc">用自然语言描述查询需求，自动生成 Elasticsearch 查询语句</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillSample">填充示例</el-button>
+        </div>
+        <el-input v-model="description" type="textarea" :rows="3" placeholder="用自然语言描述你要查询的内容..." :disabled="loading" />
+        <div class="g-input-guide">
+          <el-icon><InfoFilled /></el-icon>
+          <span>描述越详细生成越精准，可包含：时间范围、字段条件、排序方式</span>
+        </div>
+        <el-input v-model="indexPattern" placeholder="索引模式（可选）：如 logstash-*" style="margin-top:12px" :disabled="loading" />
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" @click="submit" :loading="loading">生成查询</el-button>
+        </div>
+      </div>
 
-  copyBtn.addEventListener('click', () => {
-    if (generatedQuery) {
-      navigator.clipboard.writeText(generatedQuery);
-      copyBtn.textContent = '已复制';
-      setTimeout(() => { copyBtn.textContent = '复制查询'; }, 2000);
-    }
-  });
+      <div v-if="result" class="g-card slide">
+        <div class="g-card-title" style="margin-bottom:12px"><el-icon><Monitor /></el-icon> ES 查询语句</div>
+        <code-block :code="result.query || result.dsl" lang="json" title="Elasticsearch DSL" />
+        <result-guide content="以上为生成的ES查询语句，可直接复制到Kibana Dev Tools或API中执行。如需调整请修改描述后重新生成。" />
+      </div>
+    </div>
+  `,
 };
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}

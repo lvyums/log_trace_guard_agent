@@ -1,0 +1,134 @@
+{
+  "description": "采集配置模板池，按协议类型统一管理，支持变量动态渲染",
+  "version": "1.0.0",
+  "templates": {
+    "syslog": {
+      "small": {
+        "protocol": "syslog",
+        "port": 514,
+        "transport": "udp",
+        "format": "rfc3164",
+        "server_config": "/etc/rsyslog.d/50-default.conf",
+        "steps": [
+          "1. 设备端开启 Syslog 推送功能",
+          "2. 配置 Syslog 服务器地址和端口（默认 UDP 514）",
+          "3. 选择日志格式：RFC 3164 或 RFC 5424",
+          "4. 配置日志级别和过滤规则",
+          "5. 服务端配置 Syslog 接收器（rsyslog / syslog-ng）",
+          "6. 配置日志解析规则和字段映射",
+          "7. 验证日志接收和解析结果"
+        ],
+        "notes": ["确保设备与采集服务器网络连通", "建议使用 TCP 协议保证日志不丢失"]
+      },
+      "large": {
+        "protocol": "syslog",
+        "port": 514,
+        "transport": "tcp",
+        "tls": true,
+        "format": "rfc5424",
+        "server_config": "/etc/rsyslog.d/50-default.conf",
+        "steps": [
+          "1. 设备端开启 Syslog 推送功能",
+          "2. 配置 Syslog 服务器地址和端口（TCP 514）",
+          "3. 选择日志格式：RFC 5424",
+          "3.1 配置 TLS 加密传输",
+          "4. 配置日志级别和过滤规则",
+          "5. 服务端配置 Syslog 接收器（rsyslog / syslog-ng）",
+          "6. 配置日志解析规则和字段映射",
+          "7. 验证日志接收和解析结果"
+        ],
+        "notes": ["生产环境必须使用 TCP + TLS", "配置缓冲区 >= 10000 条"]
+      }
+    },
+    "file": {
+      "small": {
+        "protocol": "file",
+        "log_paths": ["/var/log/syslog", "/var/log/nginx/access.log"],
+        "collector": "filebeat",
+        "multiline": true,
+        "close_inactive": "5m",
+        "steps": [
+          "1. 确认日志文件路径和轮转策略",
+          "2. 部署 Filebeat / Fluentd 采集代理",
+          "3. 配置日志文件路径和采集规则",
+          "4. 配置输出目标（ES / Kafka / 本地存储）",
+          "5. 启动采集代理并验证日志流转",
+          "6. 配置日志解析规则（Grokv2 / 正则）"
+        ],
+        "notes": ["注意日志文件轮转导致的采集断层", "建议配置 multiline 处理堆栈日志"]
+      },
+      "large": {
+        "protocol": "file",
+        "log_paths": ["/var/log/syslog", "/var/log/nginx/access.log"],
+        "collector": "filebeat",
+        "output": "kafka",
+        "multiline": true,
+        "close_inactive": "5m",
+        "steps": [
+          "1. 确认日志文件路径和轮转策略",
+          "2. 部署 Filebeat 采集代理",
+          "3. 配置日志文件路径和采集规则",
+          "4. 配置输出到 Kafka",
+          "5. 启动采集代理并验证日志流转",
+          "6. 配置日志解析规则（Grokv2 / 正则）",
+          "7. 配置 Kafka 缓冲层削峰填谷"
+        ],
+        "notes": ["Kafka Topic 建议按设备类型分区", "配置消费者组保证负载均衡"]
+      }
+    },
+    "db_sync": {
+      "small": {
+        "protocol": "db_sync",
+        "method": "file",
+        "audit_log_path": "/var/log/mysql/audit.log",
+        "steps": [
+          "1. 开启数据库审计日志功能",
+          "2. 配置审计日志输出方式（文件 / 表 / Syslog）",
+          "3. 选择采集方式：直连查询 / 文件采集 / CDC",
+          "4. 部署采集代理并配置连接信息",
+          "5. 配置日志解析规则",
+          "6. 验证审计日志完整性"
+        ],
+        "notes": ["确保审计日志不影响数据库性能", "建议配置审计日志独立存储路径"]
+      }
+    },
+    "agent": {
+      "small": {
+        "protocol": "agent",
+        "collector": "generic_agent",
+        "forward_to": "log_server:514",
+        "steps": [
+          "1. 确认设备支持的日志导出方式",
+          "2. 选择采集代理类型（专用 Agent / Syslog / API）",
+          "3. 安装并配置采集代理",
+          "4. 配置日志转发目标",
+          "5. 配置日志解析规则",
+          "6. 验证日志采集完整性"
+        ],
+        "notes": ["不同厂商设备采集方式差异较大", "建议优先使用标准 Syslog 协议"]
+      }
+    }
+  },
+  "log_features": {
+    "firewall": {
+      "keywords": ["ufw", "pf:", "kernel:", "iptables", "firewall", "deny.*src=", "block.*from"],
+      "recommended_protocol": "syslog"
+    },
+    "waf": {
+      "keywords": ["waf", "attack detected", "modsecurity", "violation", "blocked.*attack"],
+      "recommended_protocol": "syslog"
+    },
+    "server": {
+      "keywords": ["sshd", "sudo", "systemd", "cron"],
+      "recommended_protocol": "file"
+    },
+    "db": {
+      "keywords": ["mysql", "postgresql", "query", "select", "insert", "connection received"],
+      "recommended_protocol": "file"
+    },
+    "web": {
+      "keywords": ["http/1.", "get /", "post /", "mozilla", "nginx", "apache"],
+      "recommended_protocol": "file"
+    }
+  }
+}

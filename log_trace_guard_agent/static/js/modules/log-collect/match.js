@@ -1,115 +1,98 @@
-/**
- * 设备匹配页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块二 · 设备匹配 — 识别安全设备型号与采集协议
+   ============================================ */
 
-window.Pages['match'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">设备匹配</h1>
-    <p class="main-subtitle">自动识别设备类型并推荐采集方案</p>
-  </div>
-
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">设备类型</label>
-      <select id="match-type" class="input">
-        <option value="firewall">防火墙</option>
-        <option value="waf">WAF</option>
-        <option value="ids">IDS</option>
-        <option value="router">路由器</option>
-        <option value="switch">交换机</option>
-        <option value="server">服务器</option>
-        <option value="web">Web应用</option>
-        <option value="db">数据库</option>
-        <option value="bastion">堡垒机</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">设备型号（可选）</label>
-      <input id="match-model" class="input" placeholder="如: 华为USG6000V, Cisco ASA 5500">
-    </div>
-    <div class="form-group">
-      <label class="form-label">企业规模</label>
-      <select id="match-scale" class="input">
-        <option value="small">小型（10台以下）</option>
-        <option value="medium">中型（10-100台）</option>
-        <option value="large">大型（100台以上）</option>
-      </select>
-    </div>
-    <button id="match-btn" class="btn btn-primary">匹配设备</button>
-  </div>
-
-  <div id="match-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">匹配结果</span>
-    </div>
-    <div id="match-result-content"></div>
-  </div>
-`;
-
-window.PageInit['match'] = () => {
-  const typeSelect = document.getElementById('match-type');
-  const modelInput = document.getElementById('match-model');
-  const scaleSelect = document.getElementById('match-scale');
-  const btn = document.getElementById('match-btn');
-  const resultArea = document.getElementById('match-result');
-  const resultContent = document.getElementById('match-result-content');
-
-  btn.addEventListener('click', async () => {
-    const deviceType = typeSelect.value;
-    const deviceModel = modelInput.value.trim();
-    const scale = scaleSelect.value;
-
-    btn.disabled = true;
-    btn.textContent = '匹配中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.logCollect.match(deviceType, deviceModel, scale);
-
-    btn.disabled = false;
-    btn.textContent = '匹配设备';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      
-      let html = '<div class="device-card">';
-      html += `<div class="device-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
-          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-          <line x1="8" y1="21" x2="16" y2="21"/>
-          <line x1="12" y1="17" x2="12" y2="21"/>
-        </svg>
-      </div>`;
-      html += '<div class="device-info">';
-      html += `<div class="device-name">${data.device_info?.device_type || deviceType}</div>`;
-      html += `<div class="device-meta">匹配置信度: ${data.match_confidence || 0}% | 匹配来源: ${data.match_source || '-'}</div>`;
-      html += '</div></div>';
-      
-      if (data.plan) {
-        html += '<div class="result-card" style="margin-top: 16px;">';
-        html += '<div class="result-row"><span class="result-label">采集协议</span><span class="result-value">' + (data.plan.protocol || '-') + '</span></div>';
-        html += '<div class="result-row"><span class="result-label">架构</span><span class="result-value">' + (data.plan.architecture || '-') + '</span></div>';
-        if (data.plan.steps && data.plan.steps.length > 0) {
-          html += '<div class="result-row"><span class="result-label">步骤</span><span class="result-value"><ol style="margin: 0; padding-left: 16px;">';
-          data.plan.steps.forEach(step => {
-            html += `<li style="margin-bottom: 4px;">${step}</li>`;
-          });
-          html += '</ol></span></div>';
+const LogCollectMatch = {
+  name: 'LogCollectMatch',
+  props: { mode: String },
+  data() {
+    return {
+      deviceType: '',
+      deviceModel: '',
+      loading: false,
+      result: null,
+      deviceOptions: APP_CONFIG.sampleData.deviceTypes,
+    };
+  },
+  methods: {
+    fillExample() {
+      this.deviceType = 'firewall';
+      this.deviceModel = 'Huawei USG6000';
+    },
+    async submit() {
+      if (!this.deviceType) {
+        ElementPlus.ElMessageBox.alert('请选择设备类型', '提示', { type: 'warning' });
+        return;
+      }
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.logCollect.match({
+          device_type: this.deviceType,
+          device_model: this.deviceModel,
+        });
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
         }
-        html += '</div>';
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
       }
-      
-      if (data.low_confidence_note) {
-        html += `<div style="margin-top: 12px; padding: 8px; background: rgba(252, 196, 25, 0.1); border-radius: 4px; font-size: 12px; color: var(--risk-medium);">
-          ${data.low_confidence_note}
-        </div>`;
-      }
-      
-      resultContent.innerHTML = html;
-    } else {
-      alert(`匹配失败: ${result.msg}`);
-    }
-  });
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <alert-guide type="info" title="设备匹配决定采集配置">
+        选错设备类型会导致生成的配置无法使用。如果你不确定设备类型，先用「日志识别」分析一条该设备的日志，系统会自动判断。
+      </alert-guide>
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><Monitor /></el-icon> 设备匹配</div>
+            <div class="g-card-desc">输入设备信息，自动匹配采集协议与配置方案</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillExample">填充示例</el-button>
+        </div>
+
+        <el-form label-position="top" size="default">
+          <el-form-item label="设备类型">
+            <tip-wrapper :tip="APP_CONFIG.guidance.tooltips.deviceType">
+              <el-select v-model="deviceType" placeholder="选择设备类型" style="width:100%">
+                <el-option v-for="d in deviceOptions" :key="d" :label="d" :value="d" />
+              </el-select>
+            </tip-wrapper>
+          </el-form-item>
+          <el-form-item label="设备型号（可选）">
+            <el-input v-model="deviceModel" placeholder="如: Huawei USG6000, Cisco ASA 5500" />
+          </el-form-item>
+        </el-form>
+
+        <div class="g-actions">
+          <el-button type="primary" @click="submit" :loading="loading">匹配</el-button>
+        </div>
+      </div>
+
+      <div v-if="result" class="g-card slide">
+        <div class="g-card-header">
+          <div class="g-card-title"><el-icon><Connection /></el-icon> 匹配结果</div>
+        </div>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="设备类型">{{ result.device_type }}</el-descriptions-item>
+          <el-descriptions-item label="采集协议">{{ result.protocol }}</el-descriptions-item>
+          <el-descriptions-item label="匹配置信度">{{ result.confidence ? Math.round(result.confidence * 100) + '%' : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="策略来源">{{ result.strategy_source || '工厂匹配' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div v-if="result.config_hint" style="margin-top:16px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">配置提示</div>
+          <code-block :code="result.config_hint" lang="bash" />
+        </div>
+
+        <result-guide content="设备匹配完成。请根据采集协议配置对应的日志采集方案。点击左侧菜单「采集方案」可生成完整配置。" />
+      </div>
+    </div>
+  `,
 };

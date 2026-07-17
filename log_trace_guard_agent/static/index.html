@@ -4,178 +4,121 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>日志溯源卫士智能体</title>
-  
-  <!-- CSS -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+  <!-- Element Plus -->
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.9.1/dist/index.css">
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.9.1/theme-chalk/dark/css-vars.css">
+  <!-- Custom styles -->
   <link rel="stylesheet" href="/static/css/variables.css">
   <link rel="stylesheet" href="/static/css/layout.css">
   <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/guidance.css">
   <link rel="stylesheet" href="/static/css/modules.css">
-  
-  <!-- Favicon -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+  <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body>
-  <!-- 顶栏 -->
-  <header class="header">
-    <div class="header-logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-      </svg>
-      日志溯源卫士
-    </div>
-    
-    <nav class="header-nav">
-      <a class="header-nav-item active" href="#/log-parse/identify" data-module="log-parse">日志解析</a>
-      <a class="header-nav-item" href="#/log-collect/match" data-module="log-collect">日志采集</a>
-      <a class="header-nav-item" href="#/script-gen/regex" data-module="script-gen">脚本生成</a>
-      <a class="header-nav-item" href="#/compliance/qa" data-module="compliance">合规审计</a>
-      <a class="header-nav-item" href="#/training/scenarios" data-module="training">攻防实训</a>
-    </nav>
-    
-    <div class="header-status">
-      <span class="status-dot"></span>
-      <span>服务运行中</span>
-    </div>
-  </header>
+  <div id="app">
+    <template v-if="ready">
+      <!-- 全局新手引导遮罩 -->
+      <global-tour v-if="showTour" @close="showTour = false" :mode="currentMode"></global-tour>
 
-  <div class="layout">
-    <!-- 侧边栏 -->
-    <aside class="sidebar">
-      <!-- 日志解析 -->
-      <div class="sidebar-section" data-module="log-parse">
-        <div class="sidebar-section-title">日志解析</div>
-        <a class="sidebar-item active" href="#/log-parse/identify" data-path="/log-parse/identify">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <span>日志识别</span>
-        </a>
-        <a class="sidebar-item" href="#/log-parse/parse" data-path="/log-parse/parse">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-          <span>结构化解析</span>
-        </a>
-        <a class="sidebar-item" href="#/log-parse/assess" data-path="/log-parse/assess">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>风险研判</span>
-        </a>
-        <a class="sidebar-item" href="#/log-parse/batch" data-path="/log-parse/batch">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-          <span>批量解析</span>
-        </a>
-      </div>
+      <!-- 顶部导航 -->
+      <header class="app-header" :class="{ 'is-collapsed': sidebarCollapsed }">
+        <div class="header-left">
+          <div class="header-logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="logo-icon">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <span class="logo-text">日志溯源卫士</span>
+          </div>
+          <el-button class="sidebar-toggle" :icon="sidebarCollapsed ? 'Expand' : 'Fold'" @click="toggleSidebar" circle size="small" />
+        </div>
 
-      <!-- 日志采集 -->
-      <div class="sidebar-section" data-module="log-collect">
-        <div class="sidebar-section-title">日志采集</div>
-        <a class="sidebar-item" href="#/log-collect/match" data-path="/log-collect/match">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <span>设备匹配</span>
-        </a>
-        <a class="sidebar-item" href="#/log-collect/plan" data-path="/log-collect/plan">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-          <span>采集方案</span>
-        </a>
-        <a class="sidebar-item" href="#/log-collect/fault" data-path="/log-collect/fault">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-          <span>故障诊断</span>
-        </a>
-        <a class="sidebar-item" href="#/log-collect/arch" data-path="/log-collect/arch">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-          <span>架构推荐</span>
-        </a>
-      </div>
+        <nav class="header-nav">
+          <div v-for="mod in modules" :key="mod.key"
+               class="nav-tab" :class="{ active: currentModule === mod.key }"
+               @click="switchModule(mod.key)">
+            <el-icon><component :is="mod.icon" /></el-icon>
+            <span>{{ mod.label }}</span>
+          </div>
+        </nav>
 
-      <!-- 脚本生成 -->
-      <div class="sidebar-section" data-module="script-gen">
-        <div class="sidebar-section-title">脚本生成</div>
-        <a class="sidebar-item" href="#/script-gen/regex" data-path="/script-gen/regex">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-          <span>正则生成</span>
-        </a>
-        <a class="sidebar-item" href="#/script-gen/es-query" data-path="/script-gen/es-query">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <span>ES 查询生成</span>
-        </a>
-        <a class="sidebar-item" href="#/script-gen/platform" data-path="/script-gen/platform">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <span>平台选型</span>
-        </a>
-        <a class="sidebar-item" href="#/script-gen/trace" data-path="/script-gen/trace">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span>攻击溯源</span>
-        </a>
-        <a class="sidebar-item" href="#/script-gen/optimize" data-path="/script-gen/optimize">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-          <span>脚本优化</span>
-        </a>
-      </div>
+        <div class="header-right">
+          <!-- 模式切换 -->
+          <el-tooltip :content="currentMode === 'ops' ? '切换至实训模式' : '切换至运维模式'" placement="bottom">
+            <el-switch v-model="isTrainingMode" @change="toggleMode"
+                       active-text="实训" inactive-text="运维"
+                       active-color="#FF7D00" inactive-color="#165DFF" />
+          </el-tooltip>
+          <!-- 主题切换 -->
+          <el-tooltip :content="isDark ? '切换浅色主题' : '切换深色主题'" placement="bottom">
+            <el-button :icon="isDark ? 'Sunny' : 'Moon'" @click="toggleTheme" circle size="small" />
+          </el-tooltip>
+          <!-- 帮助 -->
+          <el-tooltip content="查看新手引导" placement="bottom">
+            <el-button icon="QuestionFilled" @click="showTour = true" circle size="small" />
+          </el-tooltip>
+        </div>
+      </header>
 
-      <!-- 合规审计 -->
-      <div class="sidebar-section" data-module="compliance">
-        <div class="sidebar-section-title">合规审计</div>
-        <a class="sidebar-item" href="#/compliance/qa" data-path="/compliance/qa">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>合规问答</span>
-        </a>
-        <a class="sidebar-item" href="#/compliance/baseline" data-path="/compliance/baseline">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
-          <span>基线生成</span>
-        </a>
-        <a class="sidebar-item" href="#/compliance/check" data-path="/compliance/check">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span>合规自查</span>
-        </a>
-      </div>
+      <!-- 主体三栏布局 -->
+      <div class="app-body" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+        <!-- 左侧菜单 -->
+        <aside class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
+          <div v-for="mod in modules" :key="mod.key" class="sidebar-section" v-show="currentModule === mod.key">
+            <div class="sidebar-title">{{ mod.label }}</div>
+            <div v-for="item in mod.children" :key="item.path"
+                 class="sidebar-item" :class="{ active: currentPath === item.path }"
+                 @click="navigate(item.path)">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span class="sidebar-item-text">{{ item.label }}</span>
+            </div>
+          </div>
+        </aside>
 
-      <!-- 攻防实训 -->
-      <div class="sidebar-section" data-module="training">
-        <div class="sidebar-section-title">攻防实训</div>
-        <a class="sidebar-item" href="#/training/scenarios" data-path="/training/scenarios">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <span>实训场景</span>
-        </a>
-        <a class="sidebar-item" href="#/training/submit" data-path="/training/submit">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-          <span>提交答案</span>
-        </a>
-        <a class="sidebar-item" href="#/training/report" data-path="/training/report">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-          <span>实训报告</span>
-        </a>
+        <!-- 右侧主内容区 -->
+        <main class="app-main" id="main-content">
+          <component v-if="viewComponent" :is="viewComponent" :mode="currentMode" />
+        </main>
       </div>
-    </aside>
-
-    <!-- 主内容区 -->
-    <main class="main" id="main-content">
-      <div class="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-        <div class="empty-state-title">日志溯源卫士智能体</div>
-        <div class="empty-state-desc">AI驱动的日志分析与安全实训平台</div>
-      </div>
-    </main>
+    </template>
   </div>
 
-  <!-- JavaScript -->
-  <script src="/static/js/api.js"></script>
-  <script src="/static/js/app.js"></script>
-  <script src="/static/js/modules/log-parse/identify.js"></script>
-  <script src="/static/js/modules/log-parse/parse.js"></script>
-  <script src="/static/js/modules/log-parse/assess.js"></script>
-  <script src="/static/js/modules/log-parse/batch.js"></script>
-  <script src="/static/js/modules/log-collect/match.js"></script>
-  <script src="/static/js/modules/log-collect/plan.js"></script>
-  <script src="/static/js/modules/log-collect/fault.js"></script>
-  <script src="/static/js/modules/log-collect/arch.js"></script>
-  <script src="/static/js/modules/script-gen/regex.js"></script>
-  <script src="/static/js/modules/script-gen/es-query.js"></script>
-  <script src="/static/js/modules/script-gen/platform.js"></script>
-  <script src="/static/js/modules/script-gen/trace.js"></script>
-  <script src="/static/js/modules/script-gen/optimize.js"></script>
-  <script src="/static/js/modules/compliance/qa.js"></script>
-  <script src="/static/js/modules/compliance/baseline.js"></script>
-  <script src="/static/js/modules/compliance/check.js"></script>
-  <script src="/static/js/modules/training/scenarios.js"></script>
-  <script src="/static/js/modules/training/submit.js"></script>
-  <script src="/static/js/modules/training/report.js"></script>
+  <!-- Vue3 -->
+  <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+  <!-- Element Plus -->
+  <script src="https://unpkg.com/element-plus@2.9.1/dist/index.full.min.js"></script>
+  <script src="https://unpkg.com/element-plus@2.9.1/dist/locale/zh-cn.min.js"></script>
+  <!-- Element Plus Icons -->
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1/dist/index.iife.min.js"></script>
+  <!-- App (cache-bust ?v=4) -->
+  <script src="/static/js/config.js?v=4"></script>
+  <script src="/static/js/api.js?v=4"></script>
+  <script src="/static/js/components/guidance.js?v=4"></script>
+  <script src="/static/js/components/risk-card.js?v=4"></script>
+  <script src="/static/js/components/code-block.js?v=4"></script>
+  <script src="/static/js/components/empty-state.js?v=4"></script>
+  <script src="/static/js/components/result-guide.js?v=4"></script>
+  <script src="/static/js/components/confirm-batch.js?v=4"></script>
+  <script src="/static/js/modules/log-parse/identify.js?v=4"></script>
+  <script src="/static/js/modules/log-parse/parse.js?v=4"></script>
+  <script src="/static/js/modules/log-parse/assess.js?v=4"></script>
+  <script src="/static/js/modules/log-parse/batch.js?v=4"></script>
+  <script src="/static/js/modules/log-collect/match.js?v=4"></script>
+  <script src="/static/js/modules/log-collect/plan.js?v=4"></script>
+  <script src="/static/js/modules/log-collect/fault.js?v=4"></script>
+  <script src="/static/js/modules/log-collect/arch.js?v=4"></script>
+  <script src="/static/js/modules/script-gen/regex.js?v=4"></script>
+  <script src="/static/js/modules/script-gen/es-query.js?v=4"></script>
+  <script src="/static/js/modules/script-gen/platform.js?v=4"></script>
+  <script src="/static/js/modules/script-gen/trace.js?v=4"></script>
+  <script src="/static/js/modules/script-gen/optimize.js?v=4"></script>
+  <script src="/static/js/modules/compliance/qa.js?v=4"></script>
+  <script src="/static/js/modules/compliance/baseline.js?v=4"></script>
+  <script src="/static/js/modules/compliance/check.js?v=4"></script>
+  <script src="/static/js/modules/training/scenarios.js?v=4"></script>
+  <script src="/static/js/modules/training/submit.js?v=4"></script>
+  <script src="/static/js/modules/training/report.js?v=4"></script>
+  <script src="/static/js/app.js?v=4"></script>
 </body>
 </html>

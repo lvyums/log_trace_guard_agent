@@ -1,0 +1,143 @@
+/* ============================================
+   响应式适配：PC / 平板 / 移动端
+   ============================================ */
+
+/* ---- 平板（≤1024px）：折叠左侧菜单 ---- */
+@media (max-width: 1024px) {
+  .app-sidebar {
+    width: var(--sidebar-collapsed-width);
+  }
+
+  .app-sidebar .sidebar-item-text {
+    display: none;
+  }
+
+  .app-sidebar .sidebar-title {
+    text-align: center;
+    padding: var(--space-sm) var(--space-xs);
+    font-size: 10px;
+  }
+
+  .app-sidebar .sidebar-item {
+    justify-content: center;
+    padding: 8px;
+    margin: 1px 4px;
+  }
+
+  .g-split,
+  .g-split--left-fixed,
+  .g-split--right-fixed {
+    grid-template-columns: 1fr;
+  }
+
+  .g-training-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .g-training-task {
+    max-height: 40vh;
+  }
+
+  .nav-tab span {
+    display: none;
+  }
+
+  .nav-tab {
+    padding: 6px 10px;
+  }
+
+  .logo-text {
+    display: none;
+  }
+}
+
+/* ---- 移动端（≤768px）：简化布局 ---- */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 var(--space-sm);
+    gap: var(--space-sm);
+  }
+
+  .header-nav {
+    display: none;
+  }
+
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-main {
+    padding: var(--space-md);
+  }
+
+  .g-card {
+    padding: var(--space-lg);
+  }
+
+  .g-tour-dialog {
+    width: 95vw;
+  }
+
+  /* 移动端底部导航 */
+  .mobile-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--header-bg);
+    border-top: 1px solid var(--header-border);
+    padding: var(--space-sm) 0;
+    z-index: 100;
+    justify-content: space-around;
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--space-xs) var(--space-sm);
+    color: var(--text-tertiary);
+    font-size: 10px;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+  }
+
+  .mobile-nav-item.active {
+    color: var(--primary);
+  }
+
+  .mobile-nav-item .el-icon {
+    font-size: 20px;
+  }
+
+  .app-main {
+    padding-bottom: 70px;
+  }
+
+  /* 隐藏复杂功能 */
+  .hide-mobile {
+    display: none !important;
+  }
+
+  .g-training-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .g-stack > .g-card:last-child {
+    display: none;
+  }
+}
+
+/* ---- 大屏（≥1440px） ---- */
+@media (min-width: 1440px) {
+  .app-main {
+    padding: var(--space-xl) var(--space-2xl);
+  }
+
+  .g-split--left-fixed {
+    grid-template-columns: 420px 1fr;
+  }
+}

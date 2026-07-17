@@ -1,129 +1,86 @@
-/**
- * 合规标准问答页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块四 · 合规问答 — 回答等保2.0/网安法/数据安全法相关问题
+   ============================================ */
 
-window.Pages['qa'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">合规标准问答</h1>
-    <p class="main-subtitle">智能问答，快速了解合规标准要求</p>
-  </div>
-
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">合规问题</label>
-      <textarea id="qa-question" class="input" placeholder="输入合规相关问题...&#10;&#10;示例:&#10;- 日志需要留存多久？&#10;- 等保三级有哪些日志审计要求？&#10;- 网络安全法对日志保存有什么规定？" style="min-height: 100px;"></textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">资产类型（可选）</label>
-      <select id="qa-asset" class="input">
-        <option value="">不限</option>
-        <option value="server">服务器</option>
-        <option value="firewall">防火墙</option>
-        <option value="web">Web应用</option>
-        <option value="db">数据库</option>
-        <option value="network">网络设备</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">标准筛选（可选）</label>
-      <select id="qa-standard" class="input">
-        <option value="">全部标准</option>
-        <option value="等保">等保2.0</option>
-        <option value="网安法">网络安全法</option>
-        <option value="数安法">数据安全法</option>
-        <option value="个人信息保护法">个人信息保护法</option>
-      </select>
-    </div>
-    <button id="qa-btn" class="btn btn-primary">查询</button>
-  </div>
-
-  <div id="qa-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">回答</span>
-      <span id="qa-count" style="font-size: 12px; color: var(--n-500);"></span>
-    </div>
-    <div id="qa-result-content"></div>
-  </div>
-`;
-
-window.PageInit['qa'] = () => {
-  const questionInput = document.getElementById('qa-question');
-  const assetSelect = document.getElementById('qa-asset');
-  const standardSelect = document.getElementById('qa-standard');
-  const btn = document.getElementById('qa-btn');
-  const resultArea = document.getElementById('qa-result');
-  const resultContent = document.getElementById('qa-result-content');
-  const countSpan = document.getElementById('qa-count');
-
-  btn.addEventListener('click', async () => {
-    const question = questionInput.value.trim();
-    const assetType = assetSelect.value;
-    const standardFilter = standardSelect.value;
-
-    if (!question) {
-      alert('请输入合规问题');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = '查询中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.compliance.qa(question, assetType, standardFilter);
-
-    btn.disabled = false;
-    btn.textContent = '查询';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      
-      countSpan.textContent = `匹配 ${data.matched_count || 0} 条标准`;
-      
-      let html = '';
-      
-      // 回答
-      if (data.answer) {
-        html += `<div class="result-card" style="margin-bottom: 16px;">
-          <div style="font-size: 13px; line-height: 1.8; white-space: pre-wrap;">${data.answer}</div>
-        </div>`;
+const ComplianceQa = {
+  name: 'ComplianceQa',
+  props: { mode: String },
+  data() {
+    return {
+      question: '',
+      loading: false,
+      result: null,
+      history: [],
+    };
+  },
+  methods: {
+    fillSample() {
+      this.question = '等保2.0三级对日志留存有什么要求？';
+    },
+    async submit() {
+      if (!this.question.trim()) {
+        ElementPlus.ElMessageBox.alert('请输入问题', '提示', { type: 'warning' });
+        return;
       }
-      
-      // 相关标准
-      if (data.standards && data.standards.length > 0) {
-        html += '<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">相关标准</div>';
-        data.standards.forEach(std => {
-          html += `<div class="result-card" style="margin-bottom: 8px;">`;
-          html += `<div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">${std.name}</div>`;
-          if (std.items && std.items.length > 0) {
-            std.items.forEach(item => {
-              html += `<div style="padding: 8px; background: var(--n-100); border-radius: 4px; margin-bottom: 4px; font-size: 12px;">`;
-              html += `<div style="font-weight: 500;">${item.requirement}</div>`;
-              if (item.detail) {
-                html += `<div style="color: var(--n-600); margin-top: 4px;">${item.detail}</div>`;
-              }
-              html += '</div>';
-            });
-          }
-          html += '</div>';
-        });
+      this.loading = true;
+      try {
+        const res = await Api.compliance.qa({ question: this.question });
+        if (res.success) {
+          this.history.push({ q: this.question, a: res.data.answer || res.data });
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
+        this.question = '';
       }
-      
-      if (data.note) {
-        html += `<div style="margin-top: 12px; padding: 8px; background: var(--n-100); border-radius: 4px; font-size: 12px; color: var(--n-600);">${data.note}</div>`;
-      }
-      
-      resultContent.innerHTML = html;
-    } else {
-      alert(`查询失败: ${result.msg}`);
-    }
-  });
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <alert-guide type="info" title="合规问答基于最新法规标准">
+        知识库涵盖：等保2.0(GB/T 22239-2019)、网安法、数据安全法、行业规范。问题越具体，回答越精准。避免问"等保要求是什么"，应该问"三级等保对日志留存的具体要求"。
+      </alert-guide>
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><ChatDotRound /></el-icon> 合规问答</div>
+            <div class="g-card-desc">关于等保2.0、网安法、数据安全法等合规问题的智能解答</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillSample">填充示例</el-button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <el-input v-model="question" placeholder="输入合规相关问题..." :disabled="loading"
+                    @keyup.enter="submit" style="flex:1" />
+          <el-button type="primary" @click="submit" :loading="loading">提问</el-button>
+        </div>
+        <div class="g-input-guide">
+          <el-icon><InfoFilled /></el-icon>
+          <span>支持等保2.0、网安法、数据安全法、行业合规标准等问题</span>
+        </div>
+      </div>
 
-  questionInput.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'Enter') {
-      btn.click();
-    }
-  });
+      <!-- 对话历史 -->
+      <div v-if="history.length" style="display:flex;flex-direction:column;gap:12px">
+        <div v-for="(item, i) in history" :key="i" class="g-card slide">
+          <div style="margin-bottom:12px">
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px">问题</div>
+            <div style="font-size:13px;color:var(--text-primary)">{{ item.q }}</div>
+          </div>
+          <div class="g-divider" style="margin:8px 0"></div>
+          <div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px">回答</div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;white-space:pre-wrap">{{ typeof item.a === 'string' ? item.a : JSON.stringify(item.a, null, 2) }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="!history.length && !loading" class="g-card">
+        <empty-guide title="暂无问答记录" desc="输入合规相关问题开始咨询" action-text="查看示例问题" @action="fillSample" />
+      </div>
+    </div>
+  `,
 };

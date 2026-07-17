@@ -1,133 +1,87 @@
-/**
- * 脚本优化页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块三 · 脚本优化 — 优化现有正则或查询脚本性能
+   ============================================ */
 
-window.Pages['optimize'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">脚本优化</h1>
-    <p class="main-subtitle">分析并优化正则、ES查询、SQL脚本</p>
-  </div>
-
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">脚本类型</label>
-      <select id="opt-type" class="input">
-        <option value="regex">正则表达式</option>
-        <option value="es_query">ES 查询</option>
-        <option value="sql">SQL</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">攻防场景（可选）</label>
-      <input id="opt-scenario" class="input" placeholder="如: SSH暴力破解检测">
-    </div>
-    <div class="form-group">
-      <label class="form-label">粘贴你的脚本</label>
-      <textarea id="opt-script" class="input" placeholder="粘贴需要优化的正则/ES查询/SQL..." style="min-height: 120px; font-family: var(--font-code); font-size: 11px;"></textarea>
-    </div>
-    <button id="opt-btn" class="btn btn-primary">分析优化</button>
-  </div>
-
-  <div id="opt-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">优化结果</span>
-      <button id="opt-copy" class="btn btn-sm btn-secondary">复制优化后</button>
-    </div>
-    <div id="opt-result-content"></div>
-  </div>
-`;
-
-window.PageInit['optimize'] = () => {
-  const typeSelect = document.getElementById('opt-type');
-  const scenarioInput = document.getElementById('opt-scenario');
-  const scriptInput = document.getElementById('opt-script');
-  const btn = document.getElementById('opt-btn');
-  const copyBtn = document.getElementById('opt-copy');
-  const resultArea = document.getElementById('opt-result');
-  const resultContent = document.getElementById('opt-result-content');
-
-  let optimizedScript = '';
-
-  btn.addEventListener('click', async () => {
-    const script = scriptInput.value.trim();
-    const scriptType = typeSelect.value;
-    const scenario = scenarioInput.value.trim();
-
-    if (!script) {
-      alert('请输入脚本');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = '分析中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.scriptGen.optimize(script, scriptType, scenario);
-
-    btn.disabled = false;
-    btn.textContent = '分析优化';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      optimizedScript = data.optimized || '';
-      
-      let html = '';
-      
-      // 评分
-      if (data.score !== undefined) {
-        const scoreColor = data.score >= 80 ? 'var(--success)' : 
-                          data.score >= 60 ? 'var(--warning)' : 'var(--error)';
-        html += `<div style="margin-bottom: 16px; padding: 12px; background: var(--n-100); border-radius: 6px;">`;
-        html += `<div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">原始评分</div>`;
-        html += `<div style="font-size: 24px; font-weight: 700; color: ${scoreColor};">${data.score}/100</div>`;
-        html += '</div>';
+const ScriptGenOptimize = {
+  name: 'ScriptGenOptimize',
+  props: { mode: String },
+  data() {
+    return {
+      script: '',
+      scriptType: 'regex',
+      loading: false,
+      result: null,
+      typeOptions: [
+        { label: '正则表达式', value: 'regex' },
+        { label: 'ES查询', value: 'es_query' },
+        { label: 'Shell脚本', value: 'shell' },
+      ],
+    };
+  },
+  methods: {
+    fillSample() {
+      this.script = '.*Failed\\s+password\\s+for\\s+(invalid\\s+user\\s+)?(\\w+)\\s+from\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)\\s+port\\s+(\\d+).*';
+      this.scriptType = 'regex';
+    },
+    async submit() {
+      if (!this.script.trim()) {
+        ElementPlus.ElMessageBox.alert('请输入待优化的脚本', '提示', { type: 'warning' });
+        return;
       }
-      
-      // 发现问题
-      if (data.issues && data.issues.length > 0) {
-        html += '<div style="margin-bottom: 16px;"><div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">发现问题</div>';
-        html += '<ul style="margin: 0; padding-left: 16px; font-size: 13px; color: var(--error);">';
-        data.issues.forEach(issue => {
-          html += `<li style="margin-bottom: 4px;">${issue}</li>`;
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.scriptGen.optimize({
+          script: this.script,
+          script_type: this.scriptType,
         });
-        html += '</ul></div>';
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
       }
-      
-      // 优化后代码
-      if (optimizedScript) {
-        html += '<div style="margin-bottom: 16px;"><div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">优化后</div>';
-        html += `<div class="code-block"><pre>${escapeHtml(optimizedScript)}</pre></div>`;
-        html += '</div>';
-      }
-      
-      // 优化说明
-      if (data.explanation) {
-        html += `<div style="padding: 12px; background: var(--n-100); border-radius: 6px; font-size: 13px; color: var(--n-600);">`;
-        html += `<div style="font-weight: 600; margin-bottom: 4px;">优化说明</div>`;
-        html += `<div>${data.explanation}</div>`;
-        html += '</div>';
-      }
-      
-      resultContent.innerHTML = html;
-    } else {
-      alert(`分析失败: ${result.msg}`);
-    }
-  });
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><SetUp /></el-icon> 脚本优化</div>
+            <div class="g-card-desc">输入现有脚本，AI分析性能瓶颈并给出优化建议</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillSample">填充示例</el-button>
+        </div>
+        <el-select v-model="scriptType" style="width:160px;margin-bottom:12px">
+          <el-option v-for="t in typeOptions" :key="t.value" :label="t.label" :value="t.value" />
+        </el-select>
+        <el-input v-model="script" type="textarea" :rows="4" placeholder="粘贴待优化的脚本..." :disabled="loading" />
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" @click="submit" :loading="loading">分析优化</el-button>
+        </div>
+      </div>
 
-  copyBtn.addEventListener('click', () => {
-    if (optimizedScript) {
-      navigator.clipboard.writeText(optimizedScript);
-      copyBtn.textContent = '已复制';
-      setTimeout(() => { copyBtn.textContent = '复制优化后'; }, 2000);
-    }
-  });
+      <div v-if="result" class="g-card slide">
+        <div class="g-card-title" style="margin-bottom:12px"><el-icon><TrendCharts /></el-icon> 优化结果</div>
+        <div v-if="result.issues" style="margin-bottom:16px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">发现的问题</div>
+          <div v-for="(issue, i) in result.issues" :key="i" class="g-alert g-alert--warning" style="margin-bottom:8px">
+            {{ issue }}
+          </div>
+        </div>
+        <code-block :code="result.optimized || result.optimized_script" :lang="scriptType === 'regex' ? 'python' : 'bash'" title="优化后脚本" />
+        <div v-if="result.improvements" style="margin-top:12px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">优化改进</div>
+          <div v-for="(imp, i) in result.improvements" :key="i" class="g-alert g-alert--success" style="margin-bottom:8px">
+            {{ imp }}
+          </div>
+        </div>
+      </div>
+    </div>
+  `,
 };
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}

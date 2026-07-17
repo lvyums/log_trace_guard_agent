@@ -1,136 +1,98 @@
-/**
- * 平台选型页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块三 · 平台选型 — 日志平台对比选型推荐
+   ============================================ */
 
-window.Pages['platform'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">平台选型</h1>
-    <p class="main-subtitle">根据需求推荐日志管理平台</p>
-  </div>
-
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">设备数量</label>
-      <input id="plat-count" class="input" type="number" value="100" min="1">
-    </div>
-    <div class="form-group">
-      <label class="form-label">日志量级</label>
-      <select id="plat-volume" class="input">
-        <option value="small">小型（<1GB/天）</option>
-        <option value="medium" selected>中型（1-10GB/天）</option>
-        <option value="large">大型（>10GB/天）</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">预算范围</label>
-      <select id="plat-budget" class="input">
-        <option value="low">低预算</option>
-        <option value="medium" selected>中等预算</option>
-        <option value="high">高预算</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">团队技能</label>
-      <select id="plat-skill" class="input">
-        <option value="basic">初级</option>
-        <option value="intermediate" selected>中级</option>
-        <option value="advanced">高级</option>
-      </select>
-    </div>
-    <button id="plat-btn" class="btn btn-primary">推荐平台</button>
-  </div>
-
-  <div id="plat-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">推荐结果</span>
-    </div>
-    <div id="plat-result-content"></div>
-  </div>
-`;
-
-window.PageInit['platform'] = () => {
-  const countInput = document.getElementById('plat-count');
-  const volumeSelect = document.getElementById('plat-volume');
-  const budgetSelect = document.getElementById('plat-budget');
-  const skillSelect = document.getElementById('plat-skill');
-  const btn = document.getElementById('plat-btn');
-  const resultArea = document.getElementById('plat-result');
-  const resultContent = document.getElementById('plat-result-content');
-
-  btn.addEventListener('click', async () => {
-    const deviceCount = parseInt(countInput.value) || 100;
-    const dailyLogVolume = volumeSelect.value;
-    const budget = budgetSelect.value;
-    const teamSkill = skillSelect.value;
-
-    btn.disabled = true;
-    btn.textContent = '推荐中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.scriptGen.platform(deviceCount, dailyLogVolume, budget, teamSkill);
-
-    btn.disabled = false;
-    btn.textContent = '推荐平台';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      
-      let html = '';
-      
-      // 推荐平台
-      if (data.recommendation) {
-        const rec = data.recommendation;
-        html += '<div class="result-card" style="border-left: 4px solid var(--accent-primary);">';
-        html += `<div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">${rec.name}</div>`;
-        html += `<div style="font-size: 12px; color: var(--n-500); margin-bottom: 12px;">${rec.type || ''}</div>`;
-        
-        if (rec.pros && rec.pros.length > 0) {
-          html += '<div style="margin-bottom: 8px;"><div style="font-size: 12px; font-weight: 600; margin-bottom: 4px;">优势</div>';
-          html += '<ul style="margin: 0; padding-left: 16px; font-size: 12px; color: var(--success);">';
-          rec.pros.forEach(pro => { html += `<li>${pro}</li>`; });
-          html += '</ul></div>';
-        }
-        
-        if (rec.cons && rec.cons.length > 0) {
-          html += '<div style="margin-bottom: 8px;"><div style="font-size: 12px; font-weight: 600; margin-bottom: 4px;">劣势</div>';
-          html += '<ul style="margin: 0; padding-left: 16px; font-size: 12px; color: var(--error);">';
-          rec.cons.forEach(con => { html += `<li>${con}</li>`; });
-          html += '</ul></div>';
-        }
-        
-        if (rec.estimated_cost) {
-          html += `<div style="font-size: 12px; color: var(--n-600);">预估成本: ${rec.estimated_cost}</div>`;
-        }
-        
-        html += '</div>';
+const ScriptGenPlatform = {
+  name: 'ScriptGenPlatform',
+  props: { mode: String },
+  data() {
+    return {
+      requirements: '',
+      scale: 'medium',
+      budget: '',
+      loading: false,
+      result: null,
+      scaleOptions: [
+        { label: '小型', value: 'small' },
+        { label: '中型', value: 'medium' },
+        { label: '大型', value: 'large' },
+      ],
+    };
+  },
+  methods: {
+    fillSample() {
+      this.requirements = '需要支持syslog采集、全文检索、告警规则、可视化报表，日均日志量约5GB';
+      this.scale = 'medium';
+      this.budget = '50万以内';
+    },
+    async submit() {
+      if (!this.requirements.trim()) {
+        ElementPlus.ElMessageBox.alert('请描述需求', '提示', { type: 'warning' });
+        return;
       }
-      
-      // 备选方案
-      if (data.alternatives && data.alternatives.length > 0) {
-        html += '<div style="margin-top: 16px;"><div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">备选方案</div>';
-        data.alternatives.forEach(alt => {
-          html += '<div class="result-card" style="margin-bottom: 8px;">';
-          html += `<div style="font-size: 14px; font-weight: 500;">${alt.name}</div>`;
-          html += `<div style="font-size: 12px; color: var(--n-500);">${alt.type || ''}</div>`;
-          if (alt.estimated_cost) {
-            html += `<div style="font-size: 12px; color: var(--n-600); margin-top: 4px;">预估成本: ${alt.estimated_cost}</div>`;
-          }
-          html += '</div>';
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.scriptGen.platform({
+          requirements: this.requirements,
+          scale: this.scale,
+          budget: this.budget,
         });
-        html += '</div>';
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
       }
-      
-      // 总结
-      if (data.summary) {
-        html += `<div style="margin-top: 16px; padding: 12px; background: var(--n-100); border-radius: 6px; font-size: 13px; color: var(--n-600);">${data.summary}</div>`;
-      }
-      
-      resultContent.innerHTML = html;
-    } else {
-      alert(`推荐失败: ${result.msg}`);
-    }
-  });
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><DataAnalysis /></el-icon> 平台选型</div>
+            <div class="g-card-desc">描述需求，AI对比主流日志平台并推荐最佳选型</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillSample">填充示例</el-button>
+        </div>
+        <el-input v-model="requirements" type="textarea" :rows="3" placeholder="描述日志平台需求..." :disabled="loading" />
+        <div style="margin-top:12px;display:flex;gap:12px">
+          <el-select v-model="scale" placeholder="企业规模" style="width:160px">
+            <el-option v-for="s in scaleOptions" :key="s.value" :label="s.label" :value="s.value" />
+          </el-select>
+          <el-input v-model="budget" placeholder="预算范围（可选）" style="flex:1" :disabled="loading" />
+        </div>
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" @click="submit" :loading="loading">对比选型</el-button>
+        </div>
+      </div>
+
+      <div v-if="result" class="g-card slide">
+        <div class="g-card-title" style="margin-bottom:12px"><el-icon><TrendCharts /></el-icon> 选型对比</div>
+        <el-table v-if="result.platforms" :data="result.platforms" border size="small">
+          <el-table-column prop="name" label="平台" width="120" />
+          <el-table-column prop="type" label="类型" width="80" />
+          <el-table-column prop="pros" label="优势" />
+          <el-table-column prop="cons" label="劣势" />
+          <el-table-column prop="score" label="推荐度" width="80">
+            <template #default="{ row }">
+              <el-rate v-model="row.score" disabled :max="5" />
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="result.recommendation" class="g-alert g-alert--success" style="margin-top:12px">
+          <el-icon><CircleCheckFilled /></el-icon>
+          <div><strong>推荐：</strong>{{ result.recommendation }}</div>
+        </div>
+        <knowledge-panel title="选型建议">
+          <p>{{ result.advice || '选型需综合考虑团队技术栈、运维能力、日志量级和预算。建议先小规模试用再全面部署。' }}</p>
+        </knowledge-panel>
+      </div>
+    </div>
+  `,
 };

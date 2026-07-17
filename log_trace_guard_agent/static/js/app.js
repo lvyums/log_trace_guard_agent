@@ -1,92 +1,192 @@
-/**
- * 路由 + 全局状态管理
- */
-const App = {
-  /** 路由表 */
-  routes: {
-    '/log-parse/identify': { module: 'log-parse', page: 'identify', title: '日志识别' },
-    '/log-parse/parse': { module: 'log-parse', page: 'parse', title: '结构化解析' },
-    '/log-parse/assess': { module: 'log-parse', page: 'assess', title: '风险研判' },
-    '/log-parse/batch': { module: 'log-parse', page: 'batch', title: '批量解析' },
-    '/log-collect/match': { module: 'log-collect', page: 'match', title: '设备匹配' },
-    '/log-collect/plan': { module: 'log-collect', page: 'plan', title: '采集方案' },
-    '/log-collect/fault': { module: 'log-collect', page: 'fault', title: '故障诊断' },
-    '/log-collect/arch': { module: 'log-collect', page: 'arch', title: '架构推荐' },
-    '/script-gen/regex': { module: 'script-gen', page: 'regex', title: '正则生成' },
-    '/script-gen/es-query': { module: 'script-gen', page: 'es-query', title: 'ES 查询生成' },
-    '/script-gen/platform': { module: 'script-gen', page: 'platform', title: '平台选型' },
-    '/script-gen/trace': { module: 'script-gen', page: 'trace', title: '攻击溯源' },
-    '/script-gen/optimize': { module: 'script-gen', page: 'optimize', title: '脚本优化' },
-    '/compliance/qa': { module: 'compliance', page: 'qa', title: '合规问答' },
-    '/compliance/baseline': { module: 'compliance', page: 'baseline', title: '基线生成' },
-    '/compliance/check': { module: 'compliance', page: 'check', title: '合规自查' },
-    '/training/scenarios': { module: 'training', page: 'scenarios', title: '实训场景' },
-    '/training/submit': { module: 'training', page: 'submit', title: '提交答案' },
-    '/training/report': { module: 'training', page: 'report', title: '实训报告' },
-  },
+/* ============================================
+   主应用入口 — Vue3 + Element Plus 初始化
+   ============================================ */
 
-  /** 当前路由 */
-  currentRoute: null,
+(function() {
+  try {
+    const { createApp } = Vue;
 
-  /** 初始化 */
-  init() {
-    window.addEventListener('hashchange', () => this.navigate());
-    this.navigate();
-  },
+    // 路由映射：path → 组件名
+    const ROUTE_MAP = {
+      '/log-parse/identify': 'log-parse-identify',
+      '/log-parse/parse': 'log-parse-parse',
+      '/log-parse/assess': 'log-parse-assess',
+      '/log-parse/batch': 'log-parse-batch',
+      '/log-collect/match': 'log-collect-match',
+      '/log-collect/plan': 'log-collect-plan',
+      '/log-collect/fault': 'log-collect-fault',
+      '/log-collect/arch': 'log-collect-arch',
+      '/script-gen/regex': 'script-gen-regex',
+      '/script-gen/es-query': 'script-gen-esquery',
+      '/script-gen/platform': 'script-gen-platform',
+      '/script-gen/trace': 'script-gen-trace',
+      '/script-gen/optimize': 'script-gen-optimize',
+      '/compliance/qa': 'compliance-qa',
+      '/compliance/baseline': 'compliance-baseline',
+      '/compliance/check': 'compliance-check',
+      '/training/scenarios': 'training-scenarios',
+      '/training/submit': 'training-submit',
+      '/training/report': 'training-report',
+    };
 
-  /** 导航 */
-  navigate() {
-    const hash = window.location.hash.slice(1) || '/log-parse/identify';
-    const route = this.routes[hash];
-    
-    if (!route) {
-      console.warn('未知路由:', hash);
-      return;
+    const app = createApp({
+      data() {
+        return {
+          ready: false,
+          currentModule: 'log-parse',
+          currentPath: '/log-parse/identify',
+          sidebarCollapsed: false,
+          isDark: true,
+          isTrainingMode: false,
+          showTour: false,
+          modules: APP_CONFIG.modules,
+        };
+      },
+      computed: {
+        currentMode() {
+          return this.isTrainingMode ? 'training' : 'ops';
+        },
+        viewComponent() {
+          return ROUTE_MAP[this.currentPath] || '';
+        },
+      },
+      methods: {
+        switchModule(key) {
+          this.currentModule = key;
+          const mod = this.modules.find(m => m.key === key);
+          if (mod && mod.children.length) {
+            this.currentPath = mod.children[0].path;
+          }
+          this.updateUrl();
+        },
+        navigate(path) {
+          this.currentPath = path;
+          const mod = this.modules.find(m => m.children.some(c => c.path === path));
+          if (mod) this.currentModule = mod.key;
+          this.updateUrl();
+        },
+        toggleSidebar() {
+          this.sidebarCollapsed = !this.sidebarCollapsed;
+        },
+        toggleTheme() {
+          this.isDark = !this.isDark;
+          this.applyTheme();
+          localStorage.setItem('lg-theme', this.isDark ? 'dark' : 'light');
+        },
+        toggleMode(val) {
+          this.isTrainingMode = val;
+          localStorage.setItem('lg-mode', val ? 'training' : 'ops');
+          if (val && !localStorage.getItem('lg-tour-seen')) {
+            this.showTour = true;
+          }
+        },
+        applyTheme() {
+          const theme = this.isDark ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+          if (this.isDark) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        },
+        updateUrl() {
+          const hash = '#' + this.currentPath;
+          if (window.location.hash !== hash) {
+            window.location.hash = hash;
+          }
+        },
+        parseHash() {
+          const hash = window.location.hash.slice(1);
+          if (hash && ROUTE_MAP[hash]) {
+            this.currentPath = hash;
+            const mod = this.modules.find(m => m.children.some(c => c.path === hash));
+            if (mod) this.currentModule = mod.key;
+          }
+        },
+        initFromStorage() {
+          const theme = localStorage.getItem('lg-theme');
+          if (theme) {
+            this.isDark = theme === 'dark';
+            this.applyTheme();
+          }
+          const mode = localStorage.getItem('lg-mode');
+          if (mode === 'training') {
+            this.isTrainingMode = true;
+          }
+          const tourSeen = localStorage.getItem('lg-tour-seen');
+          if (!tourSeen) {
+            this.showTour = true;
+          }
+        },
+        closeTour() {
+          this.showTour = false;
+          localStorage.setItem('lg-tour-seen', 'true');
+        },
+      },
+      mounted() {
+        this.parseHash();
+        this.initFromStorage();
+        this.ready = true;
+
+        window.addEventListener('hashchange', () => {
+          this.parseHash();
+        });
+      },
+    });
+
+    // 注册全局混入
+    app.mixin(GlobalMixin);
+
+    // 注册 Element Plus
+    app.use(ElementPlus, {
+      locale: ElementPlusLocaleZhCn,
+    });
+
+    // 注册 Element Plus 图标
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
     }
 
-    this.currentRoute = { ...route, path: hash };
-    this.render();
-  },
+    // 注册全局组件
+    app.component('global-tour', GlobalTour);
+    app.component('input-guide', InputGuide);
+    app.component('tip-wrapper', TipWrapper);
+    app.component('alert-guide', AlertGuide);
+    app.component('knowledge-panel', KnowledgePanel);
+    app.component('empty-guide', EmptyGuide);
+    app.component('result-guide', ResultGuide);
+    app.component('confirm-batch', ConfirmBatch);
+    app.component('risk-badge', RiskBadge);
+    app.component('risk-card', RiskCard);
+    app.component('code-block', CodeBlock);
 
-  /** 渲染页面 */
-  render() {
-    const currentModule = this.currentRoute.module;
+    // 注册页面组件
+    app.component('log-parse-identify', LogParseIdentify);
+    app.component('log-parse-parse', LogParseParse);
+    app.component('log-parse-assess', LogParseAssess);
+    app.component('log-parse-batch', LogParseBatch);
+    app.component('log-collect-match', LogCollectMatch);
+    app.component('log-collect-plan', LogCollectPlan);
+    app.component('log-collect-fault', LogCollectFault);
+    app.component('log-collect-arch', LogCollectArch);
+    app.component('script-gen-regex', ScriptGenRegex);
+    app.component('script-gen-esquery', ScriptGenEsquery);
+    app.component('script-gen-platform', ScriptGenPlatform);
+    app.component('script-gen-trace', ScriptGenTrace);
+    app.component('script-gen-optimize', ScriptGenOptimize);
+    app.component('compliance-qa', ComplianceQa);
+    app.component('compliance-baseline', ComplianceBaseline);
+    app.component('compliance-check', ComplianceCheck);
+    app.component('training-scenarios', TrainingScenarios);
+    app.component('training-submit', TrainingSubmit);
+    app.component('training-report', TrainingReport);
 
-    // 切换侧边栏模块显示
-    document.querySelectorAll('.sidebar-section').forEach(section => {
-      section.style.display = section.dataset.module === currentModule ? 'block' : 'none';
-    });
-
-    // 更新顶部导航高亮
-    document.querySelectorAll('.header-nav-item').forEach(item => {
-      item.classList.toggle('active', item.dataset.module === currentModule);
-    });
-
-    // 更新侧边栏项高亮
-    document.querySelectorAll('.sidebar-item').forEach(item => {
-      item.classList.toggle('active', item.dataset.path === this.currentRoute.path);
-    });
-
-    // 更新主内容区
-    const main = document.getElementById('main-content');
-    if (main && window.Pages && window.Pages[this.currentRoute.page]) {
-      main.innerHTML = window.Pages[this.currentRoute.page]();
-      // 初始化页面事件
-      if (window.PageInit && window.PageInit[this.currentRoute.page]) {
-        window.PageInit[this.currentRoute.page]();
-      }
-    }
-  },
-
-  /** 导航到指定路径 */
-  goto(path) {
-    window.location.hash = path;
-  },
-};
-
-// 页面注册表
-window.Pages = {};
-window.PageInit = {};
-
-// 启动
-document.addEventListener('DOMContentLoaded', () => App.init());
+    // 挂载
+    app.mount('#app');
+    console.log('[App] Mounted successfully');
+    window.__appMounted = true;
+  } catch (e) {
+    console.error('[App] Mount failed:', e);
+    window.__appError = e.message;
+  }
+})();

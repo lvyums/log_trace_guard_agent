@@ -1,105 +1,79 @@
-/**
- * 正则生成页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块三 · 正则生成 — 根据日志样本自动生成正则表达式
+   ============================================ */
 
-window.Pages['regex'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">正则生成</h1>
-    <p class="main-subtitle">根据攻防场景生成正则规则</p>
-  </div>
-
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">攻防场景</label>
-      <input id="regex-scenario" class="input" placeholder="如: 检测SSH暴力破解, SQL注入攻击">
-    </div>
-    <div class="form-group">
-      <label class="form-label">日志样本（可选）</label>
-      <textarea id="regex-sample" class="input" placeholder="粘贴日志样本，帮助生成更精确的正则..." style="min-height: 80px; font-family: var(--font-code); font-size: 11px;"></textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">设备类型（可选）</label>
-      <select id="regex-type" class="input">
-        <option value="">自动识别</option>
-        <option value="ssh">SSH</option>
-        <option value="web">Web</option>
-        <option value="waf">WAF</option>
-        <option value="firewall">防火墙</option>
-        <option value="db">数据库</option>
-      </select>
-    </div>
-    <button id="regex-btn" class="btn btn-primary">生成正则</button>
-  </div>
-
-  <div id="regex-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">生成结果</span>
-    </div>
-    <div id="regex-result-content"></div>
-  </div>
-`;
-
-window.PageInit['regex'] = () => {
-  const scenarioInput = document.getElementById('regex-scenario');
-  const sampleInput = document.getElementById('regex-sample');
-  const typeSelect = document.getElementById('regex-type');
-  const btn = document.getElementById('regex-btn');
-  const resultArea = document.getElementById('regex-result');
-  const resultContent = document.getElementById('regex-result-content');
-
-  btn.addEventListener('click', async () => {
-    const scenario = scenarioInput.value.trim();
-    const logSample = sampleInput.value.trim();
-    const deviceType = typeSelect.value;
-
-    if (!scenario) {
-      alert('请输入攻防场景');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = '生成中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.scriptGen.regex(scenario, logSample, deviceType);
-
-    btn.disabled = false;
-    btn.textContent = '生成正则';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      
-      let html = '';
-      
-      if (data.regexes && data.regexes.length > 0) {
-        data.regexes.forEach((item, index) => {
-          html += '<div class="regex-item">';
-          html += '<div class="regex-header">';
-          html += `<span class="regex-name">${index + 1}. ${item.name}</span>`;
-          html += `<button class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText('${item.pattern.replace(/'/g, "\\'")}')">复制</button>`;
-          html += '</div>';
-          html += `<div class="regex-pattern">${item.pattern}</div>`;
-          html += '<div class="regex-meta">';
-          html += `<span>优先级: ${item.priority}</span>`;
-          if (item.description) {
-            html += `<span>${item.description}</span>`;
-          }
-          html += '</div>';
-          if (item.match_example) {
-            html += `<div style="margin-top: 8px; font-size: 11px; color: var(--n-500);">示例: <code style="background: var(--n-100); padding: 2px 4px; border-radius: 2px;">${item.match_example}</code></div>`;
-          }
-          html += '</div>';
-        });
-      } else {
-        html = '<div class="empty-state"><div class="empty-state-title">未生成正则规则</div></div>';
+const ScriptGenRegex = {
+  name: 'ScriptGenRegex',
+  props: { mode: String },
+  data() {
+    return {
+      input: '',
+      purpose: '',
+      loading: false,
+      result: null,
+    };
+  },
+  methods: {
+    fillSample() {
+      this.input = '<22>Jan  5 12:34:56 web-server sshd[12345]: Failed password for invalid user admin from 192.168.1.100 port 22 ssh2';
+      this.purpose = '提取用户名、源IP、失败原因';
+    },
+    async submit() {
+      if (!this.input.trim()) {
+        ElementPlus.ElMessageBox.alert('请输入日志样本', '提示', { type: 'warning' });
+        return;
       }
-      
-      resultContent.innerHTML = html;
-    } else {
-      alert(`生成失败: ${result.msg}`);
-    }
-  });
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.scriptGen.regex({ log_sample: this.input, purpose: this.purpose });
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
+      }
+    },
+  },
+  template: `
+    <div class="g-stack">
+      <alert-guide type="info" title="正则表达式用于日志批量检索">
+        生成的正则可用于：SIEM告警规则、ELK的grok解析、Python日志分析脚本、grep命令行检索。如果匹配速度慢，优先使用非捕获组(?:...)优化。
+      </alert-guide>
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><MagicStick /></el-icon> 正则表达式生成</div>
+            <div class="g-card-desc">粘贴日志样本，AI自动生成匹配正则表达式</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillSample">填充测试日志</el-button>
+        </div>
+        <el-input v-model="input" type="textarea" :rows="3" placeholder="粘贴日志样本..." :disabled="loading" />
+        <div class="g-input-guide">
+          <el-icon><InfoFilled /></el-icon>
+          <span>粘贴一条典型日志，AI将分析其结构并生成正则</span>
+        </div>
+        <el-input v-model="purpose" placeholder="提取目的（可选）：如提取用户名、IP地址" style="margin-top:12px" :disabled="loading" />
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" @click="submit" :loading="loading">生成正则</el-button>
+        </div>
+      </div>
+
+      <div v-if="result" class="g-card slide">
+        <div class="g-card-title" style="margin-bottom:12px"><el-icon><Finished /></el-icon> 生成结果</div>
+        <code-block :code="result.regex || result.pattern" lang="regex" title="正则表达式" />
+        <div v-if="result.test_result" style="margin-top:12px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px">测试匹配结果</div>
+          <code-block :code="JSON.stringify(result.test_result, null, 2)" lang="json" />
+        </div>
+        <knowledge-panel title="正则优化建议">
+          <p>{{ result.optimization || '生成的正则已针对性能优化。建议在大量日志场景下使用预编译正则以提高匹配速度。' }}</p>
+        </knowledge-panel>
+      </div>
+    </div>
+  `,
 };

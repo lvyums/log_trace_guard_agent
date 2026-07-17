@@ -1,0 +1,47 @@
+{
+  "ssh": [
+    {
+      "name": "SSH爆破检测",
+      "pattern": "(?i)(Failed password|Invalid user|authentication failure).*from\\s+([\\d.]+)",
+      "description": "检测SSH登录失败（爆破攻击特征）",
+      "match_example": "sshd[1234]: Failed password for root from 192.168.1.1 port 22",
+      "priority": 80
+    }
+  ],
+  "web": [
+    {
+      "name": "SQL注入检测",
+      "pattern": "(?i)(union.*select|select.*from|1=1|'|\"|--\\s|%27|%22|%3D|%3B)",
+      "description": "检测SQL注入攻击特征（联合查询/恒真条件/注释符）",
+      "match_example": "GET /user?id=1' OR '1'='1 HTTP/1.1",
+      "priority": 85
+    }
+  ],
+  "sql": [
+    {
+      "name": "SQL注入检测",
+      "pattern": "(?i)(union.*select|select.*from|1=1|'|\"|--\\s|%27|%22)",
+      "description": "检测SQL注入攻击特征",
+      "match_example": "SELECT * FROM users WHERE id=1' OR '1'='1",
+      "priority": 85
+    }
+  ],
+  "port_scan": [
+    {
+      "name": "端口扫描检测",
+      "pattern": "(?i)(scan|nmap|masscan|port.*scan|SYN scan|stealth scan)",
+      "description": "检测端口扫描行为",
+      "match_example": "SRC=192.168.1.100 DST=10.0.0.1 PROTO=TCP SPT=54321 DPT=22",
+      "priority": 70
+    }
+  ],
+  "default": [
+    {
+      "name": "通用规则",
+      "pattern_template": "(?i){scenario_escaped}",
+      "description": "基于场景描述的通用检测规则，建议补充日志样例后优化",
+      "match_example": null,
+      "priority": 50
+    }
+  ]
+}

@@ -1,138 +1,107 @@
-/**
- * 实训场景页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块五 · 实训场景 — 查看并选择攻防实训场景
+   ============================================ */
 
-window.Pages['scenarios'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">攻防实训</h1>
-    <p class="main-subtitle">交互式安全实训场景，提升实战能力</p>
-  </div>
+const TrainingScenarios = {
+  name: 'TrainingScenarios',
+  props: { mode: String },
+  data() {
+    return {
+      scenarios: [],
+      loading: false,
+      selected: null,
+    };
+  },
+  computed: {
+    isTraining() {
+      return this.mode === 'training';
+    },
+  },
+  methods: {
+    async loadScenarios() {
+      this.loading = true;
+      try {
+        const res = await Api.training.scenarios();
+        if (res.success && res.data) {
+          this.scenarios = Array.isArray(res.data) ? res.data : (res.data.scenarios || []);
+        } else {
+          this.loadSampleScenarios();
+        }
+      } catch (e) {
+        this.loadSampleScenarios();
+      } finally {
+        this.loading = false;
+      }
+    },
+    loadSampleScenarios() {
+      this.scenarios = [
+        { id: 1, title: 'SSH暴力破解检测', difficulty: '初级', category: '入侵检测', description: '分析SSH登录日志，识别暴力破解行为并溯源攻击IP', steps: 3 },
+        { id: 2, title: 'Web攻击日志分析', difficulty: '中级', category: 'Web安全', description: '分析WAF日志，识别SQL注入、XSS等Web攻击', steps: 5 },
+        { id: 3, title: '内网横向移动追踪', difficulty: '高级', category: '应急响应', description: '通过多源日志关联分析，追踪内网横向移动路径', steps: 7 },
+        { id: 4, title: '日志采集架构设计', difficulty: '中级', category: '架构设计', description: '根据企业需求设计完整的日志采集与存储架构', steps: 4 },
+        { id: 5, title: '合规基线检查', difficulty: '初级', category: '合规审计', description: '对服务器配置进行等保2.0三级合规自查', steps: 3 },
+      ];
+    },
+    selectScenario(s) {
+      this.selected = s;
+    },
+    startTraining() {
+      if (this.selected) {
+        window.location.hash = '#/training/submit';
+      }
+    },
+  },
+  mounted() {
+    this.loadScenarios();
+  },
+  template: `
+    <div class="g-stack">
+      <alert-guide type="info" title="选择场景前先评估自己的水平">
+        初级：适合刚接触日志分析的学员，主要考察基础字段提取能力。中级：需要理解攻击原理，能关联多条日志判断攻击阶段。高级：需要完整还原攻击链并给出溯源建议。
+      </alert-guide>
 
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">选择场景</label>
-      <select id="tr-scenario" class="input">
-        <option value="">全部场景</option>
-        <option value="S001">S001 - 日志基础认知（入门）</option>
-        <option value="S002">S002 - 日志采集配置（初级）</option>
-        <option value="S003">S003 - 日志清洗筛查（中级）</option>
-        <option value="S004">S004 - Web攻击溯源（高级）</option>
-        <option value="S005">S005 - 内网渗透溯源（高级）</option>
-        <option value="S006">S006 - 合规审计整改（中级）</option>
-      </select>
+      <!-- 实训模式提示 -->
+      <alert-guide v-if="isTraining" type="info" title="实训模式已开启">
+        选择一个实训场景开始练习。每个场景包含分步指引和标准答案，完成后可查看详细报告。
+      </alert-guide>
+
+      <div class="g-card">
+        <div class="g-card-header">
+          <div class="g-card-title"><el-icon><Reading /></el-icon> 实训场景</div>
+        </div>
+
+        <div v-if="loading" style="text-align:center;padding:40px">
+          <el-icon class="is-loading" :size="32" color="var(--primary)"><Loading /></el-icon>
+          <div style="margin-top:8px;font-size:13px;color:var(--text-tertiary)">加载中...</div>
+        </div>
+
+        <div v-else-if="!scenarios.length" class="g-empty">
+          <empty-guide title="暂无实训场景" desc="请稍后再试或联系管理员" />
+        </div>
+
+        <div v-else style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
+          <div v-for="s in scenarios" :key="s.id"
+               class="training-task-item" :class="{ active: selected?.id === s.id }"
+               @click="selectScenario(s)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="training-task-num">{{ s.id }}</span>
+                <span class="training-task-title">{{ s.title }}</span>
+              </div>
+              <risk-badge :level="s.difficulty === '高级' ? 'P0' : s.difficulty === '中级' ? 'P1' : 'P3'"
+                         :label="s.difficulty" />
+            </div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">{{ s.category }} · {{ s.steps }}个步骤</div>
+            <div style="font-size:13px;color:var(--text-secondary)">{{ s.description }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="selected && isTraining" class="g-actions" style="justify-content:center">
+        <el-button type="primary" size="large" @click="startTraining">
+          <el-icon style="margin-right:4px"><Promotion /></el-icon> 开始实训
+        </el-button>
+      </div>
     </div>
-    <button id="tr-load-btn" class="btn btn-primary">加载场景</button>
-  </div>
-
-  <div id="tr-scenarios" class="result-area"></div>
-  
-  <div id="tr-task-area" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title" id="tr-task-title">任务详情</span>
-    </div>
-    <div id="tr-task-content"></div>
-  </div>
-`;
-
-window.PageInit['scenarios'] = () => {
-  const scenarioSelect = document.getElementById('tr-scenario');
-  const loadBtn = document.getElementById('tr-load-btn');
-  const scenariosArea = document.getElementById('tr-scenarios');
-  const taskArea = document.getElementById('tr-task-area');
-  const taskTitle = document.getElementById('tr-task-title');
-  const taskContent = document.getElementById('tr-task-content');
-
-  loadBtn.addEventListener('click', async () => {
-    const scenarioId = scenarioSelect.value;
-
-    loadBtn.disabled = true;
-    loadBtn.textContent = '加载中...';
-    scenariosArea.innerHTML = '';
-
-    const result = await api.training.dispatch(scenarioId);
-
-    loadBtn.disabled = false;
-    loadBtn.textContent = '加载场景';
-
-    if (result.code === 0) {
-      const data = result.data;
-      
-      if (data.scenarios && data.scenarios.length > 0) {
-        let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">';
-        
-        data.scenarios.forEach(sc => {
-          const scenario = sc.scenario || sc;
-          const difficultyColor = scenario.difficulty === '入门' ? 'var(--success)' :
-                                  scenario.difficulty === '初级' ? 'var(--info)' :
-                                  scenario.difficulty === '中级' ? 'var(--warning)' : 'var(--error)';
-          
-          html += `<div class="result-card" style="cursor: pointer;" onclick="loadScenarioTasks('${scenario.scenario_id}')">`;
-          html += `<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">`;
-          html += `<span style="font-weight: 600;">${scenario.name}</span>`;
-          html += `<span style="font-size: 11px; padding: 2px 6px; background: ${difficultyColor}; color: white; border-radius: 4px;">${scenario.difficulty}</span>`;
-          html += '</div>';
-          if (scenario.description) {
-            html += `<div style="font-size: 12px; color: var(--n-600); margin-bottom: 8px;">${scenario.description}</div>`;
-          }
-          html += `<div style="font-size: 11px; color: var(--n-500);">任务数: ${sc.total_tasks || 0}</div>`;
-          html += '</div>';
-        });
-        
-        html += '</div>';
-        scenariosArea.innerHTML = html;
-      } else {
-        scenariosArea.innerHTML = '<div class="empty-state"><div class="empty-state-title">暂无场景数据</div></div>';
-      }
-    } else {
-      alert(`加载失败: ${result.msg}`);
-    }
-  });
-
-  // 全局函数：加载场景任务
-  window.loadScenarioTasks = async (scenarioId) => {
-    const result = await api.training.dispatch(scenarioId);
-    if (result.code === 0 && result.data.scenarios && result.data.scenarios.length > 0) {
-      const sc = result.data.scenarios[0];
-      const scenario = sc.scenario || sc;
-      
-      taskArea.style.display = 'block';
-      taskTitle.textContent = scenario.name;
-      
-      let html = '';
-      
-      // 场景信息
-      html += `<div class="result-card" style="margin-bottom: 16px;">`;
-      html += `<div style="font-size: 13px; color: var(--n-600); margin-bottom: 8px;">${scenario.description || ''}</div>`;
-      if (scenario.objectives && scenario.objectives.length > 0) {
-        html += '<div style="font-size: 12px; font-weight: 500; margin-bottom: 4px;">学习目标:</div>';
-        html += '<ul style="margin: 0; padding-left: 16px; font-size: 12px; color: var(--n-600);">';
-        scenario.objectives.forEach(obj => { html += `<li>${obj}</li>`; });
-        html += '</ul>';
-      }
-      html += '</div>';
-      
-      // 任务列表
-      if (sc.tasks && sc.tasks.length > 0) {
-        html += '<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">任务列表</div>';
-        sc.tasks.forEach((task, idx) => {
-          html += `<div class="result-card" style="margin-bottom: 8px;">`;
-          html += `<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">`;
-          html += `<span style="font-weight: 500;">${idx + 1}. ${task.title}</span>`;
-          html += `<span style="font-size: 11px; color: var(--n-500);">${task.submit_type}</span>`;
-          html += '</div>';
-          if (task.description) {
-            html += `<div style="font-size: 12px; color: var(--n-600);">${task.description}</div>`;
-          }
-          if (task.hint) {
-            html += `<div style="font-size: 11px; color: var(--accent-primary); margin-top: 4px;">提示: ${task.hint}</div>`;
-          }
-          html += '</div>';
-        });
-      }
-      
-      taskContent.innerHTML = html;
-    }
-  };
+  `,
 };

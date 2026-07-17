@@ -1,0 +1,49 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+dist/
+build/
+*.egg-info/
+eggs/
+*.whl
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MiMoCode
+.mimocode/
+
+# Claude
+.claude/
+
+# Temporary / artifacts
+tmp/
+temp/
+*.tmp
+*.bak
+=*
+take_screenshots.py

@@ -1,333 +1,210 @@
-/* ═══════════════════════════════════════════════════
-   MODULES — 模块特定样式
-   ═══════════════════════════════════════════════════ */
+/* ============================================
+   五大模块专属样式
+   ============================================ */
 
-/* ── Tab 导航 ── */
-.tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--n-200);
-  margin-bottom: var(--space-4);
-}
-
-.tab {
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--n-500);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all var(--transition-fast);
-}
-
-.tab:hover {
-  color: var(--n-700);
-}
-
-.tab.active {
-  color: var(--accent-primary);
-  border-bottom-color: var(--accent-primary);
-}
-
-/* ── 风险等级卡片 ── */
-.risk-card {
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
-  border-left: 4px solid;
-}
-
-.risk-card.critical {
-  border-left-color: var(--risk-critical);
-  background: rgba(224, 49, 49, 0.05);
-}
-
-.risk-card.high {
-  border-left-color: var(--risk-high);
-  background: rgba(247, 103, 7, 0.05);
-}
-
-.risk-card.medium {
-  border-left-color: var(--risk-medium);
-  background: rgba(252, 196, 25, 0.05);
-}
-
-.risk-card.low {
-  border-left-color: var(--risk-low);
-  background: rgba(81, 207, 102, 0.05);
-}
-
-.risk-card.noise {
-  border-left-color: var(--risk-noise);
-  background: rgba(134, 142, 150, 0.05);
-}
-
-.risk-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.risk-level {
-  font-size: var(--text-lg);
-  font-weight: 600;
-}
-
-.risk-confidence {
-  font-size: var(--text-sm);
-  color: var(--n-500);
-}
-
-.risk-details {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.risk-detail-row {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.risk-detail-label {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--n-600);
-  min-width: 80px;
-}
-
-.risk-detail-value {
-  font-size: var(--text-sm);
-  color: var(--n-800);
-}
-
-/* ── 攻击链路时间线 ── */
-.timeline {
-  position: relative;
-  padding-left: var(--space-6);
-}
-
-.timeline::before {
-  content: '';
-  position: absolute;
-  left: 8px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--n-200);
-}
-
-.timeline-item {
-  position: relative;
-  padding-bottom: var(--space-4);
-}
-
-.timeline-item::before {
-  content: '';
-  position: absolute;
-  left: calc(-1 * var(--space-6) + 4px);
-  top: 4px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  border: 2px solid var(--n-50);
-}
-
-.timeline-item.critical::before {
-  background: var(--risk-critical);
-}
-
-.timeline-item.high::before {
-  background: var(--risk-high);
-}
-
-.timeline-time {
-  font-size: var(--text-xs);
-  color: var(--n-500);
-  font-family: var(--font-code);
-}
-
-.timeline-content {
-  margin-top: var(--space-1);
-}
-
-.timeline-event {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--n-800);
-}
-
-.timeline-detail {
-  font-size: var(--text-xs);
-  color: var(--n-600);
-  margin-top: var(--space-1);
-}
-
-/* ── 日志输入区 ── */
+/* ---- 模块一：日志解析 ---- */
 .log-input-area {
-  position: relative;
+  min-height: 160px;
 }
 
 .log-input-area textarea {
-  font-family: var(--font-code);
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   line-height: 1.6;
-  tab-size: 4;
 }
 
-.log-input-actions {
-  display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+.log-result-tabs {
+  margin-top: var(--space-lg);
 }
 
-/* ── 结果展示区 ── */
-.result-area {
-  margin-top: var(--space-4);
+.log-field-table .field-name {
+  font-family: var(--font-mono);
+  color: var(--primary);
 }
 
-.result-area-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-3);
-}
-
-.result-area-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--n-700);
-}
-
-/* ── 设备匹配卡片 ── */
-.device-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  background: var(--n-50);
-  border: 1px solid var(--n-200);
-  border-radius: var(--radius-md);
-}
-
-.device-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--n-100);
-  border-radius: var(--radius-md);
-  color: var(--accent-primary);
-}
-
-.device-info {
-  flex: 1;
-}
-
-.device-name {
-  font-size: var(--text-md);
-  font-weight: 600;
-  color: var(--n-800);
-}
-
-.device-meta {
-  font-size: var(--text-xs);
-  color: var(--n-500);
-  margin-top: var(--space-1);
-}
-
-/* ── 正则结果 ── */
-.regex-item {
-  padding: var(--space-3);
-  background: var(--n-50);
-  border: 1px solid var(--n-200);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-2);
-}
-
-.regex-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-2);
-}
-
-.regex-name {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--n-800);
-}
-
-.regex-pattern {
-  font-family: var(--font-code);
-  font-size: var(--text-xs);
-  color: var(--n-700);
-  background: var(--n-100);
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
+.log-field-table .field-value {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
   word-break: break-all;
 }
 
-.regex-meta {
-  display: flex;
-  gap: var(--space-4);
-  margin-top: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--n-500);
+/* ---- 模块二：合规审计 ---- */
+.compliance-form .el-form-item {
+  margin-bottom: var(--space-lg);
 }
 
-/* ── 架构推荐 ── */
-.arch-card {
-  padding: var(--space-4);
-  background: var(--n-50);
-  border: 1px solid var(--n-200);
+.compliance-preview {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
   border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  font-size: var(--font-size-sm);
+  line-height: 1.8;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
 }
 
-.arch-title {
-  font-size: var(--text-lg);
+.compliance-preview h1,
+.compliance-preview h2,
+.compliance-preview h3 {
+  color: var(--text-primary);
+  margin: var(--space-lg) 0 var(--space-sm);
+}
+
+.compliance-preview p {
+  color: var(--text-secondary);
+  margin-bottom: var(--space-sm);
+}
+
+.compliance-preview code {
+  background: var(--bg-hover);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.compliance-risk-mark {
+  color: var(--risk-p0);
   font-weight: 600;
-  color: var(--n-800);
-  margin-bottom: var(--space-3);
+  text-decoration: underline wavy var(--risk-p0);
 }
 
-.arch-section {
-  margin-bottom: var(--space-4);
+/* ---- 模块三：日志采集架构 ---- */
+.collect-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
 }
 
-.arch-section-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--n-600);
-  margin-bottom: var(--space-2);
-}
-
-.arch-list {
-  list-style: none;
-}
-
-.arch-list li {
-  font-size: var(--text-sm);
-  color: var(--n-700);
-  padding: var(--space-1) 0;
-  padding-left: var(--space-4);
+.collect-option {
   position: relative;
 }
 
-.arch-list li::before {
-  content: '•';
+.collect-option .option-tip {
   position: absolute;
-  left: 0;
-  color: var(--accent-primary);
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
 }
 
-.arch-pros li::before {
-  content: '✓';
-  color: var(--success);
+.collect-option:hover .option-tip {
+  opacity: 1;
 }
 
-.arch-cons li::before {
-  content: '✗';
-  color: var(--error);
+.topology-container {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-xl);
+  text-align: center;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topology-container svg {
+  max-width: 100%;
+  max-height: 400px;
+}
+
+/* ---- 模块四：脚本生成 ---- */
+.script-scene-select {
+  width: 100%;
+}
+
+.script-output {
+  position: relative;
+}
+
+.script-output .copy-btn {
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
+  z-index: 1;
+}
+
+/* ---- 模块五：攻防实训 ---- */
+.training-task-item {
+  padding: var(--space-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.training-task-item:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.training-task-item.active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.training-task-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--text-on-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  margin-right: var(--space-sm);
+}
+
+.training-task-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.training-task-diff {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-xs);
+}
+
+.training-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+.training-stat-card {
+  text-align: center;
+  padding: var(--space-lg);
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+}
+
+.training-stat-value {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.training-stat-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-xs);
 }

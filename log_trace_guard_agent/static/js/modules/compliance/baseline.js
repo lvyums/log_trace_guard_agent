@@ -1,136 +1,116 @@
-/**
- * 合规基线生成页面
- */
-window.Pages = window.Pages || {};
-window.PageInit = window.PageInit || {};
+/* ============================================
+   模块四 · 基线生成 — 根据资产信息生成合规基线报告
+   ============================================ */
 
-window.Pages['baseline'] = () => `
-  <div class="main-header">
-    <h1 class="main-title">合规基线生成</h1>
-    <p class="main-subtitle">根据业务场景自动生成合规监控基线</p>
-  </div>
+const ComplianceBaseline = {
+  name: 'ComplianceBaseline',
+  props: { mode: String },
+  data() {
+    return {
+      form: {
+        org_name: '',
+        asset_type: '',
+        os_type: '',
+        service_list: '',
+        standard: '等保2.0三级',
+      },
+      loading: false,
+      result: null,
+      standardOptions: ['等保2.0二级', '等保2.0三级', '等保2.0四级', '网安法', '数据安全法'],
+    };
+  },
+  methods: {
+    renderMarkdown(text) {
+      if (!text) return '';
+      return text
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>');
+    },
+    fillExample() {
+      this.form = {
+        org_name: 'XX科技有限公司',
+        asset_type: 'Web应用服务器',
+        os_type: 'CentOS 7.9',
+        service_list: 'Nginx, MySQL, Redis',
+        standard: '等保2.0三级',
+      };
+    },
+    async submit() {
+      if (!this.form.org_name || !this.form.asset_type) {
+        ElementPlus.ElMessageBox.alert('请填写组织名称和资产类型', '提示', { type: 'warning' });
+        return;
+      }
+      this.loading = true;
+      this.result = null;
+      try {
+        const res = await Api.compliance.baseline(this.form);
+        if (res.success) {
+          this.result = res.data;
+        } else {
+          ElementPlus.ElMessage.error(res.msg);
+        }
+      } catch (e) {
+        ElementPlus.ElMessage.error('请求失败');
+      } finally {
+        this.loading = false;
+      }
+    },
+  },
+  template: `
+    <div class="g-split g-split--left-fixed">
+      <alert-guide type="warning" title="基线报告中的不合规项需要逐项整改">
+        报告按风险分级：红色=必须整改(等保测评直接不通过)、黄色=建议整改(有风险但不影响测评)、灰色=最佳实践。整改建议包含具体命令和配置示例。
+      </alert-guide>
+      <!-- 左侧表单 -->
+      <div class="g-card" style="align-self:start">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><Document /></el-icon> 基线生成</div>
+            <div class="g-card-desc">填写资产信息，生成合规基线检查报告</div>
+          </div>
+          <el-button size="small" type="primary" plain @click="fillExample">填充示例</el-button>
+        </div>
+        <el-form :model="form" label-position="top" size="default" class="compliance-form">
+          <el-form-item label="组织名称">
+            <tip-wrapper :tip="{ label: '组织名称', desc: '填写需要进行合规检查的组织或单位名称' }">
+              <el-input v-model="form.org_name" placeholder="如：XX科技有限公司" />
+            </tip-wrapper>
+          </el-form-item>
+          <el-form-item label="资产类型">
+            <tip-wrapper :tip="{ label: '资产类型', desc: '选择需要检查的资产类型', example: 'Web服务器、数据库、防火墙等' }">
+              <el-input v-model="form.asset_type" placeholder="如：Web应用服务器" />
+            </tip-wrapper>
+          </el-form-item>
+          <el-form-item label="操作系统">
+            <el-input v-model="form.os_type" placeholder="如：CentOS 7.9" />
+          </el-form-item>
+          <el-form-item label="部署服务">
+            <el-input v-model="form.service_list" placeholder="如：Nginx, MySQL, Redis" />
+          </el-form-item>
+          <el-form-item label="合规标准">
+            <el-select v-model="form.standard" style="width:100%">
+              <el-option v-for="s in standardOptions" :key="s" :label="s" :value="s" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <el-button type="primary" @click="submit" :loading="loading" style="width:100%">生成基线报告</el-button>
+      </div>
 
-  <div class="card">
-    <div class="form-group">
-      <label class="form-label">资产数量</label>
-      <input id="bl-count" class="input" type="number" value="50" min="1">
-    </div>
-    <div class="form-group">
-      <label class="form-label">业务类型</label>
-      <select id="bl-business" class="input">
-        <option value="enterprise">企业</option>
-        <option value="gov">政府</option>
-        <option value="education">教育</option>
-        <option value="finance">金融</option>
-        <option value="medical">医疗</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">设备类型（多选）</label>
-      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-        <label class="checkbox"><input type="checkbox" value="server" checked> 服务器</label>
-        <label class="checkbox"><input type="checkbox" value="firewall"> 防火墙</label>
-        <label class="checkbox"><input type="checkbox" value="web"> Web应用</label>
-        <label class="checkbox"><input type="checkbox" value="db"> 数据库</label>
-        <label class="checkbox"><input type="checkbox" value="network"> 网络设备</label>
+      <!-- 右侧预览 -->
+      <div class="g-card" style="align-self:start">
+        <div class="g-card-title" style="margin-bottom:12px"><el-icon><View /></el-icon> 基线报告预览</div>
+        <div v-if="result" class="compliance-preview" v-html="renderMarkdown(result.report || result.baseline || JSON.stringify(result, null, 2))"></div>
+        <div v-else class="g-empty" style="min-height:300px">
+          <el-icon class="g-empty-icon"><Document /></el-icon>
+          <div style="font-size:14px;color:var(--text-secondary)">填写左侧表单生成报告</div>
+          <div style="font-size:12px;color:var(--text-tertiary)">报告将实时渲染在此区域</div>
+        </div>
+        <result-guide v-if="result" :content="APP_CONFIG.guidance.resultGuides.compliance" />
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">行业（可选）</label>
-      <input id="bl-industry" class="input" placeholder="如: 教育、政企、金融">
-    </div>
-    <button id="bl-btn" class="btn btn-primary">生成基线</button>
-  </div>
-
-  <div id="bl-result" class="result-area" style="display: none;">
-    <div class="result-area-header">
-      <span class="result-area-title">监控基线</span>
-    </div>
-    <div id="bl-result-content"></div>
-  </div>
-`;
-
-window.PageInit['baseline'] = () => {
-  const countInput = document.getElementById('bl-count');
-  const businessSelect = document.getElementById('bl-business');
-  const industryInput = document.getElementById('bl-industry');
-  const btn = document.getElementById('bl-btn');
-  const resultArea = document.getElementById('bl-result');
-  const resultContent = document.getElementById('bl-result-content');
-
-  btn.addEventListener('click', async () => {
-    const assetCount = parseInt(countInput.value) || 50;
-    const businessType = businessSelect.value;
-    const industry = industryInput.value.trim();
-    
-    // 获取选中的设备类型
-    const deviceTypes = [];
-    document.querySelectorAll('#bl-result').previousElementSibling.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-      deviceTypes.push(cb.value);
-    });
-
-    btn.disabled = true;
-    btn.textContent = '生成中...';
-    resultArea.style.display = 'none';
-
-    const result = await api.compliance.baseline(assetCount, businessType, deviceTypes, [], industry);
-
-    btn.disabled = false;
-    btn.textContent = '生成基线';
-
-    if (result.code === 0) {
-      resultArea.style.display = 'block';
-      const data = result.data;
-      
-      let html = '';
-      
-      if (data.baselines && data.baselines.length > 0) {
-        data.baselines.forEach(bl => {
-          const severityClass = bl.severity === 'high' ? 'critical' : 
-                               bl.severity === 'medium' ? 'high' : 'low';
-          html += `<div class="result-card" style="margin-bottom: 12px; border-left: 4px solid var(--risk-${severityClass});">`;
-          html += `<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">`;
-          html += `<span style="font-weight: 600;">${bl.name}</span>`;
-          html += `<span class="badge badge-${severityClass}">${bl.severity}</span>`;
-          html += `<span style="font-size: 11px; color: var(--n-500);">${bl.category}</span>`;
-          html += '</div>';
-          
-          if (bl.description) {
-            html += `<div style="font-size: 12px; color: var(--n-600); margin-bottom: 8px;">${bl.description}</div>`;
-          }
-          
-          if (bl.thresholds && bl.thresholds.length > 0) {
-            html += '<div style="font-size: 11px; font-weight: 500; margin-bottom: 4px;">阈值配置:</div>';
-            bl.thresholds.forEach(t => {
-              html += `<div style="font-size: 11px; color: var(--n-600); padding-left: 12px;">• ${t.name}: ${t.description}</div>`;
-            });
-          }
-          
-          html += '<div style="display: flex; gap: 16px; margin-top: 8px; font-size: 11px; color: var(--n-500);">';
-          if (bl.check_frequency) html += `<span>检查频率: ${bl.check_frequency}</span>`;
-          if (bl.alert_standard) html += `<span>告警标准: ${bl.alert_standard}</span>`;
-          html += '</div>';
-          
-          if (bl.remediation) {
-            html += `<div style="margin-top: 8px; padding: 8px; background: var(--n-100); border-radius: 4px; font-size: 11px;">
-              <span style="font-weight: 500;">整改建议:</span> ${bl.remediation}
-            </div>`;
-          }
-          
-          html += '</div>';
-        });
-      }
-      
-      if (data.summary) {
-        html += `<div class="result-card" style="margin-top: 16px;">
-          <div style="font-weight: 600; margin-bottom: 8px;">总结</div>
-          <div style="font-size: 13px; color: var(--n-600);">${data.summary}</div>
-        </div>`;
-      }
-      
-      resultContent.innerHTML = html;
-    } else {
-      alert(`生成失败: ${result.msg}`);
-    }
-  });
+  `,
 };
