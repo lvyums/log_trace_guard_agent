@@ -1,5 +1,7 @@
 """模块一业务逻辑编排 — 规则引擎 + RAG + LLM 三层编排"""
 
+import json
+import re
 from typing import Optional
 
 from modules.log_parse.parser_factory import LogParserFactory
@@ -22,9 +24,11 @@ logger = LogManager.get_logger()
 class LogParseService:
     """日志解析模块 — 业务逻辑编排"""
 
+    # ── 公开方法 ──
+
     @staticmethod
     async def identify_log_type(log_line: str, context: ContextManager) -> Result:
-        """识别日志类型 — 多特征加权识别"""
+        """识别日志类型 — 多特征加权识别 + LLM 降级"""
         # 0. 预处理
         cleaned = LogParseService._preprocess(log_line)
         if not cleaned:
@@ -38,7 +42,6 @@ class LogParseService:
 
         if rule_match:
             device_type = rule_match.rule.device_type
-            # 权重：规则匹配基础分 + 优先级系数
             priority_weight = min(rule_match.rule.priority / 10, 1.0)
             confidence = 60 + priority_weight * 30  # 60-90
             identify_reason = f"规则引擎命中: {rule_match.rule.name}"
@@ -60,10 +63,22 @@ class LogParseService:
         except Exception as e:
             logger.warning(f"RAG 检索失败: {e}")
 
+        # 4. LLM 降级：当规则引擎和特征匹配都失败时
+        if device_type == "unknown" or confidence < 30:
+            llm_result = await LogParseService._llm_identify_fallback(cleaned)
+            if llm_result:
+                device_type = llm_result.get("device_type", device_type)
+                llm_confidence = llm_result.get("confidence", 0)
+                if llm_confidence > confidence:
+                    confidence = llm_confidence
+                    identify_reason = llm_result.get("identify_reason", "LLM降级识别")
+                    if identify_reason:
+                        identify_reason = f"LLM降级: {identify_reason[:100]}"
+
         if not identify_reason:
             identify_reason = "未能识别日志类型，特征不明确"
 
-        # 4. 更新上下文
+        # 5. 更新上下文
         ctx = ModuleContext(
             module_id="log_parse",
             status=ModuleStatus.SUCCESS if device_type != "unknown" else ModuleStatus.WARNING,
@@ -80,7 +95,7 @@ class LogParseService:
 
     @staticmethod
     async def parse_log(log_line: str, context: ContextManager) -> Result:
-        """全流程解析：预处理 → 识别 → 提取字段 → 结构校验"""
+        """全流程解析：预处理 → 识别 → 提取字段 → 结构校验（含 LLM 降级）"""
         # 1. 预处理
         cleaned = LogParseService._preprocess(log_line)
         if not cleaned:
@@ -90,20 +105,26 @@ class LogParseService:
         # 2. 解析日志
         parsed = LogParserFactory.parse(cleaned)
         if parsed is None:
-            # 兜底：返回通用解析结果 + 人工复核提示
-            fallback = {
-                "timestamp": None,
-                "src_ip": None,
-                "dst_ip": None,
-                "user": None,
-                "status": None,
-                "device_type": "unknown",
-                "raw_log": cleaned[:500],
-                "missing_fields": ["timestamp", "src_ip", "user", "status"],
-                "fallback_note": "无法识别日志格式，已返回通用解析结果，建议人工复核",
-            }
-            LogManager.log_parse_failure(log_line, "无法识别日志格式，使用兜底解析")
-            return Result.ok(fallback)
+            # 兜底1: LLM 降级解析
+            llm_parsed = await LogParseService._llm_parse_fallback(cleaned)
+            if llm_parsed:
+                parsed = llm_parsed
+                logger.info("LLM 降级解析成功")
+            else:
+                # 兜底2: 返回通用解析结果 + 人工复核提示
+                fallback = {
+                    "timestamp": None,
+                    "src_ip": None,
+                    "dst_ip": None,
+                    "user": None,
+                    "status": None,
+                    "device_type": "unknown",
+                    "raw_log": cleaned[:500],
+                    "missing_fields": ["timestamp", "src_ip", "user", "status"],
+                    "fallback_note": "无法识别日志格式，已返回通用解析结果，建议人工复核",
+                }
+                LogManager.log_parse_failure(log_line, "无法识别日志格式，使用兜底解析")
+                return Result.ok(fallback)
 
         # 3. 标记缺失字段
         missing = []
@@ -127,8 +148,13 @@ class LogParseService:
         return Result.ok(parsed)
 
     @staticmethod
-    async def assess_risk(parsed_fields: dict, context: ContextManager) -> Result:
+    async def assess_risk(parsed_fields: dict, context: ContextManager,
+                          device_type: Optional[str] = None) -> Result:
         """行为研判：风险基线匹配 + 多特征综合评分"""
+        # 如果有传入 device_type，注入到 parsed_fields 中
+        if device_type and parsed_fields.get("device_type") in (None, "unknown"):
+            parsed_fields["device_type"] = device_type
+
         # 使用风险基线进行评估
         matches = RiskBaseline.evaluate(parsed_fields)
 
@@ -159,16 +185,23 @@ class LogParseService:
         })
 
     @staticmethod
-    async def batch_parse(logs: list[str], do_assess: bool = False, context: Optional[ContextManager] = None) -> Result:
+    async def batch_parse(logs: list[str], do_assess: bool = False,
+                          context: Optional[ContextManager] = None) -> Result:
         """批量解析：多条日志一次性识别、解析、可选风险研判"""
         items = []
-        risk_counts = {RiskLevel.P0_HIGH: 0, RiskLevel.P1_MEDIUM: 0, RiskLevel.P2_LOW: 0, RiskLevel.P3_NOISE: 0}
+        risk_counts = {RiskLevel.P0_HIGH: 0, RiskLevel.P1_MEDIUM: 0,
+                       RiskLevel.P2_LOW: 0, RiskLevel.P3_NOISE: 0}
 
         for i, log_line in enumerate(logs):
-            item = {"index": i, "log_line": log_line[:100], "parse_result": None, "risk_result": None, "error": None}
+            item = {
+                "index": i, "log_line": log_line[:100],
+                "parse_result": None, "risk_result": None, "error": None,
+            }
 
             # 解析
-            parse_result = await LogParseService.parse_log(log_line, context or ContextManager.create(""))
+            parse_result = await LogParseService.parse_log(
+                log_line, context or ContextManager.create("")
+            )
             if not parse_result["code"] == 0:
                 item["error"] = parse_result["msg"]
                 items.append(item)
@@ -178,7 +211,10 @@ class LogParseService:
 
             # 可选风险研判
             if do_assess:
-                risk = await LogParseService.assess_risk(parse_result["data"], context or ContextManager.create(""))
+                risk = await LogParseService.assess_risk(
+                    parse_result["data"],
+                    context or ContextManager.create(""),
+                )
                 item["risk_result"] = risk["data"]
                 risk_level_val = risk["data"]["risk_level"]
                 for level in RiskLevel:
@@ -204,7 +240,9 @@ class LogParseService:
         })
 
     @staticmethod
-    async def explain_field(field_name: str, device_type: Optional[str] = None, context: Optional[ContextManager] = None) -> Result:
+    async def explain_field(field_name: str,
+                            device_type: Optional[str] = None,
+                            context: Optional[ContextManager] = None) -> Result:
         """字段释义：RAG 检索 + 设备类型上下文"""
         query = f"字段解释 {field_name}"
         if device_type:
@@ -215,7 +253,9 @@ class LogParseService:
             kb = RAGFactory.get_kb("log_basics")
             rag_result = kb.retrieve(query, top_k=3)
             if rag_result.items:
-                rag_content = "\n".join([item.get("document", "") for item in rag_result.items])
+                rag_content = "\n".join(
+                    [item.get("document", "") for item in rag_result.items]
+                )
         except Exception as e:
             logger.warning(f"RAG 检索失败: {e}")
 
@@ -234,17 +274,110 @@ class LogParseService:
         })
 
     @staticmethod
-    async def explain_fields_batch(field_names: list[str], device_type: Optional[str] = None, context: Optional[ContextManager] = None) -> Result:
+    async def explain_fields_batch(field_names: list[str],
+                                   device_type: Optional[str] = None,
+                                   context: Optional[ContextManager] = None) -> Result:
         """批量字段释义"""
         results = []
         for field_name in field_names:
-            result = await LogParseService.explain_field(field_name, device_type, context)
+            result = await LogParseService.explain_field(
+                field_name, device_type, context
+            )
             if result["code"] == 0:
                 results.append(result["data"])
-        return Result.ok({
-            "fields": results,
-            "device_type": device_type,
-        })
+        return Result.ok({"fields": results, "device_type": device_type})
+
+    # ── LLM 降级方法 ──
+
+    @staticmethod
+    async def _llm_identify_fallback(log_line: str) -> Optional[dict]:
+        """LLM 降级识别日志类型"""
+        if not settings.llm_api_key:
+            return None
+
+        try:
+            prompt = PromptManager.get_prompt(
+                "log_identify_fallback", log_line=log_line[:1500]
+            )
+            llm = await LLMFactory.get_main_llm()
+            result = await llm.chat([
+                {"role": "system", "content": "你是一个日志分析专家。只返回JSON，不要包含其他文字。"},
+                {"role": "user", "content": prompt},
+            ])
+
+            if result.get("success"):
+                content = result["content"]
+                # 从 markdown 代码块或纯 JSON 中提取
+                json_str = LogParseService._extract_json(content)
+                if json_str:
+                    parsed = json.loads(json_str)
+                    if isinstance(parsed, dict):
+                        return parsed
+        except Exception as e:
+            logger.warning(f"LLM 降级识别失败: {e}")
+        return None
+
+    @staticmethod
+    async def _llm_parse_fallback(log_line: str) -> Optional[dict]:
+        """LLM 降级解析日志为结构化字段"""
+        if not settings.llm_api_key:
+            return None
+
+        try:
+            prompt = PromptManager.get_prompt(
+                "log_parse_fallback", log_line=log_line[:2000]
+            )
+            llm = await LLMFactory.get_main_llm()
+            result = await llm.chat([
+                {"role": "system", "content": "你是一个日志解析专家。只返回JSON，不要包含其他文字。"},
+                {"role": "user", "content": prompt},
+            ])
+
+            if result.get("success"):
+                content = result["content"]
+                json_str = LogParseService._extract_json(content)
+                if json_str:
+                    parsed = json.loads(json_str)
+                    if isinstance(parsed, dict):
+                        return parsed
+        except Exception as e:
+            logger.warning(f"LLM 降级解析失败: {e}")
+        return None
+
+    @staticmethod
+    def _extract_json(text: str) -> Optional[str]:
+        """从 LLM 输出中提取 JSON 字符串
+
+        支持纯 JSON、markdown 代码块（```json ... ```）、
+        或被其他文字包裹的 JSON 对象。
+        """
+        if not text:
+            return None
+
+        # 尝试从 ```json ``` 代码块提取
+        json_block = re.search(
+            r'```(?:json)?\s*\n?(\{.*?\})\n?\s*```', text, re.DOTALL
+        )
+        if json_block:
+            return json_block.group(1).strip()
+
+        # 尝试从 ``` 代码块提取
+        block = re.search(r'```\s*\n?(\{.*?\})\n?\s*```', text, re.DOTALL)
+        if block:
+            return block.group(1).strip()
+
+        # 尝试找到最外层的 { }
+        brace_start = text.find('{')
+        brace_end = text.rfind('}')
+        if brace_start != -1 and brace_end > brace_start:
+            candidate = text[brace_start:brace_end + 1]
+            try:
+                json.loads(candidate)
+                return candidate
+            except json.JSONDecodeError:
+                pass
+
+        return None
 
     # ── 私有辅助方法 ──
 

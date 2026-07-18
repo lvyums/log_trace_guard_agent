@@ -33,11 +33,13 @@ async def parse_log(req: LogParseReq, ctx: ContextManager = Depends(get_context)
 @router.post("/assess")
 async def assess_risk(req: RiskAssessReq, ctx: ContextManager = Depends(get_context)):
     """异常行为研判"""
-    # 先解析，再研判
+    # 先解析，再研判（传入可选的 device_type）
     parse_result = await LogParseService.parse_log(req.log_line, ctx)
     if parse_result["code"] != 0:
         return parse_result
-    result = await LogParseService.assess_risk(parse_result["data"], ctx)
+    result = await LogParseService.assess_risk(
+        parse_result["data"], ctx, device_type=req.device_type
+    )
     return result
 
 

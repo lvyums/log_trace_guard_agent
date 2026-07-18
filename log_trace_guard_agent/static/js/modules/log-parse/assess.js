@@ -27,7 +27,10 @@ const LogParseAssess = {
       this.loading = true;
       this.result = null;
       try {
-        const res = await Api.logParse.assess({ log_line: this.input });
+        const res = await Api.logParse.assess({
+          log_line: this.input,
+          device_type: this.deviceType || undefined,
+        });
         if (res.success) {
           this.result = res.data;
         } else {

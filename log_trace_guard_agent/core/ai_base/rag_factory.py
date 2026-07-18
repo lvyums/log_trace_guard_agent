@@ -22,10 +22,15 @@ class RetrievalResult:
 class KnowledgeBase:
     """单个知识库分片"""
 
-    def __init__(self, kb_name: str, kb_label: str, persist_dir: str):
+    def __init__(self, kb_name: str, kb_label: str, persist_dir: str,
+                 embedding_model: Optional[str] = None):
         self.kb_name = kb_name
         self.kb_label = kb_label
-        self.store = VectorStore(collection_name=kb_name, persist_dir=persist_dir)
+        self.store = VectorStore(
+            collection_name=kb_name,
+            persist_dir=persist_dir,
+            embedding_model=embedding_model,
+        )
 
     def retrieve(self, query: str, top_k: int = 5) -> RetrievalResult:
         """检索知识库"""
@@ -66,6 +71,7 @@ class RAGFactory:
                 kb_name=kb_name,
                 kb_label=cls.KB_REGISTRY[kb_name]["label"],
                 persist_dir=settings.chroma_db_path,
+                embedding_model=settings.embedding_model,
             )
         return cls._instances[kb_name]
 

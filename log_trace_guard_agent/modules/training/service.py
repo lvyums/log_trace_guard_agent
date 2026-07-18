@@ -66,7 +66,7 @@ class TrainingService:
             return Result.fail(f"未知的提交类型: {submit_type}，支持的类型: rule/script/conclusion/plan")
 
         # 3. 执行双维度校验
-        check_result = strategy.check(content, standard)
+        check_result = await strategy.check(content, standard)
 
         # 4. 生成原理讲解
         task = TaskEngine.get_task(scenario_id, task_id)

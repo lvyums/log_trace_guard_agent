@@ -52,6 +52,7 @@ class LogParseResp(BaseModel):
 class RiskAssessReq(BaseModel):
     """风险研判请求"""
     log_line: str = Field(default="", max_length=10000, description="日志内容")
+    device_type: Optional[str] = Field(default=None, description="设备类型（可选，提高研判精度）")
 
     _validate_log_line = field_validator("log_line")(_validate_log_line)
 

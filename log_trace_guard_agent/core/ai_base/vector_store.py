@@ -1,6 +1,7 @@
-"""向量库管理 — ChromaDB 封装（含免下载兜底）"""
+"""向量库管理 — ChromaDB 封装（真实嵌入 + 多级降级）"""
 
 import hashlib
+import re
 from typing import Optional
 
 import chromadb
@@ -12,47 +13,244 @@ from common.logger import LogManager
 logger = LogManager.get_logger()
 
 
-class SimpleEmbeddingFunction(EmbeddingFunction):
-    """简易哈希嵌入函数 — 免下载、免模型，仅用于开发测试环境"""
+# ═══════════════════════════════════════════════════
+# 第1级：Sentence-Transformer 嵌入（最佳效果）
+# ═══════════════════════════════════════════════════
+
+class BGEEmbeddingFunction(EmbeddingFunction):
+    """基于 sentence-transformers 的 BGE 中文嵌入函数
+
+    使用 settings 中配置的 EMBEDDING_MODEL（默认 BAAI/bge-large-zh-v1.5）。
+    模型首次使用时会自动下载（约 1.3GB），后续从缓存加载。
+    """
+
+    def __init__(self, model_name: str = "BAAI/bge-large-zh-v1.5"):
+        self.model_name = model_name
+        self._model = None
+        self._load_model()
+
+    def _load_model(self):
+        try:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer(
+                self.model_name,
+                # 如果网络受限，可从本地缓存加载
+                cache_folder=None,
+            )
+            dim = self._model.get_sentence_embedding_dimension()
+            logger.info(f"✓ BGE 嵌入模型加载成功: {self.model_name} (维度: {dim})")
+        except Exception as e:
+            logger.warning(f"BGE 模型加载失败 ({e})，尝试轻量模型...")
+            self._try_lightweight()
+
+    def _try_lightweight(self):
+        """第2级降级：轻量英文模型"""
+        try:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer("all-MiniLM-L6-v2")
+            dim = self._model.get_sentence_embedding_dimension()
+            logger.info(f"⚠ 已降级到轻量模型: all-MiniLM-L6-v2 (维度: {dim})")
+        except Exception as e:
+            logger.error(f"轻量模型也加载失败: {e}")
+            self._model = None
+
+    def __call__(self, texts: list[str]) -> Embeddings:
+        if self._model is not None:
+            # BGE 建议在编码前加上 instruction 前缀以提高检索效果
+            prefixed = [
+                f"为这个句子生成表示以用于检索相关文章：{t}"[:512]
+                for t in texts
+            ]
+            embeddings = self._model.encode(
+                prefixed,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            return embeddings.tolist()
+        # 终极降级：N-gram 特征向量
+        return NGramEmbeddingFunction()(texts)
+
+
+# ═══════════════════════════════════════════════════
+# 第3级降级：N-gram 特征向量（纯 Python，无依赖）
+# ═══════════════════════════════════════════════════
+
+class NGramEmbeddingFunction(EmbeddingFunction):
+    """基于字符 N-gram 的特征向量
+
+    不依赖任何外部模型或网络，仅使用 Python 标准库。
+    虽然效果不如语义嵌入，但比 MD5 哈希有意义得多。
+    """
+
+    VECTOR_SIZE = 128
+    NGRAM_RANGE = (2, 3)  # bigram + trigram
 
     def __call__(self, texts: list[str]) -> Embeddings:
         result = []
         for text in texts:
-            h = hashlib.md5(text.encode("utf-8"))
-            vec = [int(h.hexdigest()[i:i+2], 16) / 255.0 for i in range(0, 32, 2)]
+            vec = self._text_to_vector(text)
             result.append(vec)
         return result
+
+    def _text_to_vector(self, text: str) -> list[float]:
+        """将文本转换为 N-gram 频率向量"""
+        text = text.lower()[:1000]  # 截断避免过长的文本
+        ngram_counts = {}
+
+        for n in range(self.NGRAM_RANGE[0], self.NGRAM_RANGE[1] + 1):
+            for i in range(len(text) - n + 1):
+                ngram = text[i:i + n]
+                # 只保留中英文和数字的 n-gram
+                if re.match(r'^[a-z0-9一-鿿]+$', ngram):
+                    ngram_counts[ngram] = ngram_counts.get(ngram, 0) + 1
+
+        if not ngram_counts:
+            return [0.0] * self.VECTOR_SIZE
+
+        # 取 TOP N 特征 + 哈希到固定维度
+        top = sorted(ngram_counts.items(), key=lambda x: -x[1])[:self.VECTOR_SIZE]
+        vec = [0.0] * self.VECTOR_SIZE
+        for ngram, count in top:
+            idx = int(hashlib.md5(ngram.encode()).hexdigest()[:8], 16) % self.VECTOR_SIZE
+            vec[idx] += count / max(len(text), 1)
+
+        # L2 归一化
+        norm = sum(v * v for v in vec) ** 0.5
+        if norm > 0:
+            vec = [v / norm for v in vec]
+
+        return vec
+
+
+class EmbeddingCache:
+    """Embedding 结果 LRU 缓存 — 避免重复计算"""
+
+    def __init__(self, maxsize: int = 1000):
+        self._cache: dict[str, list[float]] = {}
+        self._maxsize = maxsize
+
+    def get(self, key: str) -> Optional[list[float]]:
+        return self._cache.get(key)
+
+    def set(self, key: str, embedding: list[float]):
+        if len(self._cache) >= self._maxsize:
+            self._cache.pop(next(iter(self._cache)))
+        self._cache[key] = embedding
+
+    def clear(self):
+        self._cache.clear()
+
+
+# ═══════════════════════════════════════════════════
+# VectorStore — 对外封装
+# ═══════════════════════════════════════════════════
+
+# 已知的嵌入维度映射（用于 ChromaDB 集合兼容性检查）
+KNOWN_DIMENSIONS = {
+    "BAAI/bge-large-zh-v1.5": 1024,
+    "BAAI/bge-small-zh-v1.5": 512,
+    "all-MiniLM-L6-v2": 384,
+    "ngram_fallback": 128,
+    "md5_fallback": 16,
+}
+
+
+def get_embedding_function(model_name: Optional[str] = None) -> EmbeddingFunction:
+    """创建嵌入函数（带自动降级）"""
+    if model_name and model_name not in ("", "none"):
+        return BGEEmbeddingFunction(model_name)
+    # 尝试默认模型
+    try:
+        return BGEEmbeddingFunction("BAAI/bge-large-zh-v1.5")
+    except Exception:
+        try:
+            return BGEEmbeddingFunction("all-MiniLM-L6-v2")
+        except Exception:
+            logger.warning("⚠ 所有 sentence-transformers 模型加载失败，使用 N-gram 降级嵌入")
+            return NGramEmbeddingFunction()
 
 
 class VectorStore:
     """向量库管理，封装 ChromaDB 基本操作"""
 
-    def __init__(self, collection_name: str, persist_dir: str):
+    def __init__(self, collection_name: str, persist_dir: str,
+                 embedding_model: Optional[str] = None):
         self.collection_name = collection_name
         self.persist_dir = persist_dir
+        self.embed_fn = get_embedding_function(embedding_model)
         self._client: Optional[chromadb.PersistentClient] = None
         self._collection: Optional[chromadb.Collection] = None
         self._init_client()
 
+    def _get_target_dimension(self) -> int:
+        """获取当前嵌入函数的输出维度"""
+        # 尝试从已知映射获取
+        for key, dim in KNOWN_DIMENSIONS.items():
+            if key in str(type(self.embed_fn).__name__):
+                return dim
+        # 试跑一次推断
+        try:
+            test = self.embed_fn(["test"])
+            if test and len(test[0]) > 0:
+                return len(test[0])
+        except Exception:
+            pass
+        return 128  # 默认
+
     def _init_client(self):
-        """初始化 ChromaDB 客户端并加载集合（使用免下载嵌入函数）"""
+        """初始化 ChromaDB 客户端并加载集合"""
         try:
             self._client = chromadb.PersistentClient(
                 path=self.persist_dir,
                 settings=ChromaSettings(anonymized_telemetry=False),
             )
-            # 使用自定义嵌入函数，避免下载 ONNX 模型
-            ef = SimpleEmbeddingFunction()
+
             try:
-                self._collection = self._client.get_collection(self.collection_name, embedding_function=ef)
+                # 尝试获取已有集合
+                collection = self._client.get_collection(
+                    self.collection_name,
+                    embedding_function=self.embed_fn,
+                )
+                # 检查维度兼容性（如果已有数据但维度不匹配，需要重建）
+                if self._check_dimension_mismatch(collection):
+                    logger.warning(f"集合 {self.collection_name} 嵌入维度不匹配，重建中...")
+                    self._client.delete_collection(self.collection_name)
+                    self._collection = self._client.create_collection(
+                        self.collection_name,
+                        embedding_function=self.embed_fn,
+                    )
+                else:
+                    self._collection = collection
+                    logger.info(f"加载已有集合: {self.collection_name}")
             except Exception:
                 self._collection = self._client.create_collection(
-                    self.collection_name, embedding_function=ef
+                    self.collection_name,
+                    embedding_function=self.embed_fn,
                 )
                 logger.info(f"创建新集合: {self.collection_name}")
+
         except Exception as e:
             logger.error(f"ChromaDB 初始化失败: {e}")
             raise
+
+    def _check_dimension_mismatch(self, collection) -> bool:
+        """检查集合的嵌入维度是否与当前嵌入函数匹配"""
+        try:
+            # 如果集合有数据，检查第一条数据的维度
+            count = collection.count()
+            if count == 0:
+                return False  # 空集合不需要重建
+
+            # 尝试一次查询来检查维度兼容性
+            collection.query(query_texts=["test"], n_results=1)
+            return False  # 查询成功，维度匹配
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "dimension" in error_msg or "dimensionality" in error_msg:
+                logger.warning(f"维度不匹配，需要重建集合: {e}")
+                return True
+            logger.warning(f"集合检查异常（忽略）: {e}")
+            return False
 
     def add_documents(self, documents: list[str], metadatas: list[dict], ids: list[str]):
         """添加文档到向量库"""
@@ -67,7 +265,8 @@ class VectorStore:
         except Exception as e:
             logger.error(f"添加文档失败: {e}")
 
-    def similarity_search(self, query: str, k: int = 5, score_threshold: float = 0.6) -> list[dict]:
+    def similarity_search(self, query: str, k: int = 5,
+                          score_threshold: float = 0.0) -> list[dict]:
         """向量检索 + 过滤低分结果"""
         try:
             results = self._collection.query(
@@ -81,13 +280,15 @@ class VectorStore:
             ids = results.get("ids", [[]])[0] if results.get("ids") else []
 
             for i, doc in enumerate(documents):
-                score = 1 - distances[i] if i < len(distances) else 0
+                # ChromaDB 返回的是 L2 距离，转为相似度分数
+                score = 1.0 - (distances[i] / 2.0) if i < len(distances) else 0.0
+                score = max(0.0, min(1.0, score))
                 if score >= score_threshold:
                     items.append({
                         "id": ids[i] if i < len(ids) else "",
                         "document": doc,
                         "metadata": metadatas[i] if i < len(metadatas) else {},
-                        "score": score,
+                        "score": round(score, 4),
                     })
             return items
         except Exception as e:
@@ -100,23 +301,3 @@ class VectorStore:
             return self._collection.count()
         except Exception:
             return 0
-
-
-class EmbeddingCache:
-    """Embedding 结果 LRU 缓存"""
-
-    def __init__(self, maxsize: int = 1000):
-        self._cache: dict[str, list[float]] = {}
-        self._maxsize = maxsize
-
-    def get(self, key: str) -> Optional[list[float]]:
-        return self._cache.get(key)
-
-    def set(self, key: str, embedding: list[float]):
-        if len(self._cache) >= self._maxsize:
-            # 简单淘汰：删除第一个键
-            self._cache.pop(next(iter(self._cache)))
-        self._cache[key] = embedding
-
-    def clear(self):
-        self._cache.clear()

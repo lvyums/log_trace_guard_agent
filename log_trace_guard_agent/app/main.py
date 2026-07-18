@@ -44,6 +44,14 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     logger.info("日志溯源卫士智能体 启动中...")
+
+    # 检查 LLM API Key 是否配置
+    if not settings.llm_api_key:
+        logger.warning("⚠️ LLM_API_KEY 未配置！请在 .env 文件中设置 LLM_API_KEY")
+        logger.warning("   部分 AI 功能（LLM 降级、Semantic Scoring）将不可用")
+    else:
+        logger.info("✓ LLM API Key 已配置")
+
     RegexRuleEngine.load_rules(settings.rule_data_dir)
     logger.info("规则引擎加载完成")
     yield

@@ -3,6 +3,7 @@
 采用「规则精准匹配 + 语义相似度比对」双校验机制：
 - 规则匹配：检查必填字段、关键字段值是否命中
 - 语义相似度：基于关键词重叠率计算文本语义相似度
+- LLM 增强：当关键词匹配进入"灰色地带"时，调用 LLM 做语义理解评分
 """
 
 from abc import ABC, abstractmethod
@@ -21,6 +22,11 @@ RULE_MATCH_FULL = 1.0        # 100% 完全匹配
 RULE_MATCH_PARTIAL = 0.6     # ≥60% 字段命中 → 部分遗漏
 SCORE_A = 90                 # A级分数线
 SCORE_B = 70                 # B级分数线
+SCORE_C = 50                 # C级分数线
+
+# ── LLM 增强评分阈值 ──
+LLM_SCORE_LOWER = 60         # LLM 介入下限：低于此直接判定，不调LLM
+LLM_SCORE_UPPER = 88         # LLM 介入上限：高于此直接A级，不调LLM
 
 
 class BaseCheckStrategy(ABC):
@@ -30,9 +36,93 @@ class BaseCheckStrategy(ABC):
     strategy_name: str = "unknown"
 
     @abstractmethod
-    def check(self, submission: dict, standard: dict) -> dict:
+    async def check(self, submission: dict, standard: dict) -> dict:
         """执行校验，返回 {checks, score, analysis}"""
         ...
+
+    # ── LLM 增强评分（子类可覆盖） ──
+
+    async def llm_enhance(self, submission: dict, standard: dict,
+                          keyword_score: int) -> Optional[int]:
+        """当关键词匹配在灰色地带时，调用 LLM 做语义评分
+
+        仅在 keyword_score 处于 [LLM_SCORE_LOWER, LLM_SCORE_UPPER) 范围时调用。
+        返回 LLM 评出的分数，或 None（表示不使用 LLM 结果）。
+        """
+        if not (LLM_SCORE_LOWER <= keyword_score < LLM_SCORE_UPPER):
+            return None
+        return await LLMCheckHelper.semantic_score(submission, standard)
+
+
+class LLMCheckHelper:
+    """LLM 语义评分助手 — 集中管理 LLM 调用，避免重复代码"""
+
+    @staticmethod
+    async def semantic_score(submission: dict, standard: dict) -> Optional[int]:
+        """调用 LLM 对学员答案做语义评分
+
+        比较学员答案与标准答案的语义相似度，返回调整后的分数。
+        """
+        try:
+            from core.ai_base.llm_factory import LLMFactory
+            from core.ai_base.prompt_manager import PromptManager
+            from app.settings import settings
+
+            if not settings.llm_api_key:
+                return None
+
+            # 提取提交内容
+            sub_text = LLMCheckHelper._flatten(submission)
+            std_text = LLMCheckHelper._flatten(standard.get("correct_answer", {}))
+
+            if not sub_text or not std_text:
+                return None
+
+            prompt = PromptManager.get_prompt(
+                "training_scoring",
+                submission=sub_text[:2000],
+                standard=std_text[:2000],
+            )
+
+            llm = await LLMFactory.get_main_llm()
+            result = await llm.chat([
+                {"role": "system",
+                 "content": "你是一个公正的安全实训评分助理。只返回JSON，不要包含其他文字。"},
+                {"role": "user", "content": prompt},
+            ], timeout=15)
+
+            if not result.get("success"):
+                return None
+
+            import json, re
+            content = result["content"]
+            # 提取 JSON
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if not json_match:
+                return None
+
+            parsed = json.loads(json_match.group())
+            llm_score = parsed.get("overall_score")
+            if isinstance(llm_score, (int, float)):
+                return max(0, min(100, int(llm_score)))
+
+            return None
+        except Exception as e:
+            logger.warning(f"LLM 评分调用失败: {e}")
+            return None
+
+    @staticmethod
+    def _flatten(data: dict) -> str:
+        """将字典展平为可读文本"""
+        parts = []
+        for key, val in data.items():
+            if isinstance(val, list):
+                parts.append(f"{key}: {', '.join(str(v) for v in val)}")
+            elif isinstance(val, dict):
+                parts.append(f"{key}: {LLMCheckHelper._flatten(val)}")
+            else:
+                parts.append(f"{key}: {val}")
+        return "\n".join(parts)
 
 
 class CheckStrategyFactory:
@@ -65,7 +155,8 @@ class ConclusionCheckStrategy(BaseCheckStrategy):
     strategy_type = "conclusion"
     strategy_name = "结论校验"
 
-    def check(self, submission: dict, standard: dict) -> dict:
+    async def check(self, submission: dict, standard: dict) -> dict:
+        """结论校验 — 检查关键字段匹配度"""
         key_fields = standard.get("key_fields", {})
         scoring_rules = standard.get("scoring_rules", {})
         correct_answer = standard.get("correct_answer", {})
@@ -126,6 +217,13 @@ class ConclusionCheckStrategy(BaseCheckStrategy):
         match_rate = matched_count / max(total_checked, 1)
         score = int(match_rate * 100 * weight)
         score = min(100, max(0, score))
+
+        # LLM 增强：关键词匹配在灰色地带时做语义评分
+        llm_adjusted = await self.llm_enhance(submission, standard, score)
+        if llm_adjusted is not None:
+            # 取关键词评分和 LLM 评分的加权平均（LLM 权重 0.4）
+            score = int(score * 0.6 + llm_adjusted * 0.4)
+            score = min(100, max(0, score))
 
         # 分析
         analysis = self._build_analysis(checks, match_rate, required)
@@ -197,7 +295,8 @@ class RuleCheckStrategy(BaseCheckStrategy):
     strategy_type = "rule"
     strategy_name = "规则校验"
 
-    def check(self, submission: dict, standard: dict) -> dict:
+    async def check(self, submission: dict, standard: dict) -> dict:
+        """规则校验 — 检查正则/过滤规则的正确性"""
         key_fields = standard.get("key_fields", {})
         scoring_rules = standard.get("scoring_rules", {})
         correct_answer = standard.get("correct_answer", {})
@@ -265,6 +364,12 @@ class RuleCheckStrategy(BaseCheckStrategy):
         score = int(match_rate * 100 * weight)
         score = min(100, max(0, score))
 
+        # LLM 增强：关键词匹配在灰色地带时做语义评分
+        llm_adjusted = await self.llm_enhance(submission, standard, score)
+        if llm_adjusted is not None:
+            score = int(score * 0.6 + llm_adjusted * 0.4)
+            score = min(100, max(0, score))
+
         analysis = self._build_analysis(checks, match_rate, required)
         suggestion = "建议检查规则语法和关键元素完整性" if score < SCORE_B else None
 
@@ -322,7 +427,7 @@ class ScriptCheckStrategy(BaseCheckStrategy):
     strategy_type = "script"
     strategy_name = "脚本校验"
 
-    def check(self, submission: dict, standard: dict) -> dict:
+    async def check(self, submission: dict, standard: dict) -> dict:
         key_fields = standard.get("key_fields", {})
         scoring_rules = standard.get("scoring_rules", {})
         correct_answer = standard.get("correct_answer", {})
@@ -389,6 +494,12 @@ class ScriptCheckStrategy(BaseCheckStrategy):
         score = int(match_rate * 100 * weight)
         score = min(100, max(0, score))
 
+        # LLM 增强：关键词匹配在灰色地带时做语义评分
+        llm_adjusted = await self.llm_enhance(submission, standard, score)
+        if llm_adjusted is not None:
+            score = int(score * 0.6 + llm_adjusted * 0.4)
+            score = min(100, max(0, score))
+
         analysis = self._build_analysis(checks, match_rate)
         suggestion = "建议检查配置语法和参数完整性" if score < SCORE_B else None
 
@@ -446,7 +557,7 @@ class PlanCheckStrategy(BaseCheckStrategy):
     strategy_type = "plan"
     strategy_name = "方案校验"
 
-    def check(self, submission: dict, standard: dict) -> dict:
+    async def check(self, submission: dict, standard: dict) -> dict:
         key_fields = standard.get("key_fields", {})
         scoring_rules = standard.get("scoring_rules", {})
         correct_answer = standard.get("correct_answer", {})
@@ -498,6 +609,12 @@ class PlanCheckStrategy(BaseCheckStrategy):
         match_rate = matched_count / max(total_checked, 1)
         score = int(match_rate * 100 * weight)
         score = min(100, max(0, score))
+
+        # LLM 增强：关键词匹配在灰色地带时做语义评分
+        llm_adjusted = await self.llm_enhance(submission, standard, score)
+        if llm_adjusted is not None:
+            score = int(score * 0.6 + llm_adjusted * 0.4)
+            score = min(100, max(0, score))
 
         analysis = self._build_analysis(checks, match_rate)
         suggestion = "建议补充方案细节，确保覆盖所有关键要素" if score < SCORE_B else None
