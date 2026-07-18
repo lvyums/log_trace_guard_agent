@@ -292,6 +292,70 @@ class ErrorAnalysis:
 
         return None
 
+    @classmethod
+    async def _llm_analyze_stream(cls, task_title: str, task_description: str,
+                                   submission_content: dict,
+                                   standard_answer: dict,
+                                   checks: list, score: int,
+                                   grade: str):
+        """流式调用 LLM 生成个性化答案解析，逐个 yield token"""
+        try:
+            from core.ai_base.llm_factory import LLMFactory
+            from app.settings import settings
+
+            if not settings.llm_api_key:
+                yield "⚠️ LLM 未配置，无法生成分析。请在 .env 中设置 LLM_API_KEY。"
+                return
+
+            incorrect = [c for c in checks if c["status"] == "incorrect"]
+            partial = [c for c in checks if c["status"] == "partial"]
+            sub_text = cls._dict_to_text(submission_content or {}, "学员答案")
+            std_text = cls._dict_to_text(standard_answer or {}, "标准答案")
+
+            prompt = f"""你是一个安全实训导师。请根据以下信息，为学员生成个性化的答案解析。
+
+## 任务信息
+- 任务标题：{task_title}
+- 任务描述：{task_description or '无'}
+
+## 学员表现
+- 得分：{score}/100
+- 等级：{grade}
+- 答对字段：{len([c for c in checks if c['status'] == 'correct'])} 个
+- 部分正确字段：{len(partial)} 个
+- 错误字段：{len(incorrect)} 个
+
+## 详细检查结果
+{chr(10).join(f"- {c['field']}: {c['status']} — {c['detail']}" for c in checks[:10])}
+
+## 学员答案
+{sub_text}
+
+## 标准答案
+{std_text}
+
+请生成以下内容（用自然的中文，分点清晰）：
+
+1. 【总体评价】一句话总结学员表现（用"✅ 作答优秀"、"⚠️ 基本正确"、"❌ 需要改进"开头）
+2. 【错误定位】列出每个错误字段，说明为什么错、正确的应该是什么
+3. 【知识点讲解】结合这个任务涉及的攻防原理，做简明讲解
+4. 【实操建议】给出这个场景下安全运维人员在实际工作中的操作要点
+5. 【提升方向】针对学员的薄弱点，给出具体的学习建议
+
+注意：语气要鼓励、有建设性。"""
+            llm = await LLMFactory.get_main_llm()
+            async for token in llm.chat_stream([
+                {"role": "system", "content": "你是一个经验丰富的安全实训导师，擅长用通俗易懂的语言讲解安全攻防原理。"},
+                {"role": "user", "content": prompt},
+            ], timeout=60):
+                yield token
+
+        except Exception as e:
+            from common.logger import LogManager
+            logger = LogManager.get_logger()
+            logger.warning(f"LLM 流式分析失败: {e}")
+            yield f"\n\n[生成分析时出错: {str(e)}]"
+
     @staticmethod
     def _dict_to_text(data: dict, label: str) -> str:
         """将字典格式化为可读文本"""

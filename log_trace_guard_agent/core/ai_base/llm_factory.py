@@ -26,6 +26,16 @@ class BaseLLMClient(ABC):
         """调用大模型，返回 {content, success, error}"""
         ...
 
+    @abstractmethod
+    async def chat_stream(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None):
+        """流式调用大模型，逐个 yield token
+
+        Yields:
+            str: 每个 token 的文本片段
+        """
+        ...
+        yield ""  # (workaround: abstract generator)
+
     async def close(self):
         """关闭客户端会话"""
         if self.client:
@@ -51,6 +61,26 @@ class DeepSeekClient(BaseLLMClient):
             logger.error(f"LLM 调用失败: {e}")
             return {"content": None, "success": False, "error": str(e)}
 
+    async def chat_stream(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None):
+        """流式调用 DeepSeek，逐个 yield token"""
+        temp = temperature or self.temperature
+        t = timeout or self.timeout or 60  # 流式需要更长超时
+        try:
+            self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
+            stream = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=temp,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    yield delta.content
+        except Exception as e:
+            logger.error(f"LLM 流式调用失败: {e}")
+            yield f"\n\n[错误] LLM 流式响应失败: {str(e)}"
+
 
 class LightweightClient(BaseLLMClient):
     """轻量模型实现（Qwen/Distill）"""
@@ -71,6 +101,27 @@ class LightweightClient(BaseLLMClient):
         except Exception as e:
             logger.error(f"轻量 LLM 调用失败: {e}")
             return {"content": None, "success": False, "error": str(e)}
+
+    async def chat_stream(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None):
+        """轻量模型流式调用"""
+        temp = temperature or self.temperature
+        t = timeout or self.timeout or 60
+        try:
+            self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
+            stream = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=temp,
+                max_tokens=512,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    yield delta.content
+        except Exception as e:
+            logger.error(f"轻量 LLM 流式调用失败: {e}")
+            yield f"\n\n[错误] 流式响应失败: {str(e)}"
 
 
 class LLMFactory:
