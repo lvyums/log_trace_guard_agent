@@ -39,6 +39,11 @@ logger = LogManager.get_logger()
 # 静态文件目录
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 
+# Vite 构建产物目录（优先使用）
+FRONTEND_DIST_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "frontend", "dist"
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,7 +128,13 @@ app.include_router(training_router)
 
 @app.get("/")
 async def root():
-    """根路径 — 返回前端页面"""
+    """根路径 — 返回前端页面（优先 Vite 构建产物）"""
+    # 优先返回 Vite 构建的 index.html
+    frontend_index = os.path.join(FRONTEND_DIST_DIR, "index.html")
+    if os.path.exists(frontend_index):
+        return FileResponse(frontend_index)
+
+    # 回退到原始 static 目录
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
@@ -141,8 +152,15 @@ async def health():
 
 
 # 挂载静态文件（放在最后，避免覆盖 API 路由）
-if os.path.exists(STATIC_DIR):
+# 优先使用 Vite 构建产物，否则回退到原始 static 目录
+if os.path.exists(FRONTEND_DIST_DIR):
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIST_DIR), name="static")
+    logger.info(f"使用 Vite 构建产物: {FRONTEND_DIST_DIR}")
+elif os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    logger.info(f"使用原始静态文件: {STATIC_DIR}")
+else:
+    logger.warning("未找到静态文件目录")
 
 
 if __name__ == "__main__":
