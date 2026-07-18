@@ -19,6 +19,13 @@ from log_guard.modules.compliance import (
     get_default_factory as get_default_compliance_factory,
     ComplianceService,
 )
+from log_guard.modules.log_correlate import (
+    CorrelatedEvent,
+    AttackChain,
+    TimelineBuilder,
+    ChainAnalyzer,
+    LogCorrelateService,
+)
 
 __all__ = [
     # Log parsing
@@ -40,4 +47,10 @@ __all__ = [
     "ComplianceStrategyFactory",
     "get_default_compliance_factory",
     "ComplianceService",
+    # Log correlation
+    "CorrelatedEvent",
+    "AttackChain",
+    "TimelineBuilder",
+    "ChainAnalyzer",
+    "LogCorrelateService",
 ]

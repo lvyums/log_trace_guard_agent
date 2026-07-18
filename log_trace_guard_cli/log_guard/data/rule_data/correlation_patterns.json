@@ -1,0 +1,280 @@
+{
+  "rules": [
+    {
+      "name": "database_connection_failure_chain",
+      "description": "检测数据库连接失败关联链：连接失败 → 重试 → 最终超时",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "connection refused", "source": "database|db|mysql|postgres|redis"},
+        {"keyword": "retry", "source": "database|db|mysql|postgres|redis"},
+        {"keyword": "timeout", "source": "database|db|mysql|postgres|redis"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "database_deadlock_chain",
+      "description": "检测数据库死锁链：死锁警告 → 事务回滚 → 连接池耗尽",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "deadlock", "source": "database|db|mysql"},
+        {"keyword": "rollback|abort", "source": "database|db|mysql"},
+        {"keyword": "too many connections|connection pool exhausted", "source": "database|db|mysql"}
+      ],
+      "time_window": 120,
+      "required_matches": 2
+    },
+    {
+      "key": "database_slow_query_chain",
+      "name": "database_slow_query_chain",
+      "description": "检测数据库慢查询链：慢查询 → 锁等待 → 连接堆积",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "slow query|long query", "source": "database|db|mysql"},
+        {"keyword": "lock wait|lock timeout", "source": "database|db|mysql"},
+        {"keyword": "connection backlog|connection wait", "source": "database|db|mysql"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "replication_lag_chain",
+      "description": "检测主从复制延迟链：复制延迟 → 数据不一致 → 读请求超时",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "replication lag|seconds behind master", "source": "database|mysql|mariadb"},
+        {"keyword": "data inconsistency|slave error", "source": "database|mysql|mariadb"},
+        {"keyword": "read query timeout|read failed", "source": "database|mysql|mariadb"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "out_of_memory_chain",
+      "description": "检测OOM关联链：内存占用上升 → OOM Killer → 进程退出",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "OutOfMemoryError|cannot allocate memory|OOM", "source": ".*"},
+        {"keyword": "killed process|oom_killer|oom-kill", "source": "kernel|system"},
+        {"keyword": "exit code 137|exit code 9|SIGKILL", "source": ".*"}
+      ],
+      "time_window": 120,
+      "required_matches": 2
+    },
+    {
+      "name": "memory_leak_early_warning",
+      "description": "检测内存泄漏前兆：持续增长 → 触发GC阈值 → GC耗时上升",
+      "type": "time_window",
+      "severity": "warning",
+      "patterns": [
+        {"keyword": "heap usage|memory usage|RSS", "source": "jvm|app|system", "trend": "increasing"},
+        {"keyword": "GC overhead|garbage collection", "source": "jvm|java"},
+        {"keyword": "GC time|pause time", "source": "jvm|java", "trend": "increasing"}
+      ],
+      "time_window": 600,
+      "required_matches": 2,
+      "min_freq": 5
+    },
+    {
+      "name": "network_timeout_chain",
+      "description": "检测网络超时关联链：重试 → 超时 → 服务降级/熔断",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "retry|attempt", "source": "network|http|client"},
+        {"keyword": "timeout|timed out|deadline exceeded", "source": "network|http|client"},
+        {"keyword": "circuit break|fallback|degrad", "source": ".*"}
+      ],
+      "time_window": 180,
+      "required_matches": 2
+    },
+    {
+      "name": "dns_resolution_failure_chain",
+      "description": "检测DNS解析失败链：DNS查询失败 → 域名解析失败 → 连接异常",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "dns|name resolution", "source": "network|system"},
+        {"keyword": "unknown host|could not resolve|NXDOMAIN", "source": "network|http|client"},
+        {"keyword": "connection failed|no route to host", "source": "network|http|client"}
+      ],
+      "time_window": 120,
+      "required_matches": 2
+    },
+    {
+      "name": "connection_refused_chain",
+      "description": "检测连接拒绝链：端口未监听 → ECONNREFUSED → 健康检查失败",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "connection refused|ECONNREFUSED", "source": "network|.*"},
+        {"keyword": "health check|healthcheck|liveness|readiness", "source": "kubernetes|k8s|orchestration"},
+        {"keyword": "unhealthy|not ready|failed", "source": "kubernetes|k8s|orchestration"}
+      ],
+      "time_window": 60,
+      "required_matches": 2
+    },
+    {
+      "name": "auth_failure_chain",
+      "description": "检测认证失败关联链：多次认证失败 → 账户锁定 → 访问拒绝",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "authentication failed|login failed|invalid credential", "source": "auth|security|.*"},
+        {"keyword": "account locked|too many attempts|rate limit", "source": "auth|security"},
+        {"keyword": "access denied|permission denied|forbidden", "source": "auth|security"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "brute_force_attempt_chain",
+      "description": "检测暴力破解攻击链：高频登录失败 → 异常IP → 账号爆破",
+      "type": "time_window",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "login failed|invalid password|wrong credential", "source": "auth|ssh|application"},
+        {"keyword": "failed login from|invalid user", "source": "ssh|auth"},
+        {"keyword": "brute force|intrusion|blocked ip", "source": "security|waf|ids"}
+      ],
+      "time_window": 60,
+      "required_matches": 2,
+      "min_freq": 10
+    },
+    {
+      "name": "certificate_expiry_chain",
+      "description": "检测证书过期关联链：证书即将到期 → TLS握手失败 → 服务不可用",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "certificate expire|cert will expire|ssl cert", "source": "system|security"},
+        {"keyword": "TLS handshake failed|SSL error|certificate verify", "source": "network|http"},
+        {"keyword": "handshake failure|tls alert", "source": "network|http"}
+      ],
+      "time_window": 86400,
+      "required_matches": 2
+    },
+    {
+      "name": "pod_crashloop_chain",
+      "description": "检测Pod CrashLoop链：容器启动失败 → 不断重启 → CrashLoopBackOff",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "container start|starting container", "source": "kube|kubernetes|docker"},
+        {"keyword": "back-off restart|crashloop|CrashLoopBackOff", "source": "kube|kubernetes"},
+        {"keyword": "unhealthy pod|pod failure|restart count", "source": "kube|kubernetes"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "node_resource_exhaustion_chain",
+      "description": "检测节点资源耗尽链：磁盘/内存不足 → Pod驱逐 → 节点NotReady",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "node capacity|node condition|disk pressure|memory pressure", "source": "kube|kubernetes"},
+        {"keyword": "evict|pod evicted|node pressure", "source": "kube|kubernetes"},
+        {"keyword": "node not ready|NodeNotReady", "source": "kube|kubernetes"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "oomkilled_container_chain",
+      "description": "检测容器OOMKilled链：容器内存超限 → OOMKilled → 被驱逐",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "memory limit|memory usage exceeds|limit range", "source": "kube|kubernetes|docker"},
+        {"keyword": "OOMKilled|OOM kill|out of memory", "source": "kube|kubernetes|docker"},
+        {"keyword": "container restart|evicted pod", "source": "kube|kubernetes"}
+      ],
+      "time_window": 120,
+      "required_matches": 2
+    },
+    {
+      "name": "disk_io_hang_chain",
+      "description": "检测磁盘IO hang链：IO等待上升 → 磁盘延迟 → IO错误",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "iowait|disk wait|io latency", "source": "system|kernel|monitor"},
+        {"keyword": "disk slow|high latency|disk busy", "source": "system|storage"},
+        {"keyword": "IO error|disk error|fsync failed", "source": "system|storage|filesystem"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "inode_exhaustion_chain",
+      "description": "检测inode耗尽链：磁盘使用率高 → inode耗尽 → 文件创建失败",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "disk usage|disk full|no space left", "source": "system|filesystem"},
+        {"keyword": "inode|no space", "source": "system|filesystem"},
+        {"keyword": "failed to create file|cannot write|read-only", "source": "system|application"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "config_error_chain",
+      "description": "检测配置错误关联链：配置加载失败 → 参数错误 → 启动失败",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "config|configuration", "source": "application|system"},
+        {"keyword": "invalid config|bad config|malformed|parse error", "source": "application|system"},
+        {"keyword": "failed to start|initialization failed|exit code", "source": "application|system"}
+      ],
+      "time_window": 60,
+      "required_matches": 2
+    },
+    {
+      "name": "api_rate_limiting_chain",
+      "description": "检测API限流关联链：请求量突增 → 限流触发 → 客户端退避",
+      "type": "time_window",
+      "severity": "warning",
+      "patterns": [
+        {"keyword": "rate limit|too many requests|429", "source": "api|gateway|nginx"},
+        {"keyword": "throttl|quota exceeded|rate exceeded", "source": "api|gateway"},
+        {"keyword": "backoff|retry after|wait", "source": "client|application"}
+      ],
+      "time_window": 120,
+      "required_matches": 2,
+      "min_freq": 5
+    },
+    {
+      "name": "service_dependency_cascade",
+      "description": "检测服务依赖级联故障链：上游失败 → 下游依赖超时 → 级联失败",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "dependency|upstream|downstream", "source": "service|api|gateway"},
+        {"keyword": "upstream timeout|connection to.*failed|service unavailable", "source": "gateway|proxy|nginx"},
+        {"keyword": "cascade|cascading failure|dependency failure", "source": "service|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "log_flood_detection",
+      "description": "检测日志洪水：短时间内大量同类ERROR日志",
+      "type": "time_window",
+      "severity": "warning",
+      "patterns": [
+        {"keyword": "ERROR|FATAL|CRITICAL", "source": ".*"}
+      ],
+      "time_window": 60,
+      "required_matches": 1,
+      "min_freq": 50
+    }
+  ]
+}

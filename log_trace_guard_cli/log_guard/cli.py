@@ -18,6 +18,7 @@ from log_guard.modules.log_parse import LogParseService
 from log_guard.modules.script_gen import ScriptGenService
 from log_guard.modules.compliance import ComplianceService
 from log_guard.modules.training import TrainingService
+from log_guard.modules.log_correlate import LogCorrelateService
 
 try:
     from log_guard.modules.log_collect import LogCollectService
@@ -42,6 +43,7 @@ _training_svc = TrainingService()
 _log_collect_svc = None
 if LogCollectService:
     _log_collect_svc = LogCollectService()
+_log_correlate_svc = LogCorrelateService()
 
 
 # ════════════════════════════════════════════
@@ -331,6 +333,7 @@ def _run_interactive_mode():
             {"label": "📝 脚本生成", "desc": "正则、ES查询、攻击溯源、脚本优化"},
             {"label": "📋 合规审计", "desc": "合规问答、基线生成、合规自查"},
             {"label": "🎓 攻防实训", "desc": "实训场景、答案提交、成绩报告"},
+            {"label": "🔄 联合日志审查", "desc": "多源日志关联分析、攻击链推演"},
             {"label": "🤖 AI 智能对话", "desc": "自由提问，AI 智能解析意图"},
             {"label": "🚪 退出", "desc": "退出 CLI 智能体"},
         ]
@@ -353,8 +356,10 @@ def _run_interactive_mode():
         elif idx == 5:
             _menu_training(context)
         elif idx == 6:
-            _run_ai_mode()
+            _menu_log_correlate(context)
         elif idx == 7:
+            _run_ai_mode()
+        elif idx == 8:
             print("\n  👋 再见！")
             break
 
@@ -698,6 +703,139 @@ def _menu_training(context: dict):
 
 
 # ════════════════════════════════════════════
+# 联合日志审查
+# ════════════════════════════════════════════
+
+def _menu_log_correlate(context: dict):
+    _print_header("🔄 联合日志审查")
+    items = [
+        {"label": "从当前日志文件分析", "desc": "对选中的日志文件做跨源关联分析"},
+        {"label": "手动输入日志行", "desc": "多行日志粘贴分析（每条一行）"},
+        {"label": "查看攻击链模式", "desc": "查看系统支持的攻击链检测模式"},
+    ]
+
+    idx = _show_nav_menu(items)
+    if idx < 0:
+        return
+
+    if idx == 0:
+        # From file
+        file_path = context.get("log_file")
+        if not file_path or not os.path.exists(file_path):
+            print("\n  ⚠️ 请先选择日志文件")
+            input("  按 Enter 继续...")
+            return
+
+        n = input("\n  读取行数 [默认500]: ").strip()
+        line_limit = int(n) if n.isdigit() else 500
+        grep = input("  关键词过滤（可选）: ").strip() or None
+        window_str = input("  关联时间窗口(分钟) [默认5]: ").strip()
+        window = int(window_str) if window_str.isdigit() else 5
+
+        _show_status_bar(f"正在对 {os.path.basename(file_path)} 进行关联分析...")
+        result = _log_correlate_svc.correlate_logs_from_file(
+            file_path, line_limit=line_limit, grep=grep,
+            time_window_minutes=window, detailed=True,
+        )
+        _print_correlation_result(result)
+
+    elif idx == 1:
+        # Manual input
+        print("\n  请输入日志行（每条一行，输入空行结束）:")
+        lines = []
+        while True:
+            line = input("  ").strip()
+            if not line:
+                break
+            lines.append(line)
+
+        if not lines:
+            print("\n  未输入任何日志。")
+            input("  按 Enter 继续...")
+            return
+
+        window_str = input("\n  关联时间窗口(分钟) [默认5]: ").strip()
+        window = int(window_str) if window_str.isdigit() else 5
+
+        _show_status_bar(f"正在分析 {len(lines)} 条日志...")
+        result = _log_correlate_svc.correlate_logs(lines, time_window_minutes=window, detailed=True)
+        _print_correlation_result(result)
+
+    elif idx == 2:
+        # Show patterns
+        patterns = _log_correlate_svc.available_patterns
+        print(f"\n  系统支持 {len(patterns)} 种攻击链检测模式:\n")
+        for p in patterns:
+            risk_icon = {"P0": "🔴", "P1": "🟠", "P2": "🟡", "P3": "⚪"}
+            icon = "🔴"
+            for prefix, emoji in risk_icon.items():
+                if p.get("risk_level", "").startswith(prefix):
+                    icon = emoji
+                    break
+            stages = " → ".join(p.get("stages", []))
+            print(f"  {icon} {p['name']}")
+            print(f"     模式ID: {p['id']}")
+            print(f"     风险等级: {p.get('risk_level', '?')}")
+            print(f"     阶段链路: {stages}")
+            print()
+
+    input("  按 Enter 继续...")
+
+
+def _print_correlation_result(result):
+    """Print correlation result in a readable format."""
+    import json as _json
+
+    if result.get("code") != 0:
+        print(f"\n  ❌ {result.get('msg', '未知错误')}")
+        return
+
+    data = result.get("data", result)
+    print(f"\n  📊 分析概览")
+    print(f"     解析事件: {data.get('total_events', 0)}")
+    print(f"     设备类型: {', '.join(data.get('device_types', ['?']))}")
+    print(f"     涉及实体: {', '.join(data.get('entities', ['?']))}")
+    print(f"     攻击链数: {len(data.get('chains', []))}")
+    print(f"     分析摘要: {data.get('summary', '')}")
+
+    chains = data.get("chains", [])
+    if chains:
+        print(f"\n  🚨 检测到攻击链:")
+        for i, c in enumerate(chains, 1):
+            risk_icon = {"P0": "🔴", "P1": "🟠", "P2": "🟡", "P3": "⚪"}
+            icon = "🔴"
+            for prefix, emoji in risk_icon.items():
+                if c.get("risk_level", "").startswith(prefix):
+                    icon = emoji
+                    break
+            print(f"\n  {icon} [{i}] {c['chain_name']}")
+            print(f"       置信度: {c.get('confidence', 0):.0%}")
+            print(f"       风险等级: {c.get('risk_level', '?')}")
+            print(f"       关联实体: {c.get('entity_key', '?')}")
+            print(f"       匹配阶段: {' → '.join(c.get('matched_stages', []))}")
+            if c.get("indicators"):
+                print(f"       告警指标:")
+                for ind in c["indicators"][:5]:
+                    print(f"         • {ind}")
+            if c.get("suggestion"):
+                print(f"       处置建议: {c['suggestion']}")
+
+    # Show detailed timeline
+    timeline = data.get("timeline", [])
+    if timeline:
+        print(f"\n  📋 时间线详情:")
+        for e in timeline:
+            risk_indicator = ""
+            rl = e.get("risk_level", "")
+            if rl and not rl.startswith("P3"):
+                risk_indicator = f" ⚠️{rl}"
+            ts = e.get("timestamp", "?") or "?"
+            print(f"    [{ts}] [{e.get('device_type', '?')}] "
+                  f"{e.get('src_ip', '') or ''} {e.get('status', '') or ''}"
+                  f"{risk_indicator}")
+
+
+# ════════════════════════════════════════════
 # 主入口 — 双模式自动检测
 # ════════════════════════════════════════════
 
@@ -775,6 +913,22 @@ def run_command(args: argparse.Namespace):
         _print_json(result)
         return
 
+    if args.correlate:
+        if args.log_file:
+            window = args.time_window or 5
+            result = _log_correlate_svc.correlate_logs_from_file(
+                args.log_file, line_limit=args.lines or 500,
+                grep=args.grep, time_window_minutes=window,
+                detailed=True,
+            )
+        else:
+            result = _log_correlate_svc.correlate_logs(
+                [args.correlate], time_window_minutes=args.time_window or 5,
+                detailed=True,
+            )
+        _print_correlation_result(result)
+        return
+
 
 def main():
     """主入口 — 支持 argparse 和交互模式"""
@@ -792,6 +946,7 @@ def main():
                   log-guard --list-logs        # 列出本机日志
                   log-guard -f auth.log -p     # 解析日志文件
                   log-guard --diagnose "SSH连接超时"
+                  log-guard -f /var/log/auth.log -c  # 多源日志关联分析
                   log-guard --ai              # 直接进入 AI 对话模式
             """),
         )
@@ -815,6 +970,8 @@ def main():
         parser.add_argument("--qa", help="合规问答")
         parser.add_argument("--asset-type", help="资产类型")
         parser.add_argument("--train", help="实训场景分类")
+        parser.add_argument("--correlate", "-c", nargs="?", const=True, help="联合日志审查（关联分析）")
+        parser.add_argument("--time-window", "-w", type=int, default=5, help="关联时间窗口（分钟）")
 
         args = parser.parse_args()
 
@@ -828,7 +985,7 @@ def main():
 
         has_command = any([
             args.list_logs, args.sample, args.parse, args.batch_parse,
-            args.diagnose, args.regex, args.qa, args.train,
+            args.diagnose, args.regex, args.qa, args.train, args.correlate,
         ])
 
         if has_command or args.log_file:

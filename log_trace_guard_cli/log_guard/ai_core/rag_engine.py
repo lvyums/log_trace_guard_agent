@@ -11,15 +11,19 @@ from .settings import settings
 class RAGEngine:
     """轻量 RAG 知识库引擎
     - 不用 ChromaDB / ONNX
-    - API 远程嵌入（raytoken embedding）
-    - 向量存本地 JSON 缓存
+    - API 远程嵌入（raytoken embedding），支持批量请求
+    - 向量存本地 JSON 缓存，增量更新
     - 运行时全量加载到内存做余弦相似度搜索
+    - 限制每个源文件的最大文档数，避免过度嵌入
     """
 
     def __init__(self):
         self._vectors: list[dict] = []
         self._loaded = False
         self._data_dir = self._find_data_dir()
+
+    # 每个源文件最大嵌入文档数（避免 API 调用过多）
+    _MAX_DOCS_PER_SOURCE = 50
 
     def _find_data_dir(self) -> str:
         """查找 rule_data 目录"""
@@ -59,8 +63,11 @@ class RAGEngine:
                 continue
 
             name = fname.replace(".json", "")
+            count = 0
             if isinstance(data, list):
                 for i, item in enumerate(data):
+                    if count >= self._MAX_DOCS_PER_SOURCE:
+                        break
                     text = json.dumps(item, ensure_ascii=False)[:2000]
                     docs.append({
                         "id": f"{name}-{i}",
@@ -68,8 +75,11 @@ class RAGEngine:
                         "text": text,
                         "metadata": item,
                     })
+                    count += 1
             elif isinstance(data, dict):
                 for key, val in data.items():
+                    if count >= self._MAX_DOCS_PER_SOURCE:
+                        break
                     text = f"{key}: {json.dumps(val, ensure_ascii=False)[:2000]}"
                     docs.append({
                         "id": f"{name}-{key}",
@@ -77,14 +87,22 @@ class RAGEngine:
                         "text": text,
                         "metadata": {key: val},
                     })
+                    count += 1
         return docs
 
     def _build_vectors(self, docs: list[dict]) -> list[dict]:
-        """生成文档向量（调用 API）"""
+        """批量生成文档向量（调用 API，分批发送）"""
         embedder = get_embedding()
+        if not docs:
+            return []
+
+        # 提取所有文本，限制长度
+        texts = [doc["text"][:1000] for doc in docs]
+        # 批量调用 API
+        embeddings = embedder.embed_batch(texts)
+
         vectors = []
-        for doc in docs:
-            vec = embedder.embed(doc["text"][:1000])  # 限制长度
+        for doc, vec in zip(docs, embeddings):
             if vec:
                 vectors.append({
                     "id": doc["id"],
@@ -98,7 +116,6 @@ class RAGEngine:
     def _save_cache(self, vectors: list[dict]):
         """保存向量到缓存文件"""
         try:
-            # 只保存非向量部分（向量太大，单独存）
             cache_data = []
             for v in vectors:
                 cache_data.append({
@@ -162,7 +179,7 @@ class RAGEngine:
         if not query_vec:
             return []
 
-        # 计算相似度
+        # 计算相似度（全量扫描）
         scored = []
         for vec in self._vectors:
             score = self._cosine_similarity(query_vec, vec["vector"])

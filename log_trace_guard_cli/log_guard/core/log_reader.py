@@ -8,6 +8,7 @@
 import os
 import re
 import stat
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -223,15 +224,34 @@ def _get_file_info(file_path: str) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
-# 扫描路径
+# 扫描路径 — 跨平台支持
 # ---------------------------------------------------------------------------
 
-_AUTO_PATHS = [
-    "/var/log/",
-    "/mnt/c/Windows/System32/winevt/Logs/",
-    "/mnt/c/Users/",
-    Path.home() / ".local/share/",
-]
+def _get_auto_paths() -> list[str]:
+    """根据当前操作系统返回自动扫描的日志路径列表。"""
+    paths = []
+
+    if sys.platform == "win32":
+        # Windows — 使用环境变量获取系统路径
+        windir = os.environ.get("SystemRoot", "C:\\Windows")
+        paths.append(os.path.join(windir, "System32", "winevt", "Logs"))
+        # 用户 AppData 本地日志
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+        if local_app_data:
+            paths.append(local_app_data)
+    else:
+        # Linux / macOS / WSL
+        paths.append("/var/log/")
+        # WSL 环境：通过 /mnt/c/ 访问 Windows 路径
+        mnt_c_windows = "/mnt/c/Windows"
+        mnt_c_users = "/mnt/c/Users"
+        if os.path.isdir(mnt_c_windows):
+            paths.append(os.path.join(mnt_c_windows, "System32", "winevt", "Logs"))
+        if os.path.isdir(mnt_c_users):
+            paths.append(mnt_c_users)
+        paths.append(str(Path.home() / ".local" / "share"))
+
+    return paths
 
 
 def _scan_directory(path: str, limit: int = 50) -> list[dict]:
@@ -252,13 +272,13 @@ def _scan_directory(path: str, limit: int = 50) -> list[dict]:
 
 
 def _auto_detect_paths() -> list[dict]:
-    """自动检测并扫描所有已知日志路径。"""
+    """自动检测并扫描所有已知日志路径（跨平台）。"""
     all_results: list[dict] = []
-    for base in _AUTO_PATHS:
+    for base in _get_auto_paths():
         base_str = str(base)
 
-        # /mnt/c/Users/ 需要遍历子目录
-        if base_str.startswith("/mnt/c/Users/") and base_str.endswith("/"):
+        # 在 WSL 下 /mnt/c/Users/ 需要遍历子目录找 AppData/Local
+        if base_str.startswith("/mnt/c/Users"):
             try:
                 for user_entry in os.scandir(base_str):
                     app_data = os.path.join(

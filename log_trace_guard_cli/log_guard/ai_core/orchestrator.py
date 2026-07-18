@@ -46,6 +46,9 @@ class AIOrchestrator:
             elif module_name == "training":
                 from log_guard.modules.training import TrainingService
                 self._modules[module_name] = TrainingService()
+            elif module_name == "log_correlate":
+                from log_guard.modules.log_correlate import LogCorrelateService
+                self._modules[module_name] = LogCorrelateService()
         except Exception as e:
             return None
 
@@ -119,6 +122,18 @@ class AIOrchestrator:
                 if "答案" in question or "提交" in question:
                     return {"note": "请使用菜单模式提交答案，或输入 '我要提交答案' 后按指引操作"}
                 return {"tasks": svc.dispatch_tasks(category="basic")}
+
+            elif intent.intent == "correlation":
+                svc = self._load_module("log_correlate")
+                # 检查是否提供了日志行
+                log_line = params.get("log_line", "")
+                if log_line:
+                    lines = [log_line]
+                else:
+                    lines = question.split("\n") if question else [question]
+                window = int(params.get("time_window", 5))
+                result = svc.correlate_logs(lines, time_window_minutes=window)
+                return {"correlation": result}
 
         except Exception as e:
             return {"error": str(e)}

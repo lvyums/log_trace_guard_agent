@@ -107,11 +107,42 @@ class EmbeddingClient:
             return None
 
     def embed_batch(self, texts: list[str]) -> list[Optional[list[float]]]:
-        """批量文本向量化"""
-        results = []
-        for text in texts:
-            results.append(self.embed(text))
-        return results
+        """批量文本向量化 — 单次 API 调用发送多个文本（OpenAI 兼容格式）"""
+        if not texts:
+            return []
+        if not self.api_key:
+            return [None] * len(texts)
+
+        url = f"{self.base_url}/embeddings"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        # 分批发送，每批最多 20 条（避免 payload 过大）
+        batch_size = 20
+        all_results: list[Optional[list[float]]] = []
+
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            payload = {
+                "model": self.model,
+                "input": batch,
+            }
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=self.timeout * 2)
+                resp.raise_for_status()
+                data = resp.json()
+                # 按索引对齐结果
+                batch_results: list[Optional[list[float]]] = [None] * len(batch)
+                for item in data.get("data", []):
+                    idx = item.get("index")
+                    if idx is not None and 0 <= idx < len(batch):
+                        batch_results[idx] = item.get("embedding")
+                all_results.extend(batch_results)
+            except Exception:
+                all_results.extend([None] * len(batch))
+
+        return all_results
 
 
 _llm_instance = None

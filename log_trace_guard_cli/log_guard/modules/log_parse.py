@@ -308,7 +308,7 @@ class WebParser(BaseParser):
             fields.setdefault("extra_info", {})["user_agent"] = ua_match.group(1)
 
         # Response size
-        size_match = re.search(r'"\s+\d{3}\s+(\d+)\s+', log_line)
+        size_match = re.search(r'"\s+\d{3}\s+(\d+)(?:\s+|$)', log_line)
         if size_match:
             fields.setdefault("extra_info", {})["response_size"] = size_match.group(1)
 
