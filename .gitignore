@@ -13,6 +13,7 @@ build/
 *.egg-info/
 eggs/
 *.whl
+node_modules/
 
 # Logs
 *.log
