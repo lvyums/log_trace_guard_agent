@@ -11,8 +11,6 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "requests>=2.25",
-        "pyyaml>=5.4",
-        "python-dotenv>=1.0",
     ],
     entry_points={
         "console_scripts": [
