@@ -80,5 +80,68 @@ export const Api = {
     scenarios: () => request('/api/v1/training/dispatch', 'POST', { scenario_id: '', category: '' }),
     submit: (data: any) => request('/api/v1/training/submit', 'POST', data),
     report: (data: any) => request('/api/v1/training/report', 'POST', data),
+
+    /**
+     * 流式分析：POST 后通过 SSE 逐 token 接收答案解析
+     * @param data 与 submit 相同的请求参数
+     * @param callbacks.onResult 评分结果回调 {score, grade, checks}
+     * @param callbacks.onToken 每个 token 文本回调
+     * @param callbacks.onDone 完成回调
+     * @param callbacks.onError 错误回调
+     */
+    analyzeStream: async (
+      data: any,
+      callbacks: {
+        onResult?: (result: { score: number; grade: string; checks: any[] }) => void
+        onToken?: (text: string) => void
+        onDone?: () => void
+        onError?: (err: string) => void
+      },
+    ) => {
+      try {
+        const resp = await fetch(BASE + '/api/v1/training/analyze-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        })
+        if (!resp.ok || !resp.body) {
+          callbacks.onError?.('HTTP ' + resp.status)
+          return
+        }
+
+        const reader = resp.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''  // 保留未完成的行
+
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed.startsWith('data: ')) continue
+
+            try {
+              const event = JSON.parse(trimmed.slice(6))
+              if (event.type === 'result') {
+                callbacks.onResult?.(event)
+              } else if (event.type === 'token') {
+                callbacks.onToken?.(event.text)
+              } else if (event.type === 'done') {
+                callbacks.onDone?.()
+              }
+            } catch {
+              // 忽略解析失败的行
+            }
+          }
+        }
+      } catch (err: any) {
+        callbacks.onError?.('Network error: ' + err.message)
+      }
+    },
   },
 }
