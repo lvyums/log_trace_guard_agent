@@ -1,4 +1,9 @@
-"""模块五：原理讲解与复盘机制 — 纠错后自动输出错误原因、正确标准、底层攻防原理"""
+"""模块五：原理讲解与复盘机制 — 纠错后自动输出错误原因、正确标准、底层攻防原理
+
+采用「LLM 生成 + 硬编码知识库降级」双模式：
+- 主模式：LLM 根据学员具体错误生成个性化讲解
+- 降级模式：硬编码知识库关键词匹配（当 LLM 不可用时）
+"""
 
 from typing import Optional
 
@@ -6,7 +11,8 @@ from typing import Optional
 class ErrorAnalysis:
     """错误分析与复盘 — 根据校验结果生成原理讲解"""
 
-    # 攻防场景原理库
+    # ── 硬编码知识库（降级用） ──
+
     ATTACK_PRINCIPLES = {
         "ssh_brute": {
             "name": "SSH暴力破解",
@@ -94,9 +100,43 @@ class ErrorAnalysis:
                 "非标准端口加密通信、大流量外发"
             ),
         },
+        "dns_tunneling": {
+            "name": "DNS隧道攻击",
+            "principle": (
+                "DNS隧道攻击是将数据编码在DNS查询和响应中，利用DNS协议绕过防火墙"
+                "进行数据外泄或C2通信的技术。由于DNS通常是企业网络允许出站的协议，"
+                "攻击者利用这一点构建隐蔽信道。"
+            ),
+            "defense": (
+                "1. 部署DNS安全分析系统（检测异常DNS查询）\n"
+                "2. 限制DNS查询大小和频率\n"
+                "3. 使用DNS over HTTPS（DoH）监控\n"
+                "4. 配置防火墙仅允许可信DNS服务器"
+            ),
+            "detection": (
+                "检测特征：异常大的DNS查询包、高频DNS查询、"
+                "TXT记录中包含编码数据、查询非标准域名"
+            ),
+        },
+        "ransomware": {
+            "name": "勒索软件攻击",
+            "principle": (
+                "勒索软件通过加密受害者文件并要求支付赎金来获取解密密钥的攻击方式。"
+                "常见传播途径：钓鱼邮件附件、漏洞利用工具包、RDP暴力破解、恶意广告。"
+            ),
+            "defense": (
+                "1. 定期3-2-1备份策略（3份副本、2种介质、1份异地）\n"
+                "2. 及时修补系统和应用漏洞\n"
+                "3. 部署终端检测与响应（EDR）\n"
+                "4. 员工安全意识培训（识别钓鱼邮件）"
+            ),
+            "detection": (
+                "检测特征：大量文件扩展名被修改、文件加密告警、"
+                "勒索信创建、异常的大规模文件读写操作"
+            ),
+        },
     }
 
-    # 合规场景原理库
     COMPLIANCE_PRINCIPLES = {
         "log_retention": {
             "name": "日志留存合规",
@@ -116,7 +156,6 @@ class ErrorAnalysis:
         },
     }
 
-    # 字段提取原理
     FIELD_EXTRACTION_PRINCIPLES = {
         "regex": {
             "name": "正则表达式日志提取",
@@ -135,11 +174,147 @@ class ErrorAnalysis:
         },
     }
 
+    # ── 主入口：优先 LLM，降级到硬编码 ──
+
     @classmethod
-    def analyze(cls, task_type: str, submit_type: str,
-                task_title: str, checks: list,
-                score: int, grade: str) -> str:
-        """生成原理讲解与复盘内容"""
+    async def analyze(cls, task_type: str, submit_type: str,
+                      task_title: str, checks: list,
+                      score: int, grade: str,
+                      task_description: str = "",
+                      submission_content: dict = None,
+                      standard_answer: dict = None) -> str:
+        """生成原理讲解与复盘内容
+
+        Args:
+            task_type: 任务类型标识
+            submit_type: 提交类型（conclusion/rule/script/plan）
+            task_title: 任务标题
+            checks: 校验结果列表
+            score: 得分
+            grade: 等级（A/B/C）
+            task_description: 任务描述（可选，用于LLM生成）
+            submission_content: 学员提交内容（可选，用于LLM生成）
+            standard_answer: 标准答案（可选，用于LLM生成）
+        """
+        # 优先尝试 LLM 生成
+        llm_analysis = await cls._llm_analyze(
+            task_title=task_title,
+            task_description=task_description,
+            submission_content=submission_content,
+            standard_answer=standard_answer,
+            checks=checks,
+            score=score,
+            grade=grade,
+        )
+        if llm_analysis:
+            return llm_analysis
+
+        # LLM 不可用，降级到硬编码知识库
+        return cls._fallback_analyze(
+            task_type=task_type,
+            submit_type=submit_type,
+            task_title=task_title,
+            checks=checks,
+            score=score,
+            grade=grade,
+        )
+
+    # ── LLM 生成模式 ──
+
+    @classmethod
+    async def _llm_analyze(cls, task_title: str, task_description: str,
+                           submission_content: dict,
+                           standard_answer: dict,
+                           checks: list, score: int,
+                           grade: str) -> Optional[str]:
+        """调用 LLM 生成个性化答案解析"""
+        try:
+            from core.ai_base.llm_factory import LLMFactory
+            from core.ai_base.prompt_manager import PromptManager
+            from app.settings import settings
+
+            if not settings.llm_api_key:
+                return None
+
+            # 构建错误摘要
+            incorrect = [c for c in checks if c["status"] == "incorrect"]
+            partial = [c for c in checks if c["status"] == "partial"]
+
+            # 格式化提交内容
+            sub_text = cls._dict_to_text(submission_content or {}, "学员答案")
+            std_text = cls._dict_to_text(standard_answer or {}, "标准答案")
+
+            # 构建 LLM 提示词
+            prompt = f"""你是一个安全实训导师。请根据以下信息，为学员生成个性化的答案解析。
+
+## 任务信息
+- 任务标题：{task_title}
+- 任务描述：{task_description or '无'}
+
+## 学员表现
+- 得分：{score}/100
+- 等级：{grade}
+- 答对字段：{len([c for c in checks if c['status'] == 'correct'])} 个
+- 部分正确字段：{len(partial)} 个
+- 错误字段：{len(incorrect)} 个
+
+## 详细检查结果
+{chr(10).join(f"- {c['field']}: {c['status']} — {c['detail']}" for c in checks[:10])}
+
+## 学员答案
+{sub_text}
+
+## 标准答案
+{std_text}
+
+请生成以下内容（用自然的中文，分点清晰）：
+
+1. 【总体评价】一句话总结学员表现（用"✅ 作答优秀"、"⚠️ 基本正确"、"❌ 需要改进"开头）
+2. 【错误定位】列出每个错误字段，说明为什么错、正确的应该是什么
+3. 【知识点讲解】结合这个任务涉及的攻防原理，做简明讲解（如果有攻击原理，请说明攻击者手法、检测特征、防御措施）
+4. 【实操建议】给出这个场景下安全运维人员在实际工作中的操作要点
+5. 【提升方向】针对学员的薄弱点，给出具体的学习建议
+
+注意：语气要鼓励、有建设性，不要只说"你错了"，要说明"为什么错、怎么改"。"""
+            llm = await LLMFactory.get_main_llm()
+            result = await llm.chat([
+                {"role": "system", "content": "你是一个经验丰富的安全实训导师，擅长用通俗易懂的语言讲解安全攻防原理。"},
+                {"role": "user", "content": prompt},
+            ], timeout=30)
+
+            if result.get("success") and result["content"]:
+                return result["content"].strip()
+
+        except Exception as e:
+            from common.logger import LogManager
+            logger = LogManager.get_logger()
+            logger.warning(f"LLM 分析生成失败: {e}")
+
+        return None
+
+    @staticmethod
+    def _dict_to_text(data: dict, label: str) -> str:
+        """将字典格式化为可读文本"""
+        if not data:
+            return f"{label}：无"
+        parts = [f"{label}："]
+        for key, val in data.items():
+            if isinstance(val, list):
+                parts.append(f"  {key}: {', '.join(str(v) for v in val)}")
+            elif isinstance(val, dict):
+                for k, v in val.items():
+                    parts.append(f"  {key}.{k}: {v}")
+            else:
+                parts.append(f"  {key}: {val}")
+        return "\n".join(parts[:20])  # 限制长度
+
+    # ── 硬编码降级模式 ──
+
+    @classmethod
+    def _fallback_analyze(cls, task_type: str, submit_type: str,
+                          task_title: str, checks: list,
+                          score: int, grade: str) -> str:
+        """硬编码知识库降级分析"""
         parts = []
 
         # 1. 总体评价
@@ -169,6 +344,9 @@ class ErrorAnalysis:
         if principle:
             parts.append(f"\n📖 底层原理 — {principle['name']}：")
             parts.append(f"  {principle['principle']}")
+            if principle.get('detection'):
+                parts.append(f"\n🔍 检测特征：")
+                parts.append(f"  {principle['detection']}")
 
         # 4. 防御/最佳实践
         practice = cls._get_practice(task_title, task_type)
@@ -202,10 +380,14 @@ class ErrorAnalysis:
             return cls.ATTACK_PRINCIPLES.get("sql_injection")
         if "横向" in title_lower or "内网" in title_lower or "渗透" in title_lower:
             return cls.ATTACK_PRINCIPLES.get("lateral_movement")
-        if "webshell" in title_lower or "上传" in title_lower or "shell" in title_lower:
+        if "webshell" in title_lower or "上传" in title_lower or "shell" in title_lower or "木马" in title_lower:
             return cls.ATTACK_PRINCIPLES.get("webshell")
-        if "c2" in title_lower or "外联" in title_lower or "通信" in title_lower:
+        if "c2" in title_lower or "外联" in title_lower or "通信" in title_lower or "隧道" in title_lower:
             return cls.ATTACK_PRINCIPLES.get("c2_communication")
+        if "dns" in title_lower or "隧道" in title_lower:
+            return cls.ATTACK_PRINCIPLES.get("dns_tunneling")
+        if "勒索" in title_lower or "ransom" in title_lower or "加密" in title_lower:
+            return cls.ATTACK_PRINCIPLES.get("ransomware")
         if "留存" in title_lower or "存储" in title_lower:
             return cls.COMPLIANCE_PRINCIPLES.get("log_retention")
         if "防篡改" in title_lower:

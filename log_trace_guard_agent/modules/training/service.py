@@ -68,17 +68,21 @@ class TrainingService:
         # 3. 执行双维度校验
         check_result = await strategy.check(content, standard)
 
-        # 4. 生成原理讲解
+        # 4. 生成原理讲解（LLM 驱动，降级到硬编码知识库）
         task = TaskEngine.get_task(scenario_id, task_id)
         task_title = task.get("title", "")
+        task_description = task.get("description", "")
 
-        analysis_text = ErrorAnalysis.analyze(
+        analysis_text = await ErrorAnalysis.analyze(
             task_type=task.get("submit_type", ""),
             submit_type=submit_type,
             task_title=task_title,
             checks=check_result.get("checks", []),
             score=check_result.get("score", 0),
             grade=check_result.get("grade", "C"),
+            task_description=task_description,
+            submission_content=content,
+            standard_answer=standard,
         )
 
         # 5. 记录学员成绩

@@ -212,5 +212,193 @@
         "weight": 1.5
       }
     }
+  },
+  "S007": {
+    "T007-1": {
+      "correct_answer": {
+        "attacker_ip": "10.0.0.5",
+        "attempt_count": 10,
+        "usernames": ["root", "admin", "test", "user1", "oracle"],
+        "frequency": "10次/分钟",
+        "reasoning": "同一源IP在22秒内发起10次SSH登录尝试，使用5个不同用户名，属于典型的暴力破解行为"
+      },
+      "key_fields": {"attacker_ip": ["10.0.0.5"], "attempt_count": ["10"], "usernames": ["root", "admin"], "frequency": ["10次", "/分钟"]},
+      "scoring_rules": {
+        "required_fields": ["attacker_ip", "attempt_count", "usernames"],
+        "min_match_rate": 0.5,
+        "weight": 1.0
+      }
+    },
+    "T007-2": {
+      "correct_answer": {
+        "config_content": "[sshd]\nenabled = true\nport = 22\nfilter = sshd\nlogpath = /var/log/auth.log\nmaxretry = 5\nfindtime = 600\nbantime = 1800",
+        "reasoning": "在jail.local中配置SSH防护，10分钟内5次失败即封禁30分钟"
+      },
+      "key_fields": {"config_content": ["maxretry", "5", "findtime", "600", "bantime", "1800", "sshd"]},
+      "scoring_rules": {
+        "required_fields": ["config_content"],
+        "min_match_rate": 0.5,
+        "weight": 1.0
+      }
+    },
+    "T007-3": {
+      "correct_answer": {
+        "timeline": "08:00-08:01 暴力破解（10次/分钟，5个用户名）→ 未成功",
+        "affected_assets": "SSH服务器（10.0.0.1:22）",
+        "impact": "无数据泄露，未影响业务运行",
+        "remediation": "1. 封禁源IP 10.0.0.5 2. 配置fail2ban 3. 启用密钥认证 4. 修改SSH端口 5. 部署堡垒机",
+        "reasoning": "攻击未成功，但表明资产已暴露在公网，需要立即加固"
+      },
+      "key_fields": {"timeline": ["08:00"], "affected_assets": ["SSH服务器"], "impact": ["未", "无"], "remediation": ["封禁", "fail2ban", "密钥"]},
+      "scoring_rules": {
+        "required_fields": ["timeline", "affected_assets", "remediation"],
+        "min_match_rate": 0.5,
+        "weight": 1.5
+      }
+    }
+  },
+  "S008": {
+    "T008-1": {
+      "correct_answer": {
+        "attack_type": "SQL注入（基于UNION SELECT）",
+        "bypass_techniques": ["URL编码绕过（%20→空格）", "注释绕过（/**/）", "SQL语法变体（UNION ALL）", "换行符绕过（%0a）"],
+        "detection_tips": "WAF应检测：编码后的SQL关键词、注释符号、SQL关键字变体、控制字符",
+        "reasoning": "攻击者使用了4种不同的WAF绕过技术尝试规避检测，但都被WAF拦截"
+      },
+      "key_fields": {"attack_type": ["SQL注入", "sql"], "bypass_techniques": ["编码", "注释", "变体", "换行"]},
+      "scoring_rules": {
+        "required_fields": ["attack_type", "bypass_techniques"],
+        "min_match_rate": 0.4,
+        "weight": 1.5
+      }
+    }
+  },
+  "S009": {
+    "T009-1": {
+      "correct_answer": {
+        "infection_vector": "钓鱼邮件附件（带宏的Word文档）",
+        "indicators": ["Powershell外联C2", "大量文件批量修改", "文件扩展名变更为.encrypted", "勒索信创建"],
+        "timestamp": "10:00-10:07",
+        "severity": "P1_高危（200+文件被加密，无备份）",
+        "reasoning": "典型的勒索软件感染链：钓鱼邮件→宏执行→Powershell下载payload→加密文件→勒索信"
+      },
+      "key_fields": {"infection_vector": ["钓鱼", "邮件", "宏"], "indicators": ["Powershell", "外联", "加密", "勒索信"], "severity": ["高危", "P1"]},
+      "scoring_rules": {
+        "required_fields": ["infection_vector", "indicators", "severity"],
+        "min_match_rate": 0.5,
+        "weight": 1.5
+      }
+    },
+    "T009-2": {
+      "correct_answer": {
+        "immediate_actions": ["1. 立即断网隔离受害服务器", "2. 封禁C2地址45.33.32.156", "3. 提取内存和磁盘取证", "4. 保留勒索信和加密文件样本"],
+        "forensics_steps": ["1. 导出powershell日志分析payload", "2. 提取文件加密时间线", "3. 检查是否有横向移动迹象", "4. 保存完整磁盘镜像"],
+        "recovery_plan": "无备份，尝试：1. 联系安全厂商看是否有解密工具 2. 从shadow copy恢复 3. 从业务备份恢复数据",
+        "prevention": "1. 部署EDR 2. 禁用Office宏 3. 定期3-2-1备份 4. 员工安全意识培训",
+        "reasoning": "无备份情况下恢复困难，重点在于取证和防止再次发生"
+      },
+      "key_fields": {"immediate_actions": ["断网", "封禁", "取证"], "recovery_plan": ["解密", "恢复"], "prevention": ["EDR", "备份", "培训"]},
+      "scoring_rules": {
+        "required_fields": ["immediate_actions", "recovery_plan"],
+        "min_match_rate": 0.4,
+        "weight": 1.5
+      }
+    }
+  },
+  "S010": {
+    "T010-1": {
+      "correct_answer": {
+        "suspicious_ips": ["10.0.0.50"],
+        "evidence": "1. 子域名含随机十六进制字符串（a2738d9f1c2b3e4f） 2. 高频TXT记录查询（5秒3次） 3. 子域名长度27+字符 4. 使用非标准子域名结构",
+        "tunnel_type": "DNS TXT隧道（数据编码在TXT记录中）",
+        "confidence": 95,
+        "reasoning": "真实的DNS隧道特征：随机子域名 + 高频TXT查询 + 非常规域名结构"
+      },
+      "key_fields": {"suspicious_ips": ["10.0.0.50"], "tunnel_type": ["DNS", "TXT", "隧道"], "evidence": ["随机", "子域名", "高频"]},
+      "scoring_rules": {
+        "required_fields": ["suspicious_ips", "tunnel_type", "confidence"],
+        "min_match_rate": 0.5,
+        "weight": 1.5
+      }
+    }
+  },
+  "S011": {
+    "T011-1": {
+      "correct_answer": {
+        "architecture": "Kafka + Elasticsearch冷热分层架构",
+        "components": ["Filebeat（采集端）→ Kafka（消息队列/缓冲）→ Logstash（解析/过滤）→ Elasticsearch热节点（存储近30天数据）→ ES冷节点（存储历史数据）→ Kibana（检索/可视化）"],
+        "storage_calc": "日均5TB × 180天 / 1.5压缩 = 600TB原始存储，+1副本 = 1200TB总存储",
+        "high_availability": "Kafka集群3节点 + ES集群跨3可用区部署 + Kibana多节点负载均衡",
+        "reasoning": "大型日志量必须引入Kafka缓冲避免数据丢失，冷热分层大幅降低存储成本"
+      },
+      "key_fields": {"architecture": ["Kafka", "Elasticsearch", "冷热"], "components": ["Filebeat", "Kafka", "Logstash", "ES"], "storage_calc": ["600", "TB", "1200"]},
+      "scoring_rules": {
+        "required_fields": ["architecture", "components"],
+        "min_match_rate": 0.4,
+        "weight": 1.5
+      }
+    },
+    "T011-2": {
+      "correct_answer": {
+        "total_storage": "1200TB（含1副本）",
+        "node_count": "30个数据节点（热节点10个+冷节点20个）+ 3个Master节点 + 2个Kibana节点",
+        "memory_total": "30节点 × 64GB = 1920GB内存",
+        "disk_type": "热节点：SSD/NVMe（读写性能要求高）；冷节点：HDD大容量（成本优先）",
+        "reasoning": "热节点处理近实时写入和查询用SSD，冷节点存历史数据用HDD降成本"
+      },
+      "key_fields": {"total_storage": ["1200", "TB"], "node_count": ["30", "节点"], "memory_total": ["1920", "GB"]},
+      "scoring_rules": {
+        "required_fields": ["total_storage", "node_count"],
+        "min_match_rate": 0.4,
+        "weight": 1.0
+      }
+    }
+  },
+  "S012": {
+    "T012-1": {
+      "correct_answer": {
+        "attack_chain": "端口扫描(08:00)→SSH爆破(08:00-08:01)→SSH登录成功(08:00:12)→下载工具(08:05)→内网扫描(08:06)→SMB横向(08:10)→AD登录(08:11)→权限提升(08:15)→C2通信(08:20)",
+        "attack_stages": ["初始访问（SSH爆破）", "执行（下载工具）", "发现（内网扫描）", "横向移动（SMB+AD）", "权限提升", "命令控制（C2通信）"],
+        "compromised_assets": ["10.0.0.1（SSH服务器）→ 10.0.0.50（应用服务器）"],
+        "c2": "203.0.113.5:443",
+        "reasoning": "攻击者从外网SSH爆破进入内网，逐步横向移动到多台服务器，最终建立C2通信"
+      },
+      "key_fields": {"attack_chain": ["SSH", "横向", "SMB", "C2"], "attack_stages": ["初始访问", "横向移动", "命令控制"], "compromised_assets": ["10.0.0.1", "10.0.0.50"]},
+      "scoring_rules": {
+        "required_fields": ["attack_chain", "compromised_assets"],
+        "min_match_rate": 0.5,
+        "weight": 2.0
+      }
+    },
+    "T012-2": {
+      "correct_answer": {
+        "impact_scope": "3台服务器沦陷（SSH服务器10.0.0.1 → 应用服务器10.0.0.50 → AD域控），C2通信已建立",
+        "risk_level": "P0_极高危",
+        "business_impact": "核心业务系统（应用服务器）被控制，可能有数据泄露；AD域控被访问，全公司账号安全受威胁",
+        "data_breach": "可能的数据泄露：应用服务器数据库、AD域用户凭据、内网拓扑信息",
+        "reasoning": "攻击者已获得3台服务器控制权并建立C2，具备窃取数据、部署勒索软件、进一步横向的完整能力"
+      },
+      "key_fields": {"impact_scope": ["3台", "服务器", "C2"], "risk_level": ["P0", "极高危"], "business_impact": ["核心业务", "数据泄露"], "data_breach": ["数据库", "凭据"]},
+      "scoring_rules": {
+        "required_fields": ["impact_scope", "risk_level", "data_breach"],
+        "min_match_rate": 0.5,
+        "weight": 1.5
+      }
+    },
+    "T012-3": {
+      "correct_answer": {
+        "summary": "【安全事件报告】编号：IR-2026-001；发现时间：08:00；响应时间：当前；状态：处置中",
+        "timeline": "08:00 外网IP 10.0.0.5发起SSH爆破 → 08:00:12 SSH登录成功 → 08:05 下载恶意工具 → 08:06 内网扫描 → 08:10 SMB横向移动 → 08:15 提权 → 08:20 C2通信建立",
+        "analysis": "攻击链完整：初始访问→执行→发现→横向移动→提权→C2。攻击者使用了SSH爆破、SMB横向、Powershell远程执行等技术。C2地址203.0.113.5:443。",
+        "actions": ["已完成：封禁源IP 10.0.0.5", "已完成：隔离10.0.0.1和10.0.0.50", "已完成：提取系统内存和磁盘取证", "进行中：排查AD域控受影响情况", "待执行：全网密码重置"],
+        "recommendations": ["1. 修改所有服务器SSH为密钥认证", "2. 部署网络分段（VLAN隔离）", "3. 部署EDR检测横向移动", "4. 启用SMB签名", "5. 建立威胁情报阻断C2通信"]
+      },
+      "key_fields": {"summary": ["IR-2026-001"], "timeline": ["SSH", "SMB", "C2"], "actions": ["封禁", "隔离", "取证"], "recommendations": ["密钥", "EDR", "SMB签名"]},
+      "scoring_rules": {
+        "required_fields": ["summary", "timeline", "actions", "recommendations"],
+        "min_match_rate": 0.5,
+        "weight": 2.0
+      }
+    }
   }
 }

