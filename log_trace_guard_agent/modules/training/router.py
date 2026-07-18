@@ -1,12 +1,17 @@
 """模块五：交互式攻防实训模块 — API 路由"""
 
+import json
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from typing import Optional
 
 from modules.training.service import TrainingService
 from modules.training.schemas import (
     TaskDispatchReq, SubmitAnswerReq, ReportReq,
 )
+from modules.training.error_analysis import ErrorAnalysis
+from modules.training.check_strategy import CheckStrategyFactory
+from modules.training.task_engine import TaskEngine
 from core.context_manager import ContextManager
 from app.dependencies import get_context
 from common.logger import LogManager
@@ -39,6 +44,55 @@ async def submit_answer(req: SubmitAnswerReq, ctx: ContextManager = Depends(get_
         context=ctx,
     )
     return result
+
+
+@router.post("/analyze-stream")
+async def analyze_stream(req: SubmitAnswerReq):
+    """流式分析 — SSE 逐 token 返回答案解析"""
+    standard = TaskEngine.get_standard_answer(req.scenario_id, req.task_id)
+    if not standard:
+        return {"code": 400, "msg": "未找到标准答案"}
+
+    strategy = CheckStrategyFactory.get_strategy(req.submit_type)
+    if not strategy:
+        return {"code": 400, "msg": "未知的提交类型"}
+
+    check_result = await strategy.check(req.content, standard)
+    task = TaskEngine.get_task(req.scenario_id, req.task_id)
+    task_title = task.get("title", "") if task else ""
+    task_description = task.get("description", "") if task else ""
+
+    checks = check_result.get("checks", [])
+    score = check_result.get("score", 0)
+    grade = check_result.get("grade", "C")
+
+    async def event_stream():
+        # 先发送评分结果（JSON 事件）
+        yield f"data: {json.dumps({'type': 'result', 'score': score, 'grade': grade, 'checks': checks}, ensure_ascii=False)}\n\n"
+
+        # 然后流式输出分析文本
+        async for token in ErrorAnalysis._llm_analyze_stream(
+            task_title=task_title,
+            task_description=task_description,
+            submission_content=req.content,
+            standard_answer=standard,
+            checks=checks,
+            score=score,
+            grade=grade,
+        ):
+            if token:
+                yield f"data: {json.dumps({'type': 'token', 'text': token}, ensure_ascii=False)}\n\n"
+
+        yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/report")
