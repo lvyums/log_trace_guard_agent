@@ -64,7 +64,7 @@ const totalCount=computed(()=>input.value.trim()?input.value.split('\n').filter(
 const sampleLogs=APP_CONFIG?.sampleData?.logs?.join('\n')||''
 function fillSample(){input.value=sampleLogs}
 function clear(){input.value='';result.value=null}
-function getLevelKey(l){const m={'P0_高危':'P0','P1_中危':'P1','P2_低危':'P2','P3_噪音':'P3'};return m[l]||'normal'}
+function getLevelKey(l){const m={'P0_高危':'P0','P1_中危':'P1','P2_低危':'P2','P3_噪音':'P3','P0':'P0','P1':'P1','P2':'P2','P3':'P3'};return m[l]||'normal'}
 async function submit(){
   if(!input.value.trim()){ElMessage.warning('请输入日志内容');return}
   loading.value=true;result.value=null

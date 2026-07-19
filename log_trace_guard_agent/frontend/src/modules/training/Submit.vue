@@ -1,5 +1,5 @@
 <template>
-  <div class="g-training-layout">
+  <div class="g-stack">
     <AlertGuide type="warning" title="答题时遵循标准分析流程">
       评分标准：识别设备类型(10%)→提取关键字段(30%)→判断风险等级(20%)→给出处置建议(40%)。
     </AlertGuide>
@@ -11,7 +11,8 @@
       </div>
     </div>
 
-    <div class="g-training-task">
+    <div class="g-training-layout">
+      <div class="g-training-task">
       <div class="g-card-title" style="margin-bottom:16px">
         <el-icon><Notebook /></el-icon> 实训任务
       </div>
@@ -96,6 +97,7 @@
         </KnowledgePanel>
       </div>
     </div>
+  </div>
   </div>
 </template>
 

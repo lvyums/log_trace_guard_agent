@@ -207,7 +207,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { APP_CONFIG, getRiskLevel } from '../../config'
 import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import RiskBadge from '../../components/RiskBadge.vue'

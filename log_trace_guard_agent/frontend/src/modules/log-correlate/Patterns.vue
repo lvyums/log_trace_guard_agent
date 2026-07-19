@@ -19,7 +19,7 @@
         <el-result icon="error" title="加载失败" :sub-title="error" />
       </div>
 
-      <div v-else-if="patterns.length === 0" class="g-empty-state">
+      <div v-else-if="patterns.length === 0">
         <el-empty description="暂无攻击链模式数据" />
       </div>
 

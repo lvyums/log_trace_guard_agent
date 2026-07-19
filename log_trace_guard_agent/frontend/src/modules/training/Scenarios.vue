@@ -74,12 +74,17 @@ async function loadScenarios() {
     const res = await Api.training.scenarios()
     if (res.success && res.data) {
       scenarios.value = Array.isArray(res.data) ? res.data : (res.data.scenarios || [])
+      loading.value = false
+      return
+    }
+    if (res.success && !res.data) {
+      loading.value = false
       return
     }
   } catch {
     // fall through to sample
   }
-  // Sample fallback
+  // Sample fallback when API fails
   scenarios.value = [
     { scenario: { scenario_id: '1', name: 'SSH暴力破解检测', difficulty: '初级', category: '入侵检测', description: '分析SSH登录日志，识别暴力破解行为并溯源攻击IP' }, total_tasks: 3 },
     { scenario: { scenario_id: '2', name: 'Web攻击日志分析', difficulty: '中级', category: 'Web安全', description: '分析WAF日志，识别SQL注入、XSS等Web攻击' }, total_tasks: 5 },

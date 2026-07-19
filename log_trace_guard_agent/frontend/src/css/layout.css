@@ -6,7 +6,6 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 /* ---- 顶部导航栏 ---- */
@@ -108,8 +107,7 @@
 .app-body {
   display: flex;
   flex: 1;
-  overflow: hidden;
-  transition: all var(--transition-normal);
+  min-height: 0;
 }
 
 /* ---- 左侧菜单 ---- */
