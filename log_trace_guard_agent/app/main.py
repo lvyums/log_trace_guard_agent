@@ -30,6 +30,7 @@ from modules.log_collect.router import router as log_collect_router
 from modules.script_gen.router import router as script_gen_router
 from modules.compliance.router import router as compliance_router
 from modules.training.router import router as training_router
+from modules.log_correlate.router import router as log_correlate_router
 from app.exceptions import AppException, global_exception_handler, make_response
 from app.settings import settings
 from app.dependencies import validate_request, log_request_duration
@@ -124,6 +125,7 @@ app.include_router(log_collect_router)
 app.include_router(script_gen_router)
 app.include_router(compliance_router)
 app.include_router(training_router)
+app.include_router(log_correlate_router)
 
 
 @app.get("/")
@@ -152,8 +154,8 @@ async def health():
 
 
 # 挂载静态文件（放在最后，避免覆盖 API 路由）
-# 优先使用 Vite 构建产物，否则回退到原始 static 目录
-if os.path.exists(FRONTEND_DIST_DIR):
+# 优先使用 Vite 构建产物（需含 index.html），否则回退到原始 static 目录
+if os.path.isfile(os.path.join(FRONTEND_DIST_DIR, "index.html")):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIST_DIR), name="static")
     logger.info(f"使用 Vite 构建产物: {FRONTEND_DIST_DIR}")
 elif os.path.exists(STATIC_DIR):

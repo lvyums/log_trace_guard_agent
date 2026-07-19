@@ -82,6 +82,14 @@ export const APP_CONFIG: AppConfig = {
         { path: '/training/report', label: '实训报告', icon: 'DataLine', tip: '查看实训统计与详细报告' },
       ],
     },
+    {
+      key: 'log-correlate', label: '日志联合审查', icon: 'Connection',
+      desc: '多源日志关联分析、攻击链检测、事件时间线推演',
+      children: [
+        { path: '/log-correlate/analyze', label: '关联分析', icon: 'Search', tip: '输入多源日志，自动检测攻击链和关联事件' },
+        { path: '/log-correlate/patterns', label: '攻击链模式', icon: 'List', tip: '查看所有可检测的攻击链模式列表' },
+      ],
+    },
   ],
 
   guidance: {
@@ -129,6 +137,12 @@ export const APP_CONFIG: AppConfig = {
         action: '加载真实攻击样例',
         hint: '典型场景：收到IDS告警后，粘贴原始日志确认是否为误报。',
       },
+      correlate: {
+        title: '日志联合审查 — 发现隐蔽攻击链',
+        desc: '输入多源日志（每行一条），系统自动构建时间线、进行实体关联、检测已知攻击链模式。',
+        action: '加载攻击链样例',
+        hint: '例如：防火墙检测到暴力破解 -> 服务器上SSH登录成功 -> 数据库出现异常查询，可能就是一条完整的攻击链。',
+      },
       collectPlan: {
         title: '日志采集是安全运营的基石',
         desc: '没有日志就没有检测能力。选择设备类型和企业规模，系统会生成符合等保要求的标准化采集方案。',
@@ -171,6 +185,8 @@ export const APP_CONFIG: AppConfig = {
       '/training/scenarios': { type: 'info', title: '选择场景前先评估水平', content: '初级：基础字段提取。中级：攻击原理理解。高级：完整溯源。' },
       '/training/submit': { type: 'warning', title: '答题时遵循标准流程', content: '评分标准：识别设备类型(10%)→提取关键字段(30%)→判断风险等级(20%)→处置建议(40%)。' },
       '/training/report': { type: 'info', title: '报告用于跟踪技能成长', content: '重点关注薄弱环节、进步趋势、知识盲区。' },
+      '/log-correlate/analyze': { type: 'info', title: '关联分析需要多源日志输入', content: '粘贴至少2-3条不同来源的日志，系统会自动构建时间线和检测攻击链。支持SSH、Web、防火墙等多类型混输。' },
+      '/log-correlate/patterns': { type: 'info', title: '攻击链模式库', content: '内置23条常见攻击链检测规则，涵盖数据库、网络、认证、容器、API等场景。' },
     },
   },
 

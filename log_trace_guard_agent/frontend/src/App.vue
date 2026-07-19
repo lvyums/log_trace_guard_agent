@@ -82,6 +82,8 @@ import ComplianceCheck from './modules/compliance/Check.vue'
 import TrainingScenarios from './modules/training/Scenarios.vue'
 import TrainingSubmit from './modules/training/Submit.vue'
 import TrainingReport from './modules/training/Report.vue'
+import LogCorrelateAnalyze from './modules/log-correlate/Analyze.vue'
+import LogCorrelatePatterns from './modules/log-correlate/Patterns.vue'
 
 const ROUTE_MAP: Record<string, any> = {
   '/log-parse/identify': markRaw(LogParseIdentify),
@@ -103,6 +105,8 @@ const ROUTE_MAP: Record<string, any> = {
   '/training/scenarios': markRaw(TrainingScenarios),
   '/training/submit': markRaw(TrainingSubmit),
   '/training/report': markRaw(TrainingReport),
+  '/log-correlate/analyze': markRaw(LogCorrelateAnalyze),
+  '/log-correlate/patterns': markRaw(LogCorrelatePatterns),
 }
 
 const ready = ref(false)
