@@ -14,7 +14,7 @@ import os
 import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from modules.log_parse.service import LogParseService
 from core.context_manager import ContextManager
@@ -80,7 +80,7 @@ class CorrelatedEvent:
             return self.src_ip
         if self.user:
             return self.user
-        return self.device_type
+        return self.device_type or "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -126,13 +126,9 @@ class AttackChain:
 # 时间戳解析
 # ---------------------------------------------------------------------------
 
-# ISO 8601: 2024-01-01T10:00:00 或 2024-01-01 10:00:00
 _RE_ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})")
-# Syslog: Jan 15 10:30:00
 _RE_SYSLOG = re.compile(r"(\w{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})")
-# Web: 15/Jan/2024:10:30:00
 _RE_WEB = re.compile(r"(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2})")
-# Full ISO: 2024-01-01T10:00:00.123+08:00
 _RE_ISO_FULL = re.compile(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})")
 
 _MONTH_MAP = {
@@ -142,16 +138,12 @@ _MONTH_MAP = {
 
 
 def _parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
-    """尝试将时间戳字符串解析为 datetime 对象。
-
-    支持 ISO 8601、Syslog、Web 日志格式。解析失败返回 None。
-    """
+    """尝试将时间戳字符串解析为 datetime 对象。"""
     if not ts_str or not ts_str.strip():
         return None
 
     ts_str = ts_str.strip()
 
-    # Try ISO 8601 full (with timezone stripped)
     m = _RE_ISO_FULL.match(ts_str)
     if m:
         try:
@@ -159,7 +151,6 @@ def _parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
         except (ValueError, TypeError):
             pass
 
-    # Try ISO 8601 basic
     m = _RE_ISO.match(ts_str)
     if m:
         try:
@@ -170,7 +161,6 @@ def _parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
         except (ValueError, TypeError):
             pass
 
-    # Try Web: 15/Jan/2024:10:30:00
     m = _RE_WEB.match(ts_str)
     if m:
         try:
@@ -183,7 +173,6 @@ def _parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
         except (ValueError, TypeError):
             pass
 
-    # Try Syslog: Jan 15 10:30:00
     m = _RE_SYSLOG.match(ts_str)
     if m:
         try:
@@ -205,10 +194,7 @@ def _parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
 # ---------------------------------------------------------------------------
 
 class TimelineBuilder:
-    """从多条日志条目构建统一时间线。
-
-    使用 LogParseService 逐行解析，做风险研判，按时间戳排序，按实体键分组。
-    """
+    """从多条日志条目构建统一时间线。"""
 
     def __init__(self, time_window_minutes: int = 5):
         self.time_window_minutes = time_window_minutes
@@ -218,13 +204,7 @@ class TimelineBuilder:
         log_lines: List[str],
         context: ContextManager,
     ) -> Tuple[List[CorrelatedEvent], Dict[str, List[CorrelatedEvent]]]:
-        """从原始日志行构建时间线。
-
-        返回:
-            (sorted_timeline, entity_groups)
-            - sorted_timeline: 按时间戳排序的所有事件
-            - entity_groups: 按实体键分组的事件
-        """
+        """从原始日志行构建时间线。"""
         events: List[CorrelatedEvent] = []
 
         for i, line in enumerate(log_lines, 1):
@@ -232,7 +212,6 @@ class TimelineBuilder:
             if not line:
                 continue
 
-            # 复用 LogParseService 进行解析和风险研判
             parse_result = await LogParseService.parse_log(line, context)
             if parse_result["code"] != 0:
                 logger.warning(f"解析日志行 {i} 失败: {parse_result['msg']}")
@@ -244,7 +223,7 @@ class TimelineBuilder:
 
             event = CorrelatedEvent(
                 timestamp=parsed.get("timestamp"),
-                device_type=parsed.get("device_type", "unknown"),
+                device_type=parsed.get("device_type") or "unknown",
                 src_ip=parsed.get("src_ip"),
                 dst_ip=parsed.get("dst_ip"),
                 user=parsed.get("user"),
@@ -258,7 +237,6 @@ class TimelineBuilder:
             )
             events.append(event)
 
-        # 按时间戳排序（无时间戳事件排在最后）
         def _sort_key(e: CorrelatedEvent) -> tuple:
             dt = _parse_timestamp(e.timestamp)
             if dt is None:
@@ -267,7 +245,6 @@ class TimelineBuilder:
 
         events.sort(key=_sort_key)
 
-        # 按实体分组
         groups: Dict[str, List[CorrelatedEvent]] = {}
         for evt in events:
             key = evt.get_entity_key()
@@ -282,31 +259,38 @@ class TimelineBuilder:
 
 
 # ---------------------------------------------------------------------------
-# ChainAnalyzer
+# ChainAnalyzer — 基于关键词的攻击链检测
 # ---------------------------------------------------------------------------
 
 class ChainAnalyzer:
     """分析时间线中的攻击链模式。
 
-    从 correlation_patterns.json 加载攻击链模式，在时间线中匹配已知攻击链。
+    从 correlation_patterns.json 加载攻击链规则（基于关键词匹配的格式），
+    在时间线中匹配已知攻击链模式。
     """
 
-    def __init__(self):
-        self._patterns: List[dict] = []
-        self._load_patterns()
+    _SEVERITY_MAP = {
+        "critical": "P0_高危",
+        "major": "P1_中危",
+        "warning": "P2_低危",
+    }
 
-    def _load_patterns(self):
-        """从 JSON 规则文件加载攻击链模式。"""
+    def __init__(self):
+        self._rules: List[dict] = []
+        self._load_rules()
+
+    def _load_rules(self):
+        """从 JSON 规则文件加载攻击链规则。"""
         try:
             data = JsonConfigLoader.load(CORRELATION_PATTERNS_PATH)
-            self._patterns = data.get("patterns", []) if data else []
+            self._rules = data.get("rules", []) if data else []
         except (FileNotFoundError, ValueError, Exception) as e:
             logger.warning(f"加载 correlation_patterns.json 失败: {e}")
-            self._patterns = []
+            self._rules = []
 
     @property
     def patterns(self) -> List[dict]:
-        return list(self._patterns)
+        return list(self._rules)
 
     def analyze(
         self,
@@ -316,171 +300,197 @@ class ChainAnalyzer:
     ) -> List[AttackChain]:
         """分析时间线中的攻击链模式。
 
-        对每个模式，扫描所有实体组以寻找匹配的事件序列。
+        对于每条规则，在每个实体组内匹配关键词模式。
         返回按置信度降序排列的攻击链列表。
         """
         results: List[AttackChain] = []
 
-        if not self._patterns or not timeline:
+        if not self._rules or not timeline:
             return results
 
-        for pattern in self._patterns:
-            stages = pattern.get("stages", [])
-            if not stages:
+        for rule in self._rules:
+            rule_patterns = rule.get("patterns", [])
+            if not rule_patterns:
                 continue
 
-            min_events = pattern.get("min_events", 2)
-            max_window = timedelta(minutes=pattern.get("max_time_window_minutes", 10))
-
-            # 对每个实体组进行分析
             for entity_key, group_events in entity_groups.items():
-                chain = self._match_pattern_in_group(
-                    pattern=pattern,
-                    stages=stages,
+                chain = self._match_rule_in_group(
+                    rule=rule,
+                    rule_patterns=rule_patterns,
                     events=group_events,
-                    time_window=max_window,
                     entity_key=entity_key,
                 )
-                if chain is not None and len(chain.matched_events) >= min_events:
+                if chain is not None:
                     results.append(chain)
 
         # 按置信度降序排序
         results.sort(key=lambda c: c.confidence, reverse=True)
 
-        # 去重：相同 chain_id + entity_key 保留最高置信度
+        # 去重：相同 chain_name + entity_key 保留最高置信度
         seen: set = set()
         deduped: List[AttackChain] = []
         for chain in results:
-            dedup_key = (chain.chain_id, chain.entity_key)
+            dedup_key = (chain.chain_name, chain.entity_key)
             if dedup_key not in seen:
                 seen.add(dedup_key)
                 deduped.append(chain)
 
         return deduped
 
-    def _match_pattern_in_group(
+    def _match_rule_in_group(
         self,
-        pattern: dict,
-        stages: List[dict],
+        rule: dict,
+        rule_patterns: List[dict],
         events: List[CorrelatedEvent],
-        time_window: timedelta,
         entity_key: str,
     ) -> Optional[AttackChain]:
-        """尝试在事件组中匹配模式的各个阶段。"""
-        matched_events: List[CorrelatedEvent] = []
-        matched_stages: List[str] = []
-        start_time: Optional[datetime] = None
+        """在实体组中匹配一条规则的所有关键词模式。"""
+        rule_name = rule.get("name", "")
+        rule_time_window_sec = rule.get("time_window", 300)
+        rule_time_window = timedelta(seconds=rule_time_window_sec)
+        required_matches = rule.get("required_matches", 2)
+        min_freq = rule.get("min_freq", 1)
 
-        for stage_idx, stage in enumerate(stages):
-            stage_matches = []
+        # 对每个模式，找到匹配的事件
+        matched_patterns: List[dict] = []  # 匹配的模式索引
+        pattern_matched_events: Dict[int, List[CorrelatedEvent]] = {}  # 模式索引 -> 匹配事件列表
 
-            for event in events:
-                if event in matched_events:
-                    continue
+        for p_idx, pattern in enumerate(rule_patterns):
+            matching_events = self._find_events_for_pattern(pattern, events, rule_time_window)
+            if len(matching_events) >= min_freq:
+                matched_patterns.append(pattern)
+                pattern_matched_events[p_idx] = matching_events
 
-                # 检查时间窗口
-                if start_time is not None:
-                    evt_time = _parse_timestamp(event.timestamp)
-                    if evt_time and (evt_time - start_time) > time_window:
-                        continue
-
-                if self._event_matches_stage(event, stage):
-                    stage_matches.append(event)
-
-            min_count = stage.get("min_count", 1)
-            if len(stage_matches) >= min_count:
-                matched_events.extend(stage_matches)
-                matched_stages.append(stage.get("label", f"Stage {stage_idx + 1}"))
-
-                # 从第一个匹配事件设置开始时间
-                if start_time is None and stage_matches:
-                    first_ts = _parse_timestamp(stage_matches[0].timestamp)
-                    if first_ts:
-                        start_time = first_ts
-
-        if not matched_events:
+        # 检查是否满足 required_matches
+        if len(matched_patterns) < required_matches:
             return None
 
-        # 根据匹配的阶段数计算置信度
-        total_stages = len(stages)
-        matched_count = len(matched_stages)
-        confidence = matched_count / total_stages if total_stages > 0 else 0.0
+        # 收集所有匹配事件（去重）
+        all_matched_events: List[CorrelatedEvent] = []
+        seen_event_ids: Set[int] = set()
+        for p_idx in pattern_matched_events:
+            for evt in pattern_matched_events[p_idx]:
+                if evt.line_number not in seen_event_ids:
+                    seen_event_ids.add(evt.line_number)
+                    all_matched_events.append(evt)
+
+        if not all_matched_events:
+            return None
+
+        # 计算置信度
+        total_patterns = len(rule_patterns)
+        matched_count = len(matched_patterns)
+        confidence = matched_count / total_patterns if total_patterns > 0 else 0.0
 
         # 提取指标
         indicators = []
-        for evt in matched_events:
+        for evt in all_matched_events:
             if evt.risk_desc:
                 indicators.append(evt.risk_desc)
-            if evt.src_ip and evt.src_ip not in indicators:
+            if evt.src_ip and f"源IP: {evt.src_ip}" not in indicators:
                 indicators.append(f"源IP: {evt.src_ip}")
-            if evt.user:
+            if evt.user and f"用户: {evt.user}" not in indicators:
                 indicators.append(f"用户: {evt.user}")
 
-        # 去重指标
-        seen_indicators: set = set()
-        unique_indicators: List[str] = []
-        for ind in indicators:
-            if ind not in seen_indicators:
-                seen_indicators.add(ind)
-                unique_indicators.append(ind)
+        severity = rule.get("severity", "warning")
+        risk_level = self._SEVERITY_MAP.get(severity, "P3_低风险")
 
         chain = AttackChain(
-            chain_id=pattern.get("id", "CHAIN-UNKNOWN"),
-            chain_name=pattern.get("name", "未知攻击链"),
-            description=pattern.get("description", ""),
-            risk_level=pattern.get("risk_level", "P3_低风险"),
+            chain_id=rule_name,
+            chain_name=rule_name,
+            description=rule.get("description", ""),
+            risk_level=risk_level,
             confidence=confidence,
-            matched_events=matched_events,
-            matched_stages=matched_stages,
-            indicators=unique_indicators[:10],
-            suggestion=pattern.get("suggestion", ""),
+            matched_events=all_matched_events,
+            matched_stages=[f"模式 {i+1}" for i in range(len(matched_patterns))],
+            indicators=indicators[:10],
+            suggestion=self._get_suggestion(rule),
             entity_key=entity_key,
         )
 
         return chain
 
+    def _find_events_for_pattern(
+        self,
+        pattern: dict,
+        events: List[CorrelatedEvent],
+        time_window: timedelta,
+    ) -> List[CorrelatedEvent]:
+        """在事件列表中查找匹配指定关键词模式的事件。"""
+        keyword = pattern.get("keyword", "")
+        source = pattern.get("source", ".*")
+
+        if not keyword:
+            return []
+
+        # 关键词本身是正则模式（如 "rollback|abort"、"failed to.*"）
+        try:
+            keyword_re = re.compile(keyword, re.IGNORECASE)
+        except re.error:
+            return []
+
+        # 构建 source/device_type 匹配正则
+        try:
+            source_re = re.compile(source, re.IGNORECASE) if source != ".*" else None
+        except re.error:
+            source_re = None
+
+        matching_events = []
+        for event in events:
+            # 关键词匹配（在 raw_log 中搜索）
+            if not event.raw_log or not keyword_re.search(event.raw_log):
+                continue
+
+            # source 匹配（设备类型过滤）：unknown/空类型不拦截，减少漏报
+            if source_re is not None:
+                dt = event.device_type or "unknown"
+                if dt != "unknown" and not source_re.search(dt):
+                    continue
+
+            matching_events.append(event)
+
+        # 如果匹配事件超过 1 个，检查时间窗口
+        if len(matching_events) > 1:
+            # 按时间戳排序
+            def _ts_key(e):
+                dt = _parse_timestamp(e.timestamp)
+                return dt.timestamp() if dt else 0
+
+            matching_events.sort(key=_ts_key)
+            # 检查第一个和最后一个的时间差
+            first_ts = _parse_timestamp(matching_events[0].timestamp)
+            last_ts = _parse_timestamp(matching_events[-1].timestamp)
+            if first_ts and last_ts and (last_ts - first_ts) > time_window:
+                # 只保留时间窗口内的事件
+                windowed = [matching_events[0]]
+                for evt in matching_events[1:]:
+                    evt_ts = _parse_timestamp(evt.timestamp)
+                    if evt_ts and (evt_ts - first_ts) <= time_window:
+                        windowed.append(evt)
+                return windowed
+
+        return matching_events
+
     @staticmethod
-    def _event_matches_stage(event: CorrelatedEvent, stage: dict) -> bool:
-        """检查单个事件是否匹配单个阶段定义。"""
-        # 设备类型检查
-        dt = stage.get("device_type")
-        if dt and event.device_type != dt:
-            return False
-
-        # 状态精确匹配
-        status = stage.get("status")
-        if status and event.matches_status(status):
-            pass
-        elif status:
-            status_prefix = stage.get("status_startswith")
-            if not status_prefix or not event.matches_status_prefix(status_prefix):
-                return False
-
-        # 状态前缀匹配
-        status_prefix = stage.get("status_startswith")
-        if not status and status_prefix and not event.matches_status_prefix(status_prefix):
-            return False
-
-        # 命令内容检查
-        command_contains = stage.get("command_contains")
-        if command_contains and not event.matches_command(command_contains):
-            return False
-
-        # 非工作时间检查
-        is_off_hours = stage.get("is_off_hours", False)
-        if is_off_hours:
-            dt = _parse_timestamp(event.timestamp)
-            if dt is None or 8 <= dt.hour <= 18:
-                return False
-
-        # 额外攻击类型匹配
-        attack_type = stage.get("attack_type")
-        if attack_type:
-            extra_attack = event.extra_info.get("attack_type", "")
-            if attack_type.lower() not in extra_attack.lower():
-                return False
-
-        return True
+    def _get_suggestion(rule: dict) -> str:
+        """根据规则生成处置建议。"""
+        severity = rule.get("severity", "warning")
+        name = rule.get("name", "")
+        suggestions = {
+            "brute_force_attempt_chain": "立即封禁攻击源IP，检查被爆破的账户是否被成功登录，修改密码并启用多因素认证。",
+            "out_of_memory_chain": "检查内存使用率，评估是否需要扩容或优化内存泄漏的应用。",
+            "connection_refused_chain": "检查目标服务是否正常运行，确认端口是否已监听，重启服务或排查服务崩溃原因。",
+            "pod_crashloop_chain": "检查容器日志定位启动失败原因，修复后重新部署。",
+            "service_dependency_cascade": "检查上游服务状态，评估依赖关系，启用熔断机制防止级联故障。",
+        }
+        for key, suggestion in suggestions.items():
+            if key in name:
+                return suggestion
+        if severity == "critical":
+            return "立即排查并修复，防止进一步损失。"
+        elif severity == "major":
+            return "尽快排查，评估影响范围。"
+        return "持续监控，必要时升级处理。"
 
 
 # ---------------------------------------------------------------------------
@@ -488,16 +498,8 @@ class ChainAnalyzer:
 # ---------------------------------------------------------------------------
 
 class LogCorrelateService:
-    """日志联合审查高层服务。
+    """日志联合审查高层服务。"""
 
-    提供统一入口：
-    1. 解析所有日志行
-    2. 构建统一时间线
-    3. 分析攻击链模式
-    4. 返回结构化结果
-    """
-
-    # 类级别实例（复用，避免重复加载模式）
     _chain_analyzer: Optional[ChainAnalyzer] = None
 
     @classmethod
@@ -514,22 +516,7 @@ class LogCorrelateService:
         time_window_minutes: int = 5,
         detailed: bool = False,
     ) -> dict:
-        """分析多条日志进行关联检测。
-
-        Args:
-            log_lines: 原始日志行列表。
-            context: 请求上下文。
-            time_window_minutes: 关联时间窗口（分钟）。
-            detailed: 是否返回详细时间线。
-
-        Returns:
-            dict with keys:
-              - total_events: 已解析事件总数
-              - device_types: 发现的设备类型集合
-              - entities: 唯一实体键列表
-              - chains: 检测到的攻击链列表
-              - summary: 人类可读的摘要
-        """
+        """分析多条日志进行关联检测。"""
         if not log_lines:
             return Result.ok({
                 "total_events": 0,
@@ -539,7 +526,6 @@ class LogCorrelateService:
                 "summary": "没有日志可供分析",
             })
 
-        # 构建时间线
         builder = TimelineBuilder(time_window_minutes)
         time_window = builder.get_time_window()
         timeline, entity_groups = await builder.build_timeline(log_lines, context)
@@ -553,15 +539,12 @@ class LogCorrelateService:
                 "summary": "未能解析任何日志行",
             })
 
-        # 分析攻击链
         analyzer = cls._get_analyzer()
         chains = analyzer.analyze(timeline, entity_groups, time_window)
 
-        # 收集统计信息
-        device_types = sorted(set(e.device_type for e in timeline if e.device_type != "unknown"))
+        device_types = sorted(set(e.device_type for e in timeline if e.device_type and e.device_type != "unknown"))
         entities = sorted(set(e.get_entity_key() for e in timeline))
 
-        # 构建摘要
         if chains:
             high_risk = [c for c in chains if c.risk_level.startswith("P0")]
             chain_summary_parts = [f"检测到 {len(chains)} 条攻击链"]
@@ -597,10 +580,16 @@ class LogCorrelateService:
         analyzer = cls._get_analyzer()
         return [
             {
-                "id": p.get("id"),
+                "id": p.get("name"),
                 "name": p.get("name"),
-                "risk_level": p.get("risk_level"),
-                "stages": [s.get("label") for s in p.get("stages", [])],
+                "risk_level": cls._SEVERITY_MAP.get(p.get("severity", ""), "P3_低风险"),
+                "stages": [pp.get("keyword", "") for pp in p.get("patterns", [])],
             }
             for p in analyzer.patterns
         ]
+
+    _SEVERITY_MAP = {
+        "critical": "P0_高危",
+        "major": "P1_中危",
+        "warning": "P2_低危",
+    }
