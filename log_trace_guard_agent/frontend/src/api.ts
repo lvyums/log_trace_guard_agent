@@ -53,37 +53,37 @@ export const Api = {
   },
 
   logParse: {
-    identify: (data: any) => request('/api/v1/log-parse/identify', 'POST', data),
-    parse: (data: any) => request('/api/v1/log-parse/parse', 'POST', data),
-    assess: (data: any) => request('/api/v1/log-parse/assess', 'POST', data),
-    batch: (data: any) => request('/api/v1/log-parse/parse/batch', 'POST', data),
+    identify: (data: any) => request('POST', '/api/v1/log-parse/identify', data),
+    parse: (data: any) => request('POST', '/api/v1/log-parse/parse', data),
+    assess: (data: any) => request('POST', '/api/v1/log-parse/assess', data),
+    batch: (data: any) => request('POST', '/api/v1/log-parse/parse/batch', data),
   },
   logCollect: {
-    match: (data: any) => request('/api/v1/log-collect/match', 'POST', data),
-    plan: (data: any) => request('/api/v1/log-collect/plan', 'POST', data),
-    fault: (data: any) => request('/api/v1/log-collect/fault/diagnose', 'POST', data),
-    arch: (data: any) => request('/api/v1/log-collect/architecture/recommend', 'POST', data),
+    match: (data: any) => request('POST', '/api/v1/log-collect/match', data),
+    plan: (data: any) => request('POST', '/api/v1/log-collect/plan', data),
+    fault: (data: any) => request('POST', '/api/v1/log-collect/fault/diagnose', data),
+    arch: (data: any) => request('POST', '/api/v1/log-collect/architecture/recommend', data),
   },
   scriptGen: {
-    regex: (data: any) => request('/api/v1/script-gen/regex', 'POST', data),
-    esQuery: (data: any) => request('/api/v1/script-gen/es-query', 'POST', data),
-    platform: (data: any) => request('/api/v1/script-gen/platform', 'POST', data),
-    trace: (data: any) => request('/api/v1/script-gen/trace', 'POST', data),
-    optimize: (data: any) => request('/api/v1/script-gen/optimize', 'POST', data),
+    regex: (data: any) => request('POST', '/api/v1/script-gen/regex', data),
+    esQuery: (data: any) => request('POST', '/api/v1/script-gen/es-query', data),
+    platform: (data: any) => request('POST', '/api/v1/script-gen/platform', data),
+    trace: (data: any) => request('POST', '/api/v1/script-gen/trace', data),
+    optimize: (data: any) => request('POST', '/api/v1/script-gen/optimize', data),
   },
   compliance: {
-    qa: (data: any) => request('/api/v1/compliance/qa', 'POST', data),
-    baseline: (data: any) => request('/api/v1/compliance/baseline', 'POST', data),
-    check: (data: any) => request('/api/v1/compliance/check', 'POST', data),
+    qa: (data: any) => request('POST', '/api/v1/compliance/qa', data),
+    baseline: (data: any) => request('POST', '/api/v1/compliance/baseline', data),
+    check: (data: any) => request('POST', '/api/v1/compliance/check', data),
   },
   logCorrelate: {
     correlate: (data: any) => request('POST', '/api/v1/log-correlate/correlate', data),
     patterns: () => request('GET', '/api/v1/log-correlate/patterns'),
   },
   training: {
-    scenarios: () => request('/api/v1/training/dispatch', 'POST', { scenario_id: '', category: '' }),
-    submit: (data: any) => request('/api/v1/training/submit', 'POST', data),
-    report: (data: any) => request('/api/v1/training/report', 'POST', data),
+    scenarios: () => request('POST', '/api/v1/training/dispatch', { scenario_id: '', category: '' }),
+    submit: (data: any) => request('POST', '/api/v1/training/submit', data),
+    report: (data: any) => request('POST', '/api/v1/training/report', data),
 
     /**
      * 流式分析：POST 后通过 SSE 逐 token 接收答案解析
