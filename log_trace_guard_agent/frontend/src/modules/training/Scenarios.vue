@@ -100,6 +100,8 @@ function selectScenario(s: any) {
 
 function startTraining() {
   if (selected.value) {
+    // 保存选中场景到 sessionStorage，Submit.vue 读取
+    sessionStorage.setItem('current-training-scenario', JSON.stringify(selected.value))
     window.location.hash = '#/training/submit'
   }
 }

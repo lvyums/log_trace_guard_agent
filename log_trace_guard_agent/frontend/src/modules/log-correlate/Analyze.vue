@@ -1,63 +1,118 @@
 <template>
   <div class="g-stack">
-    <AlertGuide type="info" title="日志联合审查 — 发现隐蔽攻击链">
-      输入多源日志（每行一条），系统自动构建统一时间线、按实体进行关联分析，检测已知攻击链模式。
-      支持SSH、Web、防火墙、数据库等多种日志类型混合输入。
-    </AlertGuide>
-
-    <div class="g-card">
-      <div class="g-card-header">
-        <div>
-          <div class="g-card-title"><el-icon><Connection /></el-icon> 关联分析</div>
-          <div class="g-card-desc">输入多源日志，自动检测攻击链和关联事件</div>
-        </div>
-        <div class="g-actions">
-          <el-button size="small" @click="showSample = !showSample">
-            {{ showSample ? '收起' : '查看示例' }}
-          </el-button>
-          <el-button size="small" type="primary" plain @click="fillSample">填充测试日志</el-button>
-        </div>
-      </div>
-
-      <div v-if="showSample" style="margin-bottom:12px">
-        <div class="g-alert g-alert--info">
-          <el-icon><InfoFilled /></el-icon>
-          <span>示例：SSH暴力破解攻击链</span>
-        </div>
-        <div class="g-code-block" style="font-size:12px">
-          <div class="g-code-body" style="max-height:120px">
-            <code>{{ sampleLogs }}</code>
+    <!-- 运维模式：简洁专业 -->
+    <div v-if="mode === 'ops'">
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><Connection /></el-icon> 多源日志关联分析</div>
+            <div class="g-card-desc">输入多源日志，检测攻击链和跨设备关联事件</div>
+          </div>
+          <div class="g-actions">
+            <el-button size="small" @click="showSample = !showSample">
+              {{ showSample ? '收起' : '查看示例' }}
+            </el-button>
+            <el-button size="small" type="primary" plain @click="fillSample">填充测试日志</el-button>
           </div>
         </div>
-      </div>
 
-      <el-input
-        v-model="input" type="textarea" :rows="8"
-        placeholder="在此粘贴日志内容，每行一条日志..." class="log-input-area"
-        :disabled="loading"
-        @keyup.ctrl.enter="submit" @keyup.meta.enter="submit"
-      />
+        <div v-if="showSample" style="margin-bottom:12px">
+          <div class="g-alert g-alert--info">
+            <el-icon><InfoFilled /></el-icon>
+            <span>示例：数据库连接失败攻击链</span>
+          </div>
+          <div class="g-code-block" style="font-size:12px">
+            <div class="g-code-body" style="max-height:120px">
+              <code>{{ sampleLogs }}</code>
+            </div>
+          </div>
+        </div>
 
-      <div class="g-param-row" style="margin-top:12px">
-        <div class="g-param-item">
-          <label>时间窗口（分钟）</label>
-          <el-input-number v-model="timeWindow" :min="1" :max="1440" size="small" style="width:120px" />
-          <span class="g-param-desc">事件关联的最大时间跨度</span>
+        <el-input
+          v-model="input" type="textarea" :rows="8"
+          placeholder="粘贴日志内容，每行一条...&#10;Ctrl+Enter 快速提交" class="log-input-area"
+          :disabled="loading"
+          @keyup.ctrl.enter="submit" @keyup.meta.enter="submit"
+        />
+
+        <div class="g-param-row" style="margin-top:12px">
+          <div class="g-param-item">
+            <label>时间窗口</label>
+            <el-input-number v-model="timeWindow" :min="1" :max="1440" size="small" style="width:100px" />
+            <span class="g-param-desc">分钟</span>
+          </div>
+        </div>
+
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" :loading="loading" :disabled="!input.trim()" @click="submit">
+            <el-icon style="margin-right:4px"><Search /></el-icon> 关联分析
+          </el-button>
+          <el-button :disabled="loading" @click="clear">清空</el-button>
         </div>
       </div>
-
-      <div class="g-input-guide">
-        <el-icon><InfoFilled /></el-icon>
-        <span>支持粘贴多条日志，Ctrl+Enter 快速提交。最大支持500行。</span>
-      </div>
-
-      <div class="g-actions" style="margin-top:12px">
-        <el-button type="primary" :loading="loading" :disabled="!input.trim()" @click="submit">
-          <el-icon style="margin-right:4px"><Search /></el-icon> 关联分析
-        </el-button>
-        <el-button :disabled="loading" @click="clear">清空</el-button>
-      </div>
     </div>
+
+    <!-- 实训模式：带引导 -->
+    <template v-else>
+      <AlertGuide type="info" title="日志联合审查 — 发现隐蔽攻击链">
+        输入多源日志（每行一条），系统自动构建统一时间线、按实体进行关联分析，检测已知攻击链模式。
+        支持SSH、Web、防火墙、数据库等多种日志类型混合输入。
+      </AlertGuide>
+
+      <div class="g-card">
+        <div class="g-card-header">
+          <div>
+            <div class="g-card-title"><el-icon><Connection /></el-icon> 关联分析</div>
+            <div class="g-card-desc">输入多源日志，自动检测攻击链和关联事件</div>
+          </div>
+          <div class="g-actions">
+            <el-button size="small" @click="showSample = !showSample">
+              {{ showSample ? '收起' : '查看示例' }}
+            </el-button>
+            <el-button size="small" type="primary" plain @click="fillSample">填充测试日志</el-button>
+          </div>
+        </div>
+
+        <div v-if="showSample" style="margin-bottom:12px">
+          <div class="g-alert g-alert--info">
+            <el-icon><InfoFilled /></el-icon>
+            <span>示例：SSH暴力破解攻击链</span>
+          </div>
+          <div class="g-code-block" style="font-size:12px">
+            <div class="g-code-body" style="max-height:120px">
+              <code>{{ sampleLogs }}</code>
+            </div>
+          </div>
+        </div>
+
+        <el-input
+          v-model="input" type="textarea" :rows="8"
+          placeholder="在此粘贴日志内容，每行一条日志..." class="log-input-area"
+          :disabled="loading"
+          @keyup.ctrl.enter="submit" @keyup.meta.enter="submit"
+        />
+
+        <div class="g-param-row" style="margin-top:12px">
+          <div class="g-param-item">
+            <label>时间窗口（分钟）</label>
+            <el-input-number v-model="timeWindow" :min="1" :max="1440" size="small" style="width:120px" />
+            <span class="g-param-desc">事件关联的最大时间跨度</span>
+          </div>
+        </div>
+
+        <div class="g-input-guide">
+          <el-icon><InfoFilled /></el-icon>
+          <span>支持粘贴多条日志，Ctrl+Enter 快速提交。最大支持500行。</span>
+        </div>
+
+        <div class="g-actions" style="margin-top:12px">
+          <el-button type="primary" :loading="loading" :disabled="!input.trim()" @click="submit">
+            <el-icon style="margin-right:4px"><Search /></el-icon> 关联分析
+          </el-button>
+          <el-button :disabled="loading" @click="clear">清空</el-button>
+        </div>
+      </div>
+    </template>
 
     <!-- 分析结果 -->
     <div v-if="result" class="g-card slide">

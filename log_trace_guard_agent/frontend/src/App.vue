@@ -14,7 +14,7 @@
       </div>
 
       <nav class="header-nav">
-        <div v-for="mod in modules" :key="mod.key"
+        <div v-for="mod in filteredModules" :key="mod.key"
              class="nav-tab" :class="{ active: currentModule === mod.key }"
              @click="switchModule(mod.key)">
           <el-icon><component :is="mod.icon" /></el-icon>
@@ -121,6 +121,16 @@ const modules = APP_CONFIG.modules
 const currentMode = computed(() => isTrainingMode.value ? 'training' : 'ops')
 const currentComponent = computed(() => ROUTE_MAP[currentPath.value])
 
+// 根据模式过滤模块：攻防实训仅在实训模式下显示
+const filteredModules = computed(() => {
+  return modules.filter(m => {
+    if (m.key === 'training') {
+      return isTrainingMode.value  // 仅实训模式显示
+    }
+    return true
+  })
+})
+
 function switchModule(key: string) {
   currentModule.value = key
   const mod = modules.find(m => m.key === key)
@@ -152,6 +162,10 @@ function toggleMode(val: boolean) {
   localStorage.setItem('lg-mode', val ? 'training' : 'ops')
   if (val && !localStorage.getItem('lg-tour-seen')) {
     showTour.value = true
+  }
+  // 切换到运维模式时，如果当前在攻防实训页面，跳转到日志解析首页
+  if (!val && currentModule.value === 'training') {
+    switchModule('log-parse')
   }
 }
 
@@ -199,6 +213,10 @@ function initFromStorage() {
 onMounted(() => {
   parseHash()
   initFromStorage()
+  // 运维模式下攻防实训模块不可见，跳转首页
+  if (!isTrainingMode.value && currentModule.value === 'training') {
+    switchModule('log-parse')
+  }
   ready.value = true
   window.addEventListener('hashchange', parseHash)
 })

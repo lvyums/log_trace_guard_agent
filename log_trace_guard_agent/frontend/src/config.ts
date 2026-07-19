@@ -75,10 +75,9 @@ export const APP_CONFIG: AppConfig = {
     },
     {
       key: 'training', label: '攻防实训', icon: 'Flag',
-      desc: '实训场景、提交答案、实训报告',
+      desc: '实训场景、实训报告',
       children: [
         { path: '/training/scenarios', label: '实训场景', icon: 'Reading', tip: '查看并选择攻防实训场景' },
-        { path: '/training/submit', label: '提交答案', icon: 'Promotion', tip: '提交实训答案并获取评分' },
         { path: '/training/report', label: '实训报告', icon: 'DataLine', tip: '查看实训统计与详细报告' },
       ],
     },

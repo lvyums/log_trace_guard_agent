@@ -77,8 +77,8 @@ export const Api = {
     check: (data: any) => request('/api/v1/compliance/check', 'POST', data),
   },
   logCorrelate: {
-    correlate: (data: any) => request('/api/v1/log-correlate/correlate', 'POST', data),
-    patterns: () => request('/api/v1/log-correlate/patterns', 'GET'),
+    correlate: (data: any) => request('POST', '/api/v1/log-correlate/correlate', data),
+    patterns: () => request('GET', '/api/v1/log-correlate/patterns'),
   },
   training: {
     scenarios: () => request('/api/v1/training/dispatch', 'POST', { scenario_id: '', category: '' }),
