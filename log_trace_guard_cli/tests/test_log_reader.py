@@ -142,7 +142,18 @@ class TestLogReader(unittest.TestCase):
 
     def test_tilde_expansion(self):
         """Test that ~ is expanded in paths."""
-        pass  # Hard to test in automated env without a known home dir
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = os.path.join(tmpdir, "test.log")
+            with open(log_file, "w") as f:
+                f.write("line1\n")
+            home = os.path.expanduser("~")
+            rel = log_file.replace(home, "~")
+            if rel != log_file:
+                result = self.reader.read_log(rel)
+                self.assertIn("lines", result)
+            else:
+                self.skipTest("Home dir is root, cannot test tilde expansion")
 
     def tearDown(self):
         import shutil

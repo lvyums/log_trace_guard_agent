@@ -111,6 +111,9 @@ class ContextManager:
             logger.warning("Failed to save chat log: %s", e)
 
 
+_context_manager = None
+
+
 def get_context_manager() -> ContextManager:
     global _context_manager
     if _context_manager is None:

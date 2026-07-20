@@ -299,7 +299,7 @@ class ChainAnalyzer:
         """Load attack chain patterns from JSON rule file."""
         try:
             data = JsonConfigLoader.load("correlation_patterns.json")
-            self._patterns = data.get("patterns", [])
+            self._patterns = data.get("rules", [])
         except (FileNotFoundError, ValueError, Exception) as e:
             logger.warning(f"Cannot load correlation_patterns.json: {e}")
             self._patterns = []

@@ -110,6 +110,8 @@ class EmbeddingClient:
         except Exception as e:
             logger.warning("Embedding request failed: %s", e)
             return None
+
+    def embed_batch(self, texts: list[str]) -> list[Optional[list[float]]]:
         """批量文本向量化 — 单次 API 调用发送多个文本（OpenAI 兼容格式）"""
         if not texts:
             return []
