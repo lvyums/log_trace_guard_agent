@@ -14,7 +14,10 @@ cd log_trace_guard_cli && pip install -e .
 log-guard              # 交互模式
 log-guard --ai         # 直接进入 AI 对话模式
 log-guard --help       # 查看所有命令
+log-guard --version    # 查看版本号
 ```
+
+> 使用 `pip install -e .`（editable 模式）安装后，代码修改立即生效，无需重新安装。
 
 ## 双模式交互
 
@@ -72,13 +75,20 @@ log_guard/
 
 首次运行会自动引导配置 API Key，也可手动设置：
 
+**方式 A：环境变量**
 ```bash
 export LLM_API_KEY=your_key
 export LLM_BASE_URL=https://raytoken.com.cn/v1
 export LLM_MODEL_NAME=deepseek-v4-flash
 ```
 
-或创建 `~/.log-guard/config.json`：
+**方式 B：.env 文件**
+```bash
+cp .env.example .env
+# 编辑 .env 填入你的 API Key
+```
+
+**方式 C：配置文件 `~/.log-guard/config.json`**
 ```json
 {
   "llm_api_key": "your_key",
@@ -90,11 +100,26 @@ export LLM_MODEL_NAME=deepseek-v4-flash
 ## 命令行用法
 
 ```bash
-log-guard --list-logs                     # 列出本机日志
-log-guard -f /var/log/auth.log --parse    # 解析日志文件
-log-guard --diagnose "SSH连接超时"        # 故障诊断
-log-guard --regex "检测SQL注入"           # 正则生成
-log-guard --qa "日志保留要求"             # 合规问答
-log-guard --train basic                   # 实训场景下发
-log-guard --ai                            # AI 智能对话
+# 基础操作
+log-guard --version                             # 查看版本号
+log-guard --list-logs                           # 列出本机日志
+log-guard -f /var/log/auth.log --parse          # 解析日志文件
+log-guard -f auth.log -b --assess               # 批量解析 + 风险评估
+
+# AI 问答
+log-guard --ask "什么是SQL注入"                   # 非交互式 AI 问答（输出文本）
+log-guard --ask "SSH超时原因" --json              # AI 问答（输出 JSON）
+log-guard --ai                                   # 进入交互式 AI 对话模式
+
+# 业务功能
+log-guard --diagnose "SSH连接超时"                # 故障诊断
+log-guard --regex "检测SQL注入"                   # 正则生成
+log-guard --es-query "查找登录失败日志"            # ES 查询生成
+log-guard --baseline 50                          # 合规基线生成（50 台资产）
+log-guard --optimize "(?i)failed" regex          # 脚本优化
+log-guard --qa "日志保留要求"                      # 合规问答
+log-guard --train basic                          # 实训场景下发
+
+# 输出控制
+log-guard -f auth.log -c --json                  # 关联分析（JSON 输出）
 ```

@@ -81,7 +81,7 @@ python -m app.main
 ```bash
 cd log_trace_guard_cli
 
-# 安装（推荐）
+# 安装（推荐 editable 模式，代码修改立即生效）
 pip install -e .
 
 # 运行
@@ -92,16 +92,46 @@ log-guard --help       # 查看所有命令
 
 首次运行会自动检测 API Key 并引导配置。
 
+**配置 LLM（三选一）：**
+
+```bash
+# 方式 A：环境变量
+export LLM_API_KEY=your_key_here
+
+# 方式 B：.env 文件
+cp .env.example .env
+# 编辑 .env 填入 API Key
+
+# 方式 C：配置向导（首次启动自动触发）
+log-guard
+# 输入 y 后按提示操作，配置保存到 ~/.log-guard/config.json
+```
+
 ### CLI 命令行用法
 
 ```bash
-log-guard --list-logs                         # 列出系统日志文件
-log-guard -f /var/log/auth.log --parse        # 解析日志文件
-log-guard -f auth.log -b --assess             # 批量解析 + 风险评估
-log-guard --diagnose "SSH connection timeout" # 故障诊断
-log-guard --regex "detect SQL injection"      # 生成正则规则
-log-guard --qa "日志留存要求"                   # 合规问答
-log-guard --train basic                       # 派发训练场景
+# 基础操作
+log-guard --version                             # 查看版本号
+log-guard --list-logs                           # 列出系统日志文件
+log-guard -f /var/log/auth.log --parse          # 解析日志文件
+log-guard -f auth.log -b --assess               # 批量解析 + 风险评估
+
+# AI 问答
+log-guard --ask "什么是SQL注入"                   # 非交互式 AI 问答（输出文本）
+log-guard --ask "SSH超时原因" --json              # AI 问答（输出 JSON）
+log-guard --ai                                   # 进入交互式 AI 对话模式
+
+# 业务功能
+log-guard --diagnose "SSH connection timeout"    # 故障诊断
+log-guard --regex "detect SQL injection"         # 生成正则规则
+log-guard --es-query "查找登录失败日志"            # 生成 ES 查询
+log-guard --baseline 50                          # 合规基线生成（50 台资产）
+log-guard --optimize "(?i)failed" regex          # 脚本优化
+log-guard --qa "日志留存要求"                      # 合规问答
+log-guard --train basic                          # 派发训练场景
+
+# 输出控制
+log-guard -f auth.log -c --json                  # 关联分析（JSON 输出）
 ```
 
 ## 配置说明
