@@ -37,10 +37,7 @@ from app.dependencies import validate_request, log_request_duration
 
 logger = LogManager.get_logger()
 
-# 静态文件目录
-STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-
-# Vite 构建产物目录（优先使用）
+# Vite 构建产物目录
 FRONTEND_DIST_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "frontend", "dist"
 )
@@ -130,16 +127,10 @@ app.include_router(log_correlate_router)
 
 @app.get("/")
 async def root():
-    """根路径 — 返回前端页面（优先 Vite 构建产物）"""
-    # 优先返回 Vite 构建的 index.html
+    """根路径 — 返回前端页面"""
     frontend_index = os.path.join(FRONTEND_DIST_DIR, "index.html")
     if os.path.exists(frontend_index):
         return FileResponse(frontend_index)
-
-    # 回退到原始 static 目录
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
     return make_response(data={
         "service": "日志溯源卫士智能体",
         "version": "0.1.0",
@@ -154,15 +145,11 @@ async def health():
 
 
 # 挂载静态文件（放在最后，避免覆盖 API 路由）
-# 优先使用 Vite 构建产物（需含 index.html），否则回退到原始 static 目录
 if os.path.isfile(os.path.join(FRONTEND_DIST_DIR, "index.html")):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIST_DIR), name="static")
     logger.info(f"使用 Vite 构建产物: {FRONTEND_DIST_DIR}")
-elif os.path.exists(STATIC_DIR):
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-    logger.info(f"使用原始静态文件: {STATIC_DIR}")
 else:
-    logger.warning("未找到静态文件目录")
+    logger.warning("未找到前端构建产物，请先运行 npm run build")
 
 
 if __name__ == "__main__":

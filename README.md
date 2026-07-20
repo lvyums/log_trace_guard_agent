@@ -23,10 +23,9 @@ log_trace_guard_agent/     # Web 智能体 (FastAPI + Vue3)
 │   ├── core/              # AI 工厂 + 规则引擎 + RAG
 │   ├── common/            # 工具函数
 │   └── data/              # 知识库 + 规则数据
-├── static/                # Vue3 前端 SPA
-│   ├── index.html
-│   ├── js/                # 组件 + 路由 + API
-│   └── css/               # 主题 + 响应式
+├── frontend/              # Vue3 前端 (Vite + TypeScript)
+│   ├── src/               # 源码
+│   └── dist/              # 构建产物
 └── requirements.txt
 
 log_trace_guard_cli/       # CLI 工具 (纯 Python)

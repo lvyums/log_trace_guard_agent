@@ -37,7 +37,7 @@ frontend/
 │   ├── api.ts              # API 请求层
 │   ├── utils.ts            # 通用工具函数
 │   ├── types.ts            # TypeScript 类型定义
-│   ├── css/                # 样式文件（自动从 static/ 复制）
+│   ├── css/                # 样式文件
 │   ├── components/         # 可复用组件（.vue SFC）
 │   │   ├── GlobalTour.vue  # 新手引导
 │   │   ├── AlertGuide.vue  # 操作提示条
