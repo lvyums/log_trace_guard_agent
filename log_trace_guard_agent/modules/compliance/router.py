@@ -1,6 +1,6 @@
 """模块二：合规审计基线 — API 路由"""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 
 from modules.compliance.service import ComplianceService
 from modules.compliance.schemas import (
@@ -64,7 +64,7 @@ async def compliance_check(req: ComplianceCheckReq, ctx: ContextManager = Depend
 
 
 @router.post("/check/batch", response_model=dict)
-async def compliance_check_batch(req: list[ComplianceCheckReq], ctx: ContextManager = Depends(get_context)):
+async def compliance_check_batch(req: list[ComplianceCheckReq] = Body(...), ctx: ContextManager = Depends(get_context)):
     """批量合规自查"""
     checks = [c.model_dump() for c in req]
     result = await ComplianceService.compliance_check_batch(checks, context=ctx)

@@ -46,8 +46,8 @@ class DeepSeekClient(BaseLLMClient):
     """DeepSeek API 实现"""
 
     async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None) -> dict:
-        temp = temperature or self.temperature
-        t = timeout or self.timeout
+        temp = temperature if temperature is not None else self.temperature
+        t = timeout if timeout is not None else self.timeout
         try:
             self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
             response = await self.client.chat.completions.create(
@@ -63,8 +63,8 @@ class DeepSeekClient(BaseLLMClient):
 
     async def chat_stream(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None):
         """流式调用 DeepSeek，逐个 yield token"""
-        temp = temperature or self.temperature
-        t = timeout or self.timeout or 60  # 流式需要更长超时
+        temp = temperature if temperature is not None else self.temperature
+        t = timeout if timeout is not None else self.timeout or 60  # 流式需要更长超时
         try:
             self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
             stream = await self.client.chat.completions.create(
@@ -86,8 +86,8 @@ class LightweightClient(BaseLLMClient):
     """轻量模型实现（Qwen/Distill）"""
 
     async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None) -> dict:
-        temp = temperature or self.temperature
-        t = timeout or self.timeout
+        temp = temperature if temperature is not None else self.temperature
+        t = timeout if timeout is not None else self.timeout
         try:
             self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
             response = await self.client.chat.completions.create(
@@ -104,8 +104,8 @@ class LightweightClient(BaseLLMClient):
 
     async def chat_stream(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None):
         """轻量模型流式调用"""
-        temp = temperature or self.temperature
-        t = timeout or self.timeout or 60
+        temp = temperature if temperature is not None else self.temperature
+        t = timeout if timeout is not None else self.timeout or 60
         try:
             self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
             stream = await self.client.chat.completions.create(

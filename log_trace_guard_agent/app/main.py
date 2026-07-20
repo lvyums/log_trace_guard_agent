@@ -33,7 +33,6 @@ from modules.training.router import router as training_router
 from modules.log_correlate.router import router as log_correlate_router
 from app.exceptions import AppException, global_exception_handler, make_response
 from app.settings import settings
-from app.dependencies import validate_request, log_request_duration
 
 logger = LogManager.get_logger()
 

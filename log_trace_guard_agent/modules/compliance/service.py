@@ -166,10 +166,10 @@ class ComplianceService:
             "has_tamper_proof": has_tamper_proof,
             "backup_frequency": backup_frequency,
             "device_count": device_count,
-            "has_audit": has_audit_mechanism,
+            "has_audit_mechanism": has_audit_mechanism,
             "has_ntp": has_ntp,
             "audit_frequency": audit_frequency,
-            "has_alert": has_alert_system,
+            "has_alert_system": has_alert_system,
             "has_bastion": has_bastion,
             "additional_info": additional_info,
         }

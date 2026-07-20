@@ -12,7 +12,7 @@ class Result:
         return {
             "code": 0,
             "msg": msg,
-            "data": data or {},
+            "data": data if data is not None else {},
             "timestamp": int(time.time() * 1000),
         }
 
@@ -21,7 +21,7 @@ class Result:
         return {
             "code": code,
             "msg": msg,
-            "data": data or {},
+            "data": data if data is not None else {},
             "timestamp": int(time.time() * 1000),
         }
 

@@ -215,12 +215,15 @@ class LogParseService:
                     parse_result["data"],
                     context or ContextManager.create(""),
                 )
-                item["risk_result"] = risk["data"]
-                risk_level_val = risk["data"]["risk_level"]
-                for level in RiskLevel:
-                    if level.value == risk_level_val:
-                        risk_counts[level] += 1
-                        break
+                if risk["code"] == 0:
+                    item["risk_result"] = risk["data"]
+                    risk_level_val = risk["data"].get("risk_level", "")
+                    for level in RiskLevel:
+                        if level.value == risk_level_val:
+                            risk_counts[level] += 1
+                            break
+                else:
+                    item["risk_result"] = None
 
             items.append(item)
 

@@ -306,6 +306,7 @@ class RuleCheckStrategy(BaseCheckStrategy):
         checks = []
         matched_count = 0
         total_checked = 0
+        submission_text = str(submission).lower()
 
         # 检查规则字段
         for field, expected_values in key_fields.items():
@@ -349,7 +350,7 @@ class RuleCheckStrategy(BaseCheckStrategy):
                 })
 
         # 语法检查（正则编译）
-        if "regex" in user_str or "pattern" in str(submission).lower():
+        if "regex" in submission_text or "pattern" in submission_text:
             syntax_ok = self._check_regex_syntax(submission.get("regex_pattern", ""))
             if not syntax_ok:
                 checks.append({

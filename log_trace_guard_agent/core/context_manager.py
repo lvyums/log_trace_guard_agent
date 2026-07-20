@@ -33,8 +33,10 @@ class ContextManager:
             "timestamp": self.created_at.isoformat(),
             "expires_at": self.expires_at.isoformat(),
         }
-        # 注册到全局实例表
+        # 注册到全局实例表，超过上限时自动清理过期实例
         with ContextManager._lock:
+            if len(ContextManager._instances) > 500:
+                ContextManager._cleanup_expired_locked()
             ContextManager._instances[self.request_id] = self
 
     @classmethod
@@ -51,18 +53,21 @@ class ContextManager:
         return None
 
     @classmethod
+    def _cleanup_expired_locked(cls) -> int:
+        """清理过期上下文（需持有 _lock）"""
+        expired_ids = [
+            rid for rid, ctx in cls._instances.items()
+            if ctx.is_expired()
+        ]
+        for rid in expired_ids:
+            del cls._instances[rid]
+        return len(expired_ids)
+
+    @classmethod
     def cleanup_expired(cls) -> int:
         """清理所有过期上下文，返回清理数量"""
-        cleaned = 0
         with cls._lock:
-            expired_ids = [
-                rid for rid, ctx in cls._instances.items()
-                if ctx.is_expired()
-            ]
-            for rid in expired_ids:
-                del cls._instances[rid]
-                cleaned += 1
-        return cleaned
+            return cls._cleanup_expired_locked()
 
     @classmethod
     def get_active_count(cls) -> int:
