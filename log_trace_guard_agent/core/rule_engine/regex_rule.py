@@ -43,7 +43,8 @@ class RegexRuleEngine:
                 from app.settings import settings
                 rules_dir = settings.rule_data_dir
             except ImportError:
-                rules_dir = "./data/rule_data"
+                rules_dir = os.path.join(os.path.dirname(os.path.dirname(
+                    os.path.dirname(os.path.abspath(__file__)))), "data", "rule_data")
         cls.rules = []
         if not os.path.isdir(rules_dir):
             logger.warning(f"规则目录不存在: {rules_dir}")

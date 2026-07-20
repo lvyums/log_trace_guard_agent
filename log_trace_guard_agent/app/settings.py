@@ -1,7 +1,11 @@
 """全局配置管理 — 所有硬编码配置统一收口"""
 
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from enum import Enum
+
+# 项目根目录：settings.py 所在目录的上级（即 log_trace_guard_agent/）
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class RiskLevel(str, Enum):
@@ -72,7 +76,7 @@ class Settings(BaseSettings):
     # ── 向量库配置 ──
     embedding_model: str = "BAAI/bge-large-zh-v1.5"
     reranker_model: str = "BAAI/bge-reranker-large"
-    chroma_db_path: str = "./data/chroma_db"
+    chroma_db_path: str = os.path.join(_PROJECT_ROOT, "data", "chroma_db")
     top_k_retrieval: int = 5
     similarity_threshold: float = 0.6
 
@@ -84,7 +88,7 @@ class Settings(BaseSettings):
 
     # ── 文件上传配置 ──
     max_upload_size_mb: int = 10
-    upload_temp_dir: str = "./data/upload_temp"
+    upload_temp_dir: str = os.path.join(_PROJECT_ROOT, "data", "upload_temp")
     allowed_extensions: list[str] = [".txt", ".csv", ".log"]
 
     # ── 接口超时配置 ──
@@ -96,13 +100,13 @@ class Settings(BaseSettings):
     risk_confidence_low: float = 0.50
 
     # ── 规则引擎配置 ──
-    rule_data_dir: str = "./data/rule_data"
+    rule_data_dir: str = os.path.join(_PROJECT_ROOT, "data", "rule_data")
     rule_watcher_enabled: bool = True
 
     # ── 模块三：日志采集配置 ──
-    device_protocol_data_path: str = "./data/rule_data/device_protocol.json"
-    fault_kb_data_path: str = "./data/rule_data/fault_kb.json"
-    collect_template_data_path: str = "./data/rule_data/collect_templates.json"
+    device_protocol_data_path: str = os.path.join(_PROJECT_ROOT, "data", "rule_data", "device_protocol.json")
+    fault_kb_data_path: str = os.path.join(_PROJECT_ROOT, "data", "rule_data", "fault_kb.json")
+    collect_template_data_path: str = os.path.join(_PROJECT_ROOT, "data", "rule_data", "collect_templates.json")
     context_ttl_seconds: int = 3600  # 上下文过期时间（秒）
     match_confidence_threshold: float = 60.0  # 设备匹配置信度阈值
     # 架构分级阈值
@@ -111,14 +115,36 @@ class Settings(BaseSettings):
     arch_medium_device_count: int = 100
 
     # ── 模块二：合规审计配置 ──
-    compliance_standards_data_path: str = "./data/rule_data/compliance_standards.json"
-    compliance_baselines_data_path: str = "./data/rule_data/compliance_baselines.json"
+    compliance_standards_data_path: str = os.path.join(_PROJECT_ROOT, "data", "rule_data", "compliance_standards.json")
+    compliance_baselines_data_path: str = os.path.join(_PROJECT_ROOT, "data", "rule_data", "compliance_baselines.json")
 
     # ── 模块五：交互式实训配置 ──
-    training_scenarios_data_path: str = "./data/rule_data/training_scenarios.json"
-    training_standard_answers_data_path: str = "./data/rule_data/training_standard_answers.json"
+    training_scenarios_data_path: str = os.path.join(_PROJECT_ROOT, "data", "rule_data", "training_scenarios.json")
+    training_standard_answers_data_path: str = os.path.join(_PROJECT_ROOT, "data", "rule_data", "training_standard_answers.json")
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=os.path.join(_PROJECT_ROOT, ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    def model_post_init(self, __context):
+        """将所有相对路径修正为基于项目根目录的绝对路径"""
+        def _resolve(path: str) -> str:
+            if os.path.isabs(path):
+                return path
+            return os.path.normpath(os.path.join(_PROJECT_ROOT, path))
+
+        self.rule_data_dir = _resolve(self.rule_data_dir)
+        self.chroma_db_path = _resolve(self.chroma_db_path)
+        self.upload_temp_dir = _resolve(self.upload_temp_dir)
+        self.device_protocol_data_path = _resolve(self.device_protocol_data_path)
+        self.fault_kb_data_path = _resolve(self.fault_kb_data_path)
+        self.collect_template_data_path = _resolve(self.collect_template_data_path)
+        self.compliance_standards_data_path = _resolve(self.compliance_standards_data_path)
+        self.compliance_baselines_data_path = _resolve(self.compliance_baselines_data_path)
+        self.training_scenarios_data_path = _resolve(self.training_scenarios_data_path)
+        self.training_standard_answers_data_path = _resolve(self.training_standard_answers_data_path)
 
 
 settings = Settings()
