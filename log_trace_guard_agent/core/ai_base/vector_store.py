@@ -24,17 +24,31 @@ class BGEEmbeddingFunction(EmbeddingFunction):
     模型首次使用时会自动下载（约 1.3GB），后续从缓存加载。
     """
 
+    # 类级别缓存：sentence_transformers 是否可用（避免重复 import 浪费 10s+）
+    _st_available: Optional[bool] = None
+
     def __init__(self, model_name: str = "BAAI/bge-large-zh-v1.5"):
         self.model_name = model_name
         self._model = None
         self._load_model()
 
     def _load_model(self):
+        # 首次检测 sentence_transformers 是否可用，缓存结果
+        if BGEEmbeddingFunction._st_available is None:
+            try:
+                from sentence_transformers import SentenceTransformer  # noqa: F401
+                BGEEmbeddingFunction._st_available = True
+            except Exception:
+                BGEEmbeddingFunction._st_available = False
+                logger.info("sentence_transformers 不可用，使用 N-gram 降级嵌入")
+
+        if not BGEEmbeddingFunction._st_available:
+            return
+
         try:
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(
                 self.model_name,
-                # 如果网络受限，可从本地缓存加载
                 cache_folder=None,
             )
             dim = self._model.get_sentence_embedding_dimension()
