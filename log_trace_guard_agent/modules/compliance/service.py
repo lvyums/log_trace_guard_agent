@@ -1,4 +1,7 @@
-"""模块二：合规审计基线 — 业务编排"""
+"""模块二：合规审计基线 — 业务编排
+
+三层架构：规则引擎（JSON 关键词匹配）→ RAG（合规知识库检索）→ LLM（智能解读）
+"""
 
 from typing import Optional
 
@@ -20,7 +23,10 @@ class ComplianceService:
     async def compliance_qa(question: str, asset_type: Optional[str] = None,
                             standard_filter: Optional[str] = None,
                             context: Optional[ContextManager] = None) -> Result:
-        """合规标准智能问答"""
+        """合规标准智能问答
+
+        三层：规则引擎关键词匹配 → RAG 合规知识库补充 → LLM 智能解读
+        """
         strategy = ComplianceStrategyFactory.get_strategy("qa")
         if not strategy:
             return Result.fail("合规标准问答策略未注册")
@@ -31,6 +37,64 @@ class ComplianceService:
             "standard_filter": standard_filter,
         }
         result = strategy.execute(params)
+
+        # ── 第2层：RAG 合规知识库检索补充 ──
+        rag_items = []
+        try:
+            from core.ai_base.rag_factory import RAGFactory
+            kb = RAGFactory.get_kb("compliance")
+            rag_result = kb.retrieve(question, top_k=3)
+            rag_items = rag_result.items
+            if rag_items:
+                logger.info(f"RAG 合规库检索到 {len(rag_items)} 条补充知识")
+        except Exception as e:
+            logger.debug(f"RAG 合规库检索跳过: {e}")
+
+        # 将 RAG 检索到的标准条目补充到结果中
+        if rag_items:
+            existing_ids = set()
+            for s in result.get("standards", []):
+                for item in s.get("items", []):
+                    existing_ids.add(item.get("item_id", ""))
+
+            for item in rag_items:
+                doc = item.get("document", "")
+                meta = item.get("metadata", {})
+                item_id = meta.get("item_id", "")
+                if item_id and item_id not in existing_ids:
+                    # 从文档文本中提取关键信息
+                    result.setdefault("rag_supplements", []).append({
+                        "item_id": item_id,
+                        "document": doc,
+                        "score": item.get("score", 0),
+                    })
+
+        # ── 第3层：LLM 智能解读（当规则匹配不足或用户需要深度解读时）──
+        if not result.get("standards") or result.get("matched_count", 0) < 2:
+            try:
+                from core.ai_base.llm_factory import LLMFactory
+                llm = await LLMFactory.get_light_llm()
+
+                rag_context = ""
+                if rag_items:
+                    rag_context = "\n相关知识库内容：\n" + "\n".join(
+                        f"- {r.get('document', '')[:200]}" for r in rag_items[:3]
+                    )
+
+                messages = [
+                    {"role": "system", "content": (
+                        "你是网络安全合规专家，精通等保2.0、网安法、数据安全法。"
+                        "请根据问题和已有规则匹配结果，给出专业、准确的合规建议。"
+                        f"{rag_context}"
+                    )},
+                    {"role": "user", "content": question},
+                ]
+                resp = await llm.chat(messages)
+                if resp.get("success") and resp.get("content"):
+                    result["llm_answer"] = resp["content"]
+                    logger.info("LLM 合规解读生成成功")
+            except Exception as e:
+                logger.debug(f"LLM 合规解读跳过: {e}")
 
         if context:
             ctx = ModuleContext(
@@ -110,6 +174,32 @@ class ComplianceService:
             "additional_info": additional_info,
         }
         result = strategy.execute(params)
+
+        # ── 第3层：LLM 增强整改建议（当存在高风险缺口时）──
+        gaps = result.get("gaps", [])
+        high_risk_gaps = [g for g in gaps if g.get("risk_level") in ("critical", "high")]
+        if high_risk_gaps:
+            try:
+                from core.ai_base.llm_factory import LLMFactory
+                llm = await LLMFactory.get_light_llm()
+
+                gap_summary = "\n".join(
+                    f"- [{g['risk_level']}] {g['requirement']}: {g['current_status']}"
+                    for g in high_risk_gaps[:5]
+                )
+                messages = [
+                    {"role": "system", "content": (
+                        "你是网络安全合规整改专家。根据以下合规缺口，给出优先级排序的整改建议。"
+                        "每条建议要具体可执行，包含技术方案和管理措施。"
+                    )},
+                    {"role": "user", "content": f"合规缺口清单：\n{gap_summary}"},
+                ]
+                resp = await llm.chat(messages)
+                if resp.get("success") and resp.get("content"):
+                    result["llm_remediation"] = resp["content"]
+                    logger.info("LLM 整改建议生成成功")
+            except Exception as e:
+                logger.debug(f"LLM 整改建议跳过: {e}")
 
         if context:
             ctx = ModuleContext(
