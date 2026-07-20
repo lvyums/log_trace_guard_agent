@@ -1,8 +1,13 @@
+from __future__ import annotations
 """轻量级 RAG 引擎 — API 嵌入 + 余弦相似度 + 本地向量缓存"""
+import hashlib
 import json
+import logging
 import os
 import math
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from .llm_client import get_embedding
 from .settings import settings
@@ -113,33 +118,69 @@ class RAGEngine:
                 })
         return vectors
 
+    def _compute_rules_hash(self) -> str:
+        """计算 rule_data 目录下所有 JSON 文件内容的哈希，用于缓存失效判断"""
+        h = hashlib.sha256()
+        if not os.path.isdir(self._data_dir):
+            return h.hexdigest()
+        for fname in sorted(os.listdir(self._data_dir)):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(self._data_dir, fname)
+            try:
+                with open(fpath, "rb") as f:
+                    h.update(f.read())
+            except Exception:
+                continue
+        return h.hexdigest()
+
     def _save_cache(self, vectors: list[dict]):
-        """保存向量到缓存文件"""
+        """保存向量到缓存文件（附带规则哈希用于失效判断）"""
         try:
-            cache_data = []
-            for v in vectors:
-                cache_data.append({
-                    "id": v["id"],
-                    "source": v["source"],
-                    "text": v["text"],
-                    "metadata": v["metadata"],
-                    "vector": v["vector"],
-                })
+            cache_data = {
+                "rules_hash": self._compute_rules_hash(),
+                "vectors": [
+                    {
+                        "id": v["id"],
+                        "source": v["source"],
+                        "text": v["text"],
+                        "metadata": v["metadata"],
+                        "vector": v["vector"],
+                    }
+                    for v in vectors
+                ],
+            }
             with open(settings.vector_cache_path, "w", encoding="utf-8") as f:
                 json.dump(cache_data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to save vector cache: %s", e)
 
     def _load_cache(self) -> Optional[list[dict]]:
-        """从缓存文件加载向量"""
+        """从缓存文件加载向量，规则文件变更时返回 None 触发重建"""
         path = settings.vector_cache_path
         if not os.path.isfile(path):
             return None
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except Exception:
             return None
+
+        # 兼容旧格式（纯列表）和新格式（含 rules_hash）
+        if isinstance(data, list):
+            vectors = data
+            cached_hash = None
+        else:
+            vectors = data.get("vectors", [])
+            cached_hash = data.get("rules_hash")
+
+        # 检查规则是否变更
+        current_hash = self._compute_rules_hash()
+        if cached_hash and cached_hash != current_hash:
+            logger.info("Rule files changed, invalidating RAG cache")
+            return None
+
+        return vectors
 
     def load(self):
         """加载知识库（缓存优先，缓存不存在则重新生成）"""

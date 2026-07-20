@@ -1,3 +1,4 @@
+from __future__ import annotations
 """结果润色器 — 将机器结构化结果转为通俗解读"""
 from typing import Optional
 

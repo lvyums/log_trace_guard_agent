@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Prompt 模板管理 — 模块级 System Prompt + 意图分类提示词"""
 # -*- coding: utf-8 -*-
 

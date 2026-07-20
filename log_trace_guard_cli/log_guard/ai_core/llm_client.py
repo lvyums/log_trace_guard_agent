@@ -1,8 +1,12 @@
+from __future__ import annotations
 """LLM 客户端 — 同步版，直接 requests 调用 OpenAI 兼容 API"""
 import json
+import logging
 import time
 import requests
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from .settings import settings
 
@@ -103,10 +107,9 @@ class EmbeddingClient:
             data = resp.json()
             embedding = data.get("data", [{}])[0].get("embedding")
             return embedding
-        except Exception:
+        except Exception as e:
+            logger.warning("Embedding request failed: %s", e)
             return None
-
-    def embed_batch(self, texts: list[str]) -> list[Optional[list[float]]]:
         """批量文本向量化 — 单次 API 调用发送多个文本（OpenAI 兼容格式）"""
         if not texts:
             return []
@@ -145,8 +148,8 @@ class EmbeddingClient:
         return all_results
 
 
-_llm_instance = None
-_embed_instance = None
+_llm_instance: Optional[LLMClient] = None
+_embed_instance: Optional[EmbeddingClient] = None
 
 
 def get_llm() -> LLMClient:
@@ -161,3 +164,10 @@ def get_embedding() -> EmbeddingClient:
     if _embed_instance is None:
         _embed_instance = EmbeddingClient()
     return _embed_instance
+
+
+def reset_clients():
+    """重置单例，使下次 get_llm()/get_embedding() 读取最新 settings"""
+    global _llm_instance, _embed_instance
+    _llm_instance = None
+    _embed_instance = None

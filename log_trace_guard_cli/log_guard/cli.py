@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """日志溯源卫士 CLI 智能体 v2.0 — 双模式：菜单操作 + AI 智能对话"""
 # -*- coding: utf-8 -*-
 
+import json
 import os
 import sys
 import argparse
@@ -85,17 +87,17 @@ def _show_nav_menu(items: list[dict], prompt: str = "请选择") -> int:
     for i, item in enumerate(items, 1):
         print(f"  [{i}] {item['label']}")
     print(f"  [0] 返回上级菜单")
-    try:
-        choice = input(f"\n{prompt} [0-{len(items)}]: ").strip()
-        if choice == "0" or choice == "":
+    while True:
+        try:
+            choice = input(f"\n{prompt} [0-{len(items)}]: ").strip()
+            if choice == "0" or choice == "":
+                return -1
+            idx = int(choice) - 1
+            if 0 <= idx < len(items):
+                return idx
+            print("输入无效，请重新选择")
+        except (ValueError, KeyboardInterrupt):
             return -1
-        idx = int(choice) - 1
-        if 0 <= idx < len(items):
-            return idx
-        print("输入无效，请重新选择")
-        return _show_nav_menu(items, prompt)
-    except (ValueError, KeyboardInterrupt):
-        return -1
 
 
 def _show_status_bar(text: str):
@@ -139,6 +141,9 @@ def _ensure_log_file_interactive(log_reader: LogReader) -> str:
 
 def _first_run_wizard():
     """首次运行配置向导 — 引导用户配置 LLM API Key"""
+    if not _AI_AVAILABLE:
+        print("\n  AI Core 未加载，无法配置。")
+        return
     _print_header("⚙️ 首次运行配置")
     print("\n  检测到 LLM API Key 未配置。")
     print("  配置后即可使用 AI 智能对话模式。")
@@ -288,6 +293,9 @@ def _run_ai_mode():
             print(f"  {response}")
             print()
 
+        except KeyboardInterrupt:
+            print(" " * 40, end="\r")
+            print("\n  已中断。")
         except Exception as e:
             print(" " * 40, end="\r")
             print(f"\n  ❌ 处理出错: {e}")
@@ -903,6 +911,22 @@ def run_command(args: argparse.Namespace):
         _print_json(result)
         return
 
+    if args.es_query:
+        result = _script_gen_svc.generate_es_query(search_scenario=args.es_query)
+        _print_json(result)
+        return
+
+    if args.baseline is not None:
+        result = _compliance_svc.generate_baseline(asset_count=args.baseline)
+        _print_json(result)
+        return
+
+    if args.optimize:
+        script, script_type = args.optimize
+        result = _script_gen_svc.optimize_script(script=script, script_type=script_type)
+        _print_json(result)
+        return
+
     if args.qa:
         result = _compliance_svc.compliance_qa(args.qa, args.asset_type)
         _print_json(result)
@@ -926,7 +950,10 @@ def run_command(args: argparse.Namespace):
                 [args.correlate], time_window_minutes=args.time_window or 5,
                 detailed=True,
             )
-        _print_correlation_result(result)
+        if args.json_output:
+            _print_json(result)
+        else:
+            _print_correlation_result(result)
         return
 
 
@@ -951,7 +978,10 @@ def main():
             """),
         )
 
+        parser.add_argument("--version", "-V", action="store_true", help="显示版本号")
         parser.add_argument("--ai", action="store_true", help="直接进入 AI 智能对话模式")
+        parser.add_argument("--ask", help="非交互式 AI 问答（输出 JSON）")
+        parser.add_argument("--json", dest="json_output", action="store_true", help="强制 JSON 输出（适合脚本调用）")
         parser.add_argument("--log-file", "-f", help="日志文件路径")
         parser.add_argument("--log-dir", "-d", help="日志文件目录")
         parser.add_argument("--list-logs", "-l", action="store_true", help="列出常见位置的日志文件")
@@ -968,12 +998,33 @@ def main():
         parser.add_argument("--regex", help="正则规则生成")
         parser.add_argument("--log-sample", help="日志样例")
         parser.add_argument("--qa", help="合规问答")
+        parser.add_argument("--es-query", dest="es_query", help="ES 查询生成（需提供搜索场景描述）")
+        parser.add_argument("--baseline", nargs="?", const=10, type=int, help="合规基线生成（可选资产数量，默认10）")
+        parser.add_argument("--optimize", nargs=2, metavar=("SCRIPT", "TYPE"), help="脚本优化（脚本内容 + 类型: regex/es_query）")
         parser.add_argument("--asset-type", help="资产类型")
         parser.add_argument("--train", help="实训场景分类")
         parser.add_argument("--correlate", "-c", nargs="?", const=True, help="联合日志审查（关联分析）")
         parser.add_argument("--time-window", "-w", type=int, default=5, help="关联时间窗口（分钟）")
 
         args = parser.parse_args()
+
+        # --version
+        if args.version:
+            print("log-guard 2.0.0")
+            return
+
+        # --ask 非交互式 AI 问答
+        if args.ask:
+            if not (_AI_AVAILABLE and ai_settings.is_configured):
+                print("AI Core 未加载或 API Key 未配置")
+                return
+            orchestrator = get_orchestrator()
+            result = orchestrator.process(args.ask)
+            if args.json_output:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(result["response"])
+            return
 
         # --ai 直接进入 AI 对话模式
         if args.ai:
@@ -985,7 +1036,8 @@ def main():
 
         has_command = any([
             args.list_logs, args.sample, args.parse, args.batch_parse,
-            args.diagnose, args.regex, args.qa, args.train, args.correlate,
+            args.diagnose, args.regex, args.es_query, args.baseline is not None,
+            args.optimize, args.qa, args.train, args.correlate,
         ])
 
         if has_command or args.log_file:

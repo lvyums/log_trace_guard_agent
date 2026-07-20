@@ -1,8 +1,12 @@
+from __future__ import annotations
 """多轮上下文记忆 — 单会话隔离，支持接续提问"""
 import json
+import logging
 import os
 import time
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from .settings import settings
 
@@ -103,11 +107,8 @@ class ContextManager:
             path = os.path.join(log_dir, f"chat_{timestamp}.json")
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(ctx.to_dict(), f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-
-
-_context_manager = None
+        except Exception as e:
+            logger.warning("Failed to save chat log: %s", e)
 
 
 def get_context_manager() -> ContextManager:

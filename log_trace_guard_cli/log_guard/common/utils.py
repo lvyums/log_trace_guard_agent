@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Standalone utility module for log_guard_cli.
 
@@ -83,7 +84,7 @@ class JsonConfigLoader:
     # ---- Public class methods (convenience API) ---------------------------
 
     @classmethod
-    def load(cls, file_path: str, use_cache: bool = True) -> dict:
+    def load(cls, file_path: str, use_cache: bool = True) -> dict | list:
         """Load a JSON config file, returning its parsed content.
 
         If *use_cache* is True (default) and the file has already been

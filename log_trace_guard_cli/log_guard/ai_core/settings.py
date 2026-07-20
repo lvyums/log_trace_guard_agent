@@ -133,7 +133,7 @@ class AISettings:
                     setattr(self, attr, val)
 
     def save_config(self):
-        """保存当前配置到 ~/.log-guard/config.json"""
+        """保存当前配置到 ~/.log-guard/config.json，并重置 LLM/Embedding 客户端单例"""
         cfg_dir = _get_config_dir()
         cfg_path = os.path.join(cfg_dir, "config.json")
         data = {
@@ -146,6 +146,12 @@ class AISettings:
         }
         with open(cfg_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        # 重置客户端单例，使下次调用读取最新配置
+        try:
+            from .llm_client import reset_clients
+            reset_clients()
+        except ImportError:
+            pass
         return cfg_path
 
     @property

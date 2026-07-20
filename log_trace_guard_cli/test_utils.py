@@ -41,8 +41,8 @@ loader2 = JsonConfigLoader()
 assert loader is loader2, "JsonConfigLoader is not singleton"
 
 cfg = JsonConfigLoader.load("risk_rules.json")
-assert isinstance(cfg, dict), f"Expected dict, got {type(cfg)}"
-print(f"  risk_rules.json loaded, top-level keys: {list(cfg.keys())[:5]}")
+assert isinstance(cfg, list), f"Expected list, got {type(cfg)}"
+print(f"  risk_rules.json loaded, {len(cfg)} rules")
 
 val = JsonConfigLoader.get("risk_rules.json", "nonexistent_key", default="fallback")
 assert val == "fallback", f"Expected fallback, got {val}"

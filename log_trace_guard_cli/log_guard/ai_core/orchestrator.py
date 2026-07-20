@@ -1,8 +1,11 @@
 """AI 总调度器 — 意图识别 → 模块调用 → 结果润色，全流程编排"""
 import json
+import logging
 import sys
 import os
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # ── 动态导入业务模块 ──
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +53,7 @@ class AIOrchestrator:
                 from log_guard.modules.log_correlate import LogCorrelateService
                 self._modules[module_name] = LogCorrelateService()
         except Exception as e:
+            logger.warning("Failed to load module %s: %s", module_name, e)
             return None
 
         return self._modules.get(module_name)
