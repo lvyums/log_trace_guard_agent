@@ -89,9 +89,9 @@ class ESQueryGenStrategy(BaseScriptStrategy):
         try:
             from core.ai_base.rag_factory import RAGFactory
 
-            rag = RAGFactory.get_rag("scripts")
-            if rag:
-                results = rag.search(query=scenario, top_k=3)
+            kb = RAGFactory.get_kb("scripts")
+            if kb:
+                results = kb.retrieve(query=scenario, top_k=3).items
                 if results:
                     # 使用知识库结果构建查询
                     must_conditions = []

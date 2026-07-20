@@ -112,9 +112,9 @@ class TraceLinkStrategy(BaseScriptStrategy):
             from core.ai_base.rag_factory import RAGFactory
 
             query = attack_type or " ".join(logs)[:200]
-            rag = RAGFactory.get_rag("scripts")
-            if rag:
-                results = rag.search(query=query, top_k=3)
+            kb = RAGFactory.get_kb("scripts")
+            if kb:
+                results = kb.retrieve(query=query, top_k=3).items
                 if results:
                     events = []
                     for r in results:

@@ -115,9 +115,9 @@ class RegexGenStrategy(BaseScriptStrategy):
             if loop and loop.is_running():
                 # 在同步上下文中创建新任务
                 try:
-                    rag = RAGFactory.get_rag("scripts")
-                    if rag:
-                        results = rag.search(query=scenario, top_k=3)
+                    kb = RAGFactory.get_kb("scripts")
+                    if kb:
+                        results = kb.retrieve(query=scenario, top_k=3).items
                         if results:
                             rules = []
                             for r in results:

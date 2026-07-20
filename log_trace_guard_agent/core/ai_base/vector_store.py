@@ -223,6 +223,11 @@ class VectorStore:
                     self._collection = collection
                     logger.info(f"加载已有集合: {self.collection_name}")
             except Exception:
+                # get_collection 失败（嵌入函数不匹配等），尝试删除后重建
+                try:
+                    self._client.delete_collection(self.collection_name)
+                except Exception:
+                    pass
                 self._collection = self._client.create_collection(
                     self.collection_name,
                     embedding_function=self.embed_fn,

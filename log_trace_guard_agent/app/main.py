@@ -57,6 +57,15 @@ async def lifespan(app: FastAPI):
 
     RegexRuleEngine.load_rules(settings.rule_data_dir)
     logger.info("规则引擎加载完成")
+
+    # 知识库数据导入（ChromaDB）
+    try:
+        from core.ai_base.kb_ingest import ingest_all
+        kb_results = ingest_all(settings.rule_data_dir)
+        total = sum(kb_results.values())
+        logger.info(f"知识库导入完成: {total} 条 (共 {len(kb_results)} 个库)")
+    except Exception as e:
+        logger.warning(f"知识库导入跳过（不影响启动）: {e}")
     yield
     await LLMFactory.close_all()
     logger.info("LLM 客户端已关闭")
