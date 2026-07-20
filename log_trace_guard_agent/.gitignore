@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .env
 data/chroma_db/
+data/chroma_db_test/
 data/upload_temp/
 *.egg-info/
 dist/

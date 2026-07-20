@@ -32,7 +32,7 @@ assert r3["code"] == 403
 print("Result: OK")
 
 # --- DATA_DIR ---
-assert DATA_DIR.endswith("data/rule_data"), f"DATA_DIR={DATA_DIR}"
+assert os.path.normpath(DATA_DIR).endswith(os.path.join("data", "rule_data")), f"DATA_DIR={DATA_DIR}"
 print(f"DATA_DIR: {DATA_DIR}")
 
 # --- JsonConfigLoader ---

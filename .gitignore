@@ -41,6 +41,10 @@ Thumbs.db
 # Claude
 .claude/
 
+# Data (runtime, not source)
+data/chroma_db/
+data/upload_temp/
+
 # Temporary / artifacts
 tmp/
 temp/
