@@ -44,6 +44,14 @@ export const APP_CONFIG: AppConfig = {
       ],
     },
     {
+      key: 'log-correlate', label: '日志联合审查', icon: 'Connection',
+      desc: '多源日志关联分析、攻击链检测、事件时间线推演',
+      children: [
+        { path: '/log-correlate/analyze', label: '关联分析', icon: 'Search', tip: '输入多源日志，自动检测攻击链和关联事件' },
+        { path: '/log-correlate/patterns', label: '攻击链模式', icon: 'List', tip: '查看所有可检测的攻击链模式列表' },
+      ],
+    },
+    {
       key: 'log-collect', label: '日志采集', icon: 'Download',
       desc: '设备匹配、采集方案生成、故障诊断、架构推荐',
       children: [
@@ -79,14 +87,6 @@ export const APP_CONFIG: AppConfig = {
       children: [
         { path: '/training/scenarios', label: '实训场景', icon: 'Reading', tip: '查看并选择攻防实训场景' },
         { path: '/training/report', label: '实训报告', icon: 'DataLine', tip: '查看实训统计与详细报告' },
-      ],
-    },
-    {
-      key: 'log-correlate', label: '日志联合审查', icon: 'Connection',
-      desc: '多源日志关联分析、攻击链检测、事件时间线推演',
-      children: [
-        { path: '/log-correlate/analyze', label: '关联分析', icon: 'Search', tip: '输入多源日志，自动检测攻击链和关联事件' },
-        { path: '/log-correlate/patterns', label: '攻击链模式', icon: 'List', tip: '查看所有可检测的攻击链模式列表' },
       ],
     },
   ],

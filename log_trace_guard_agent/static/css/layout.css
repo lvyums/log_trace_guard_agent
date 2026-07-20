@@ -108,6 +108,7 @@
 .app-body {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   transition: all var(--transition-normal);
 }
@@ -190,6 +191,7 @@
 /* ---- 右侧主内容区 ---- */
 .app-main {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--space-xl);

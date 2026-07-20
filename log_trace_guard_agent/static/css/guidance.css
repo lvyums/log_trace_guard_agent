@@ -209,6 +209,8 @@
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.8;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 /* ---- 批量确认弹窗 ---- */

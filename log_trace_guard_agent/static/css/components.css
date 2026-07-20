@@ -127,6 +127,7 @@
 .g-code-body {
   padding: var(--space-md);
   overflow-x: auto;
+  overflow-y: auto;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   line-height: 1.7;
@@ -288,7 +289,8 @@
   display: grid;
   grid-template-columns: 360px 1fr;
   gap: var(--space-xl);
-  height: calc(100vh - var(--header-height) - var(--space-xl) * 2);
+  flex: 1;
+  min-height: 0;
 }
 
 .g-training-task {

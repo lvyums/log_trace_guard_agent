@@ -32,7 +32,6 @@
 
   .g-training-layout {
     grid-template-columns: 1fr;
-    height: auto;
   }
 
   .g-training-task {

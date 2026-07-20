@@ -1,5 +1,5 @@
 <template>
-  <div v-if="ready">
+  <div v-if="ready" class="app-shell">
     <GlobalTour v-if="showTour" @close="showTour = false" :mode="currentMode" />
 
     <header class="app-header" :class="{ 'is-collapsed': sidebarCollapsed }">
