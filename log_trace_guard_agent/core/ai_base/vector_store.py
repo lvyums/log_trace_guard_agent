@@ -1,6 +1,7 @@
 """向量库管理 — ChromaDB 封装（真实嵌入 + 多级降级）"""
 
 import hashlib
+import os
 import re
 from typing import Optional
 
@@ -27,6 +28,22 @@ class BGEEmbeddingFunction(EmbeddingFunction):
     # 类级别缓存：sentence_transformers 是否可用（避免重复 import 浪费 10s+）
     _st_available: Optional[bool] = None
 
+    @staticmethod
+    def _check_compatibility() -> bool:
+        """快速检测 sentence_transformers 是否可用（不触发完整 import 链）"""
+        # 检查已知的 Keras 3 不兼容问题
+        try:
+            import keras  # noqa: F401
+            if hasattr(keras, '__version__') and keras.__version__.startswith('3.'):
+                # Keras 3 + transformers 不兼容，需要安装 tf-keras
+                try:
+                    import tf_keras  # noqa: F401
+                except ImportError:
+                    return False
+        except ImportError:
+            pass  # 没有 keras，不受影响
+        return True
+
     def __init__(self, model_name: str = "BAAI/bge-large-zh-v1.5"):
         self.model_name = model_name
         self._model = None
@@ -35,12 +52,16 @@ class BGEEmbeddingFunction(EmbeddingFunction):
     def _load_model(self):
         # 首次检测 sentence_transformers 是否可用，缓存结果
         if BGEEmbeddingFunction._st_available is None:
-            try:
-                from sentence_transformers import SentenceTransformer  # noqa: F401
-                BGEEmbeddingFunction._st_available = True
-            except Exception:
+            if not self._check_compatibility():
                 BGEEmbeddingFunction._st_available = False
-                logger.info("sentence_transformers 不可用，使用 N-gram 降级嵌入")
+                logger.info("sentence_transformers 环境不兼容（Keras 3 缺少 tf-keras），使用 N-gram 降级嵌入")
+            else:
+                try:
+                    from sentence_transformers import SentenceTransformer  # noqa: F401
+                    BGEEmbeddingFunction._st_available = True
+                except Exception:
+                    BGEEmbeddingFunction._st_available = False
+                    logger.info("sentence_transformers 不可用，使用 N-gram 降级嵌入")
 
         if not BGEEmbeddingFunction._st_available:
             return
@@ -212,45 +233,68 @@ class VectorStore:
         return 128  # 默认
 
     def _init_client(self):
-        """初始化 ChromaDB 客户端并加载集合"""
-        try:
-            self._client = chromadb.PersistentClient(
-                path=self.persist_dir,
-                settings=ChromaSettings(anonymized_telemetry=False),
-            )
+        """初始化 ChromaDB 客户端并加载集合
 
-            try:
-                # 尝试获取已有集合
-                collection = self._client.get_collection(
-                    self.collection_name,
-                    embedding_function=self.embed_fn,
-                )
-                # 检查维度兼容性（如果已有数据但维度不匹配，需要重建）
-                if self._check_dimension_mismatch(collection):
-                    logger.warning(f"集合 {self.collection_name} 嵌入维度不匹配，重建中...")
-                    self._client.delete_collection(self.collection_name)
-                    self._collection = self._client.create_collection(
-                        self.collection_name,
-                        embedding_function=self.embed_fn,
-                    )
-                else:
-                    self._collection = collection
-                    logger.info(f"加载已有集合: {self.collection_name}")
-            except Exception:
-                # get_collection 失败（嵌入函数不匹配等），尝试删除后重建
-                try:
-                    self._client.delete_collection(self.collection_name)
-                except Exception:
-                    pass
+        主路径被锁时自动切换到备用路径（如僵尸进程持有 SQLite 锁）。
+        """
+        self._client = self._create_client(self.persist_dir)
+        if self._client is None:
+            import tempfile
+            fallback = os.path.join(tempfile.gettempdir(), "chroma_db_fallback")
+            logger.warning(f"主路径 {self.persist_dir} 不可用，切换到备用路径: {fallback}")
+            self._client = self._create_client(fallback)
+        if self._client is None:
+            raise RuntimeError("ChromaDB 客户端初始化失败，主路径和备用路径均不可用")
+
+        try:
+            collection = self._client.get_collection(
+                self.collection_name,
+                embedding_function=self.embed_fn,
+            )
+            if self._check_dimension_mismatch(collection):
+                logger.warning(f"集合 {self.collection_name} 嵌入维度不匹配，重建中...")
+                self._client.delete_collection(self.collection_name)
                 self._collection = self._client.create_collection(
                     self.collection_name,
                     embedding_function=self.embed_fn,
                 )
-                logger.info(f"创建新集合: {self.collection_name}")
+            else:
+                self._collection = collection
+                logger.info(f"加载已有集合: {self.collection_name}")
+        except Exception:
+            try:
+                self._client.delete_collection(self.collection_name)
+            except Exception:
+                pass
+            self._collection = self._client.create_collection(
+                self.collection_name,
+                embedding_function=self.embed_fn,
+            )
+            logger.info(f"创建新集合: {self.collection_name}")
 
+    def _create_client(self, path: str) -> Optional[chromadb.PersistentClient]:
+        """创建 ChromaDB 客户端，检测并清理锁文件避免僵尸进程阻塞"""
+        db_file = os.path.join(path, "chroma.sqlite3")
+        journal = db_file + "-journal"
+
+        # 检测并清理残留锁文件
+        for f in [journal, db_file]:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                    logger.info(f"清理残留文件: {f}")
+                except OSError:
+                    logger.warning(f"数据库被其他进程锁定，跳过: {path}")
+                    return None
+
+        try:
+            return chromadb.PersistentClient(
+                path=path,
+                settings=ChromaSettings(anonymized_telemetry=False),
+            )
         except Exception as e:
-            logger.error(f"ChromaDB 初始化失败: {e}")
-            raise
+            logger.warning(f"ChromaDB 客户端创建失败: {e}")
+            return None
 
     def _check_dimension_mismatch(self, collection) -> bool:
         """检查集合的嵌入维度是否与当前嵌入函数匹配"""
