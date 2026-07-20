@@ -58,7 +58,7 @@ done
 **验证：**
 ```bash
 curl http://localhost:8000/
-# → {"service":"日志溯源卫士智能体","version":"0.1.0","status":"running"}
+# → {"service":"日志溯源卫士智能体","version":"2.0.0","status":"running"}
 
 curl http://localhost:8000/health
 # → {"status":"healthy"}

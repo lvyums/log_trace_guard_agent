@@ -27,7 +27,7 @@ logger = LogManager.get_logger()
 
 # 规则文件路径
 CORRELATION_PATTERNS_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "rule_data", "correlation_patterns.json"
 )
 

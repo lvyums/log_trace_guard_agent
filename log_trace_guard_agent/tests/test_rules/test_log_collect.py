@@ -155,24 +155,24 @@ class TestFaultFixer:
     """P1+P2: 故障诊断 — 外部知识库 + 多维度匹配"""
 
     def test_diagnose_log_lost(self):
-        diagnosis = FaultFixer.diagnose("日志丢失严重，采集到的数量只有一半")
+        diagnosis, candidates = FaultFixer.diagnose("日志丢失严重，采集到的数量只有一半")
         assert diagnosis is not None
         assert diagnosis.fault_type == "日志丢失"
         assert diagnosis.match_score > 0
 
     def test_diagnose_with_protocol_hint(self):
         """P2: 多维度诊断 — 传输协议辅助匹配"""
-        diagnosis = FaultFixer.diagnose("日志丢失", protocol="syslog")
+        diagnosis, candidates = FaultFixer.diagnose("日志丢失", protocol="syslog")
         assert diagnosis is not None
         assert "日志丢失" in diagnosis.fault_type
 
     def test_diagnose_format_error(self):
-        diagnosis = FaultFixer.diagnose("日志格式错乱，无法解析")
+        diagnosis, candidates = FaultFixer.diagnose("日志格式错乱，无法解析")
         assert diagnosis is not None
         assert diagnosis.fault_type == "格式错乱"
 
     def test_diagnose_unknown(self):
-        diagnosis = FaultFixer.diagnose("完全不相关的描述xyz123")
+        diagnosis, candidates = FaultFixer.diagnose("完全不相关的描述xyz123")
         assert diagnosis is None
 
     def test_get_all_faults(self):
@@ -187,7 +187,7 @@ class TestFaultFixer:
 
     def test_diagnose_with_error_log(self):
         """P2: 多维度诊断 — 原始报错日志辅助匹配"""
-        diagnosis = FaultFixer.diagnose(
+        diagnosis, candidates = FaultFixer.diagnose(
             "采集异常",
             error_log="syslog: connection timed out, 丢包严重"
         )

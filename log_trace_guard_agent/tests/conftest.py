@@ -1,4 +1,11 @@
 """测试夹具 — Mock LLM / Mock ChromaDB"""
+import sys
+import os
+
+# 将项目根目录加入 PYTHONPATH，使 `from app.main import app` 等导入在任何目录下生效
+PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 import pytest
 

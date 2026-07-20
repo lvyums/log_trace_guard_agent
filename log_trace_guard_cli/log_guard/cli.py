@@ -959,9 +959,6 @@ def run_command(args: argparse.Namespace):
 
 def main():
     """主入口 — 支持 argparse 和交互模式"""
-    # 检查是否在交互式终端中运行
-    is_interactive = sys.stdin.isatty()
-
     # 快速启动：如果有参数就走命令行模式
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser(
