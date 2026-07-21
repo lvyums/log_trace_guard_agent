@@ -641,7 +641,7 @@ def _menu_compliance(context: dict):
         asset = input("资产类型 (可选): ").strip() or None
         std = input("标准过滤 (可选): ").strip() or None
         result = _compliance_svc.compliance_qa(question, asset, std)
-        _print_json(result)
+        _print_qa_natural(result, question=question)
 
     elif idx == 1:
         count_str = input("资产数量: ").strip()
@@ -1116,33 +1116,6 @@ def _print_optimize_natural(result):
         print(f"     {optimized}")
 
 
-def _print_qa_natural(result):
-    """合规问答自然语言输出"""
-    if result.get("code") != 0:
-        print(f"  ❌ {result.get('msg', '查询失败')}")
-        return
-
-    data = result.get("data", {})
-    items = data.get("answered_questions", [])
-    standards = data.get("standards", [])
-
-    if not items:
-        print(f"\n  ❓ 未找到匹配的合规标准")
-        print(f"     提示: {data.get('note', '尝试扩大查询范围')}")
-        return
-
-    print(f"\n  📚 合规问答结果")
-    print(f"     匹配 {len(items)} 条合规要求:\n")
-
-    for std in standards:
-        print(f"  📖 {std.get('name', '?')} ({std.get('standard_id', '?')})")
-        for item in std.get("matched_items", []):
-            print(f"     [{item.get('item_id', '?')}] {item.get('requirement', '?')}")
-            print(f"       详情: {item.get('detail', '?')[:80]}...")
-            print(f"       风险: {item.get('risk_if_not', '?')[:60]}...")
-        print()
-
-
 def _print_train_natural(result):
     """实训场景自然语言输出"""
     if result.get("code") != 0:
@@ -1169,36 +1142,27 @@ def _print_train_natural(result):
         print()
 
 
-def _print_optimize_natural(result):
-    """脚本优化自然语言输出"""
-    if result.get("code") != 0:
-        print(f"  ❌ {result.get('msg', '优化失败')}")
-        return
+def _call_llm_fallback(question: str) -> str:
+    """调用大模型回答问题（兜底功能）"""
+    if not _AI_AVAILABLE:
+        return None, "AI Core 未加载"
 
-    data = result.get("data", {})
-    print(f"\n  ✨ 脚本优化结果")
-    print(f"     评分: {data.get('score', '?')}/100")
-    print(f"     类型: {data.get('script_type', '?')}")
-
-    issues = data.get("issues", [])
-    if issues:
-        print(f"\n  ⚠️ 发现问题:")
-        for issue in issues:
-            print(f"     • {issue}")
-
-    suggestions = data.get("suggestions", [])
-    if suggestions:
-        print(f"\n  💡 优化建议:")
-        for s in suggestions:
-            print(f"     • {s}")
-
-    optimized = data.get("optimized_script", "")
-    if optimized:
-        print(f"\n  📜 优化后脚本:")
-        print(f"     {optimized}")
+    try:
+        llm = get_llm()
+        messages = [
+            {"role": "system", "content": "你是一个网络安全和合规审计专家。请用中文回答用户的问题，给出专业、准确的建议。"},
+            {"role": "user", "content": question}
+        ]
+        result = llm.chat(messages, temperature=0.7, max_tokens=1000)
+        if result.get("success") and result.get("content"):
+            return result["content"], None
+        return None, result.get("error", "LLM 调用失败")
+    except Exception as e:
+        logger.warning(f"LLM fallback failed: {e}")
+        return None, str(e)
 
 
-def _print_qa_natural(result):
+def _print_qa_natural(result, question: str = ""):
     """合规问答自然语言输出"""
     if result.get("code") != 0:
         print(f"  ❌ {result.get('msg', '查询失败')}")
@@ -1209,8 +1173,20 @@ def _print_qa_natural(result):
     standards = data.get("standards", [])
 
     if not items:
-        print(f"\n  ❓ 未找到匹配的合规标准")
-        print(f"     提示: {data.get('note', '尝试扩大查询范围')}")
+        # 知识库未找到匹配，调用大模型兜底
+        print(f"\n  ❓ 知识库中未找到匹配的合规标准")
+        print(f"  🤖 正在调用 AI 助手回答...\n")
+
+        if question:
+            llm_answer, error = _call_llm_fallback(question)
+            if llm_answer:
+                print(f"  {llm_answer}")
+                print(f"\n  ⚠️ 注意：以上回答由 AI 根据网络知识生成，暂不在本地资料库中，仅供参考。")
+            else:
+                print(f"  💡 AI 兜底回答失败: {error}")
+                print(f"  💡 提示: 尝试扩大查询范围，或检查 LLM API 配置。")
+        else:
+            print(f"  💡 提示: 请提供具体问题，或尝试扩大查询范围。")
         return
 
     print(f"\n  📚 合规问答结果")
@@ -1222,32 +1198,6 @@ def _print_qa_natural(result):
             print(f"     [{item.get('item_id', '?')}] {item.get('requirement', '?')}")
             print(f"       详情: {item.get('detail', '?')[:80]}...")
             print(f"       风险: {item.get('risk_if_not', '?')[:60]}...")
-        print()
-
-
-def _print_train_natural(result):
-    """实训场景自然语言输出"""
-    if result.get("code") != 0:
-        print(f"  ❌ {result.get('msg', '下发失败')}")
-        return
-
-    data = result.get("data", {})
-    scenarios = data.get("scenarios", [])
-
-    print(f"\n  🎓 实训场景下发")
-    print(f"     共下发 {len(scenarios)} 个场景:\n")
-
-    for sc in scenarios:
-        print(f"  📌 {sc.get('name', '?')} (ID: {sc.get('scenario_id', '?')})")
-        print(f"     分类: {sc.get('category', '?')} | 难度: {sc.get('difficulty', '?')}")
-        print(f"     描述: {sc.get('description', '?')}")
-        print(f"\n     学习目标:")
-        for obj in sc.get("objectives", []):
-            print(f"       • {obj}")
-        print(f"\n     任务列表:")
-        for task in sc.get("tasks", []):
-            print(f"       [{task.get('task_id', '?')}] {task.get('title', '?')}")
-            print(f"         {task.get('description', '?')[:60]}...")
         print()
 
 
@@ -1372,7 +1322,7 @@ def run_command(args: argparse.Namespace):
         if args.json_output:
             _print_json(result)
         else:
-            _print_qa_natural(result)
+            _print_qa_natural(result, question=args.qa)
         return
 
     if args.train:
