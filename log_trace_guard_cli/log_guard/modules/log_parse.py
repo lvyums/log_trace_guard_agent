@@ -540,6 +540,63 @@ class DBParser(BaseParser):
 
 
 # ---------------------------------------------------------------------------
+# GenericParser - 兜底解析器，处理未知格式日志
+# ---------------------------------------------------------------------------
+
+class GenericParser(BaseParser):
+    """Generic parser that tries to extract common fields from any log line."""
+
+    device_type = "generic"
+
+    def can_parse(self, log_line: str) -> bool:
+        # Always return True as a fallback parser
+        return True
+
+    def parse_fields(self, log_line: str) -> Dict[str, Any]:
+        fields: Dict[str, Any] = {}
+
+        # Timestamp
+        fields["timestamp"] = _extract_timestamp(log_line)
+
+        # IPs
+        ips = _extract_ips(log_line)
+        if ips:
+            fields["src_ip"] = ips[0]
+        if len(ips) > 1:
+            fields["dst_ip"] = ips[1]
+
+        # User
+        user = _extract_user(log_line)
+        if user:
+            fields["user"] = user
+
+        # Status
+        status = _extract_status(log_line)
+        if status:
+            fields["status"] = status
+
+        # Command
+        cmd = _extract_command(log_line)
+        if cmd:
+            fields["command"] = cmd
+
+        # Try to detect level/log type from common patterns
+        extra: Dict[str, Any] = {}
+        level_match = re.search(r"\b(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|CRITICAL|TRACE)\b", log_line, re.IGNORECASE)
+        if level_match:
+            extra["log_level"] = level_match.group(1).upper()
+
+        # Detect if it's an application log with brackets like [2026-07-16 20:44:14]
+        bracket_ts = re.search(r"\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]", log_line)
+        if bracket_ts:
+            fields["timestamp"] = bracket_ts.group(1)
+            extra["log_format"] = "application"
+
+        fields["extra_info"] = extra
+        return fields
+
+
+# ---------------------------------------------------------------------------
 # LogParserFactory
 # ---------------------------------------------------------------------------
 
@@ -557,6 +614,7 @@ class LogParserFactory:
         self._parsers: Dict[str, Type[BaseParser]] = {}
         self._aliases: Dict[str, str] = {}
         self._parser_instances: Dict[str, BaseParser] = {}
+        self._fallback_parser: Optional[Type[BaseParser]] = None
 
     def register(self, device_type: str, parser_cls: Type[BaseParser], *aliases: str) -> None:
         """
@@ -572,13 +630,17 @@ class LogParserFactory:
         for alias in aliases:
             self._aliases[alias] = device_type
 
+    def register_fallback(self, parser_cls: Type[BaseParser]) -> None:
+        """Register a fallback parser used when no other parser matches."""
+        self._fallback_parser = parser_cls
+
     def get_parser(self, log_line: str) -> Optional[BaseParser]:
         """
         Return the first parser that can handle the given log line.
 
         Iterates through all registered parsers and returns the first
-        one whose ``can_parse()`` returns True. Parsers are cached
-        after first instantiation.
+        one whose ``can_parse()`` returns True. Falls back to the
+        registered fallback parser if no specific parser matches.
 
         Args:
             log_line: A raw log line string.
@@ -590,6 +652,12 @@ class LogParserFactory:
             parser = self._get_or_create(device_type)
             if parser.can_parse(log_line):
                 return parser
+        # Use fallback parser if registered
+        if self._fallback_parser:
+            fallback_key = "__fallback__"
+            if fallback_key not in self._parser_instances:
+                self._parser_instances[fallback_key] = self._fallback_parser()
+            return self._parser_instances[fallback_key]
         return None
 
     def get_parser_by_type(self, device_type: str) -> Optional[BaseParser]:
@@ -648,6 +716,7 @@ def _register_default_parsers() -> LogParserFactory:
     factory.register("waf", WAFParser, "modsecurity", "web_application_firewall")
     factory.register("firewall", FirewallParser, "iptables", "netfilter", "fw")
     factory.register("db", DBParser, "database", "mysql", "postgresql", "oracle")
+    factory.register_fallback(GenericParser)
     return factory
 
 

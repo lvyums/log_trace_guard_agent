@@ -93,12 +93,45 @@ class QAStrategy(BaseComplianceStrategy):
                 # Search question keywords in requirement and detail
                 if question:
                     q_lower = question.lower()
-                    q_words = [w.strip() for w in q_lower.split() if len(w.strip()) > 1]
-                    if q_words:
-                        text = (requirement + " " + detail).lower()
-                        match_count = sum(1 for w in q_words if w in text)
-                        if match_count < len(q_words) * 0.3:
-                            continue
+                    text = (requirement + " " + detail).lower()
+
+                    # For Chinese text, try direct substring matching first
+                    # Remove common stop words and try to find key terms
+                    stop_words = {"的", "了", "吗", "呢", "啊", "是", "在", "有", "和", "与", "或", "需要", "满足", "什么", "如何", "怎么"}
+
+                    # Try to match meaningful Chinese phrases (2-4 chars)
+                    match_count = 0
+                    found_any = False
+
+                    # First try direct text contains check
+                    if q_lower in text or any(phrase in text for phrase in [q_lower[:4], q_lower[:3], q_lower[:2]]):
+                        found_any = True
+                        match_count = 2
+
+                    if not found_any:
+                        # Extract meaningful characters/phrases
+                        meaningful_chars = [c for c in q_lower if c.strip() and c not in "？，。、（）""'' "]
+                        # Check 2-char and 3-char substrings
+                        for length in [4, 3, 2]:
+                            for i in range(len(q_lower) - length + 1):
+                                phrase = q_lower[i:i+length]
+                                if any(c in stop_words for c in [phrase]):
+                                    continue
+                                if phrase in text:
+                                    match_count += 1
+                                    found_any = True
+                                    break
+                            if found_any:
+                                break
+
+                    # For single character matching
+                    if not found_any:
+                        for c in meaningful_chars:
+                            if c in text and c not in stop_words:
+                                match_count += 0.5
+
+                    if match_count < 1:
+                        continue
 
                 std_matched_items.append({
                     "item_id": item.get("item_id"),

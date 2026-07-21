@@ -30,7 +30,7 @@ except ImportError:
 # ── AI Core 导入（可选，无 LLM 时降级为纯菜单模式） ──
 _AI_AVAILABLE = False
 try:
-    from log_guard.ai_core import get_orchestrator, get_context_manager, settings as ai_settings
+    from log_guard.ai_core import get_orchestrator, get_context_manager, get_llm, settings as ai_settings
     _AI_AVAILABLE = True
 except ImportError:
     pass
@@ -847,28 +847,438 @@ def _print_correlation_result(result):
 # 主入口 — 双模式自动检测
 # ════════════════════════════════════════════
 
+def _output(args, result, formatter=None):
+    """统一输出：--json 输出 JSON，否则用 formatter 或默认自然语言"""
+    if args.json_output:
+        _print_json(result)
+    elif formatter:
+        formatter(result)
+    else:
+        _print_natural(result)
+
+
+def _print_natural(result):
+    """默认自然语言输出"""
+    if isinstance(result, dict):
+        code = result.get("code", 0)
+        msg = result.get("msg", "")
+        data = result.get("data", result)
+
+        if code != 0:
+            print(f"  ❌ {msg}")
+            return
+
+        # 根据数据内容智能输出
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if isinstance(v, list) and v:
+                    print(f"  {k}: {len(v)} 条记录")
+                elif isinstance(v, str) and len(v) > 50:
+                    print(f"  {k}: {v[:50]}...")
+                else:
+                    print(f"  {k}: {v}")
+        else:
+            print(f"  {data}")
+    else:
+        print(f"  {result}")
+
+
+def _print_list_logs_natural(result):
+    """日志文件列表自然语言输出"""
+    if isinstance(result, list):
+        print(f"\n  找到 {len(result)} 个日志文件:\n")
+        for i, f in enumerate(result[:20], 1):
+            size = f.get("size", 0)
+            if size < 1024:
+                size_str = f"{size}B"
+            elif size < 1024 * 1024:
+                size_str = f"{size // 1024}KB"
+            else:
+                size_str = f"{size // (1024 * 1024)}MB"
+            print(f"  [{i}] {f['name']}")
+            print(f"      类型: {f.get('type', '?')} | 大小: {size_str}")
+            print(f"      路径: {f['path']}")
+            print()
+        if len(result) > 20:
+            print(f"  ... 还有 {len(result) - 20} 个文件")
+    else:
+        _print_natural(result)
+
+
+def _print_sample_natural(result):
+    """日志预览自然语言输出"""
+    lines = result.get("lines", [])
+    total = result.get("total_lines", 0)
+    encoding = result.get("encoding", "?")
+    size = result.get("file_size", 0)
+
+    if size < 1024:
+        size_str = f"{size}B"
+    elif size < 1024 * 1024:
+        size_str = f"{size // 1024}KB"
+    else:
+        size_str = f"{size // (1024 * 1024)}MB"
+
+    print(f"\n  📄 日志预览")
+    print(f"     总行数: {total} | 编码: {encoding} | 大小: {size_str}")
+    print(f"     显示前 {len(lines)} 行:\n")
+    for i, line in enumerate(lines, 1):
+        print(f"  {i:3d} | {line.strip()[:120]}")
+    if result.get("truncated"):
+        print(f"\n  (已截断，完整文件共 {total} 行)")
+
+
+def _print_parse_single_natural(result):
+    """单条日志解析自然语言输出"""
+    # Handle both formats: {"code": 0, "data": {...}} and direct {...}
+    if "code" in result:
+        if result.get("code") != 0:
+            print(f"  ❌ 解析失败: {result.get('msg', '未知错误')}")
+            return
+        data = result.get("data", {})
+    else:
+        data = result
+
+    if not data or not isinstance(data, dict):
+        print(f"  ❌ 解析失败: 无法解析日志")
+        return
+
+    print(f"\n  🔍 日志解析结果")
+    print(f"     类型: {data.get('device_type', '?')}")
+    print(f"     时间: {data.get('timestamp', '-')}")
+    print(f"     源IP: {data.get('src_ip', '-')}")
+    print(f"     目的IP: {data.get('dst_ip', '-')}")
+    print(f"     用户: {data.get('user', '-')}")
+    print(f"     状态: {data.get('status', '-')}")
+    print(f"     命令: {data.get('command', '-')}")
+    extra = data.get("extra_info", {})
+    if extra:
+        print(f"     附加信息: {extra}")
+
+
+def _print_parse_batch_natural(result):
+    """批量解析自然语言输出"""
+    total = result.get("total", 0)
+    success = result.get("success_count", 0)
+    fail = result.get("fail_count", 0)
+    items = result.get("items", [])
+
+    print(f"\n  📊 批量解析结果")
+    print(f"     总计: {total} 条 | 成功: {success} 条 | 失败: {fail} 条")
+
+    risk_summary = result.get("risk_summary", {})
+    if risk_summary:
+        print(f"\n  ⚠️ 风险统计:")
+        print(f"     高风险: {risk_summary.get('high_risk_count', 0)} 条")
+        print(f"     中风险: {risk_summary.get('medium_risk_count', 0)} 条")
+        print(f"     低风险: {risk_summary.get('low_risk_count', 0)} 条")
+        print(f"     噪音: {risk_summary.get('noise_count', 0)} 条")
+
+    # 显示高风险项
+    high_risk = [item for item in items if item.get("risk_assessment", {}).get("risk_level", "").startswith("P0") or
+                 item.get("risk_assessment", {}).get("risk_level", "").startswith("P1")]
+    if high_risk:
+        print(f"\n  🔴 高风险日志:")
+        for item in high_risk[:5]:
+            risk = item.get("risk_assessment", {})
+            print(f"     [{risk.get('risk_level', '?')}] {item.get('raw_log', '')[:80]}")
+
+
+def _print_diagnose_natural(result):
+    """故障诊断自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '诊断失败')}")
+        return
+
+    data = result.get("data", {})
+    best = data.get("best_diagnosis", {})
+
+    print(f"\n  🔧 故障诊断结果")
+    print(f"     症状: {data.get('symptom', '?')}")
+    print(f"     设备: {data.get('device_type', '?')}")
+    print(f"     诊断: {best.get('fault_type', '?')}")
+    print(f"     描述: {best.get('fault_desc', '?')}")
+    print(f"     严重度: {best.get('severity', '?')}")
+
+    causes = best.get("possible_causes", [])
+    if causes:
+        print(f"\n  📋 可能原因:")
+        for i, c in enumerate(causes, 1):
+            print(f"     {i}. {c}")
+
+    steps = best.get("fix_steps", [])
+    if steps:
+        print(f"\n  🔨 修复步骤:")
+        for s in steps:
+            print(f"     {s}")
+
+    prevention = best.get("prevention", [])
+    if prevention:
+        print(f"\n  🛡️ 预防措施:")
+        for p in prevention:
+            print(f"     • {p}")
+
+
+def _print_regex_natural(result):
+    """正则规则生成自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '生成失败')}")
+        return
+
+    data = result.get("data", {})
+    regexes = data.get("regexes", [])
+
+    print(f"\n  📝 正则规则生成结果")
+    print(f"     场景: {data.get('scenario', '?')}")
+    print(f"     生成 {len(regexes)} 条规则:\n")
+
+    for i, r in enumerate(regexes, 1):
+        print(f"  [{i}] {r.get('name', '?')} (优先级: {r.get('priority', '?')})")
+        print(f"      描述: {r.get('description', '?')}")
+        print(f"      正则: {r.get('pattern', '?')}")
+        print(f"      示例: {r.get('match_example', '?')}")
+        print()
+
+
+def _print_es_query_natural(result):
+    """ES查询生成自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '生成失败')}")
+        return
+
+    data = result.get("data", {})
+    print(f"\n  🔎 ES查询生成结果")
+    print(f"     索引模式: {data.get('index_pattern', '?')}")
+    print(f"     时间范围: {data.get('time_range', '?')}")
+    print(f"     说明: {data.get('note', '?')}")
+    print(f"\n  查询语句:")
+    import json
+    query = data.get("query", {})
+    print(json.dumps(query, ensure_ascii=False, indent=2))
+
+
+def _print_baseline_natural(result):
+    """合规基线自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '生成失败')}")
+        return
+
+    data = result.get("data", {})
+    baselines = data.get("baselines", [])
+    summary = data.get("summary", {})
+
+    print(f"\n  📋 合规基线生成结果")
+    print(f"     共生成 {len(baselines)} 条基线\n")
+
+    severity_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}
+
+    for i, b in enumerate(baselines, 1):
+        severity = b.get("severity", "?")
+        icon = severity_icons.get(severity, "⚪")
+        print(f"  {icon} [{b.get('baseline_id', '?')}] {b.get('name', '?')}")
+        print(f"     分类: {b.get('category', '?')} | 严重度: {severity}")
+        print(f"     描述: {b.get('description', '?')}")
+        print(f"     检查频率: {b.get('check_frequency', '?')}")
+        print(f"     处置建议: {b.get('remediation', '?')[:60]}...")
+        print()
+
+    dist = summary.get("severity_distribution", {})
+    if dist:
+        print(f"  📊 严重度分布: {dist}")
+
+
+def _print_optimize_natural(result):
+    """脚本优化自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '优化失败')}")
+        return
+
+    data = result.get("data", {})
+    print(f"\n  ✨ 脚本优化结果")
+    print(f"     评分: {data.get('score', '?')}/100")
+    print(f"     类型: {data.get('script_type', '?')}")
+
+    issues = data.get("issues", [])
+    if issues:
+        print(f"\n  ⚠️ 发现问题:")
+        for issue in issues:
+            print(f"     • {issue}")
+
+    suggestions = data.get("suggestions", [])
+    if suggestions:
+        print(f"\n  💡 优化建议:")
+        for s in suggestions:
+            print(f"     • {s}")
+
+    optimized = data.get("optimized_script", "")
+    if optimized:
+        print(f"\n  📜 优化后脚本:")
+        print(f"     {optimized}")
+
+
+def _print_qa_natural(result):
+    """合规问答自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '查询失败')}")
+        return
+
+    data = result.get("data", {})
+    items = data.get("answered_questions", [])
+    standards = data.get("standards", [])
+
+    if not items:
+        print(f"\n  ❓ 未找到匹配的合规标准")
+        print(f"     提示: {data.get('note', '尝试扩大查询范围')}")
+        return
+
+    print(f"\n  📚 合规问答结果")
+    print(f"     匹配 {len(items)} 条合规要求:\n")
+
+    for std in standards:
+        print(f"  📖 {std.get('name', '?')} ({std.get('standard_id', '?')})")
+        for item in std.get("matched_items", []):
+            print(f"     [{item.get('item_id', '?')}] {item.get('requirement', '?')}")
+            print(f"       详情: {item.get('detail', '?')[:80]}...")
+            print(f"       风险: {item.get('risk_if_not', '?')[:60]}...")
+        print()
+
+
+def _print_train_natural(result):
+    """实训场景自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '下发失败')}")
+        return
+
+    data = result.get("data", {})
+    scenarios = data.get("scenarios", [])
+
+    print(f"\n  🎓 实训场景下发")
+    print(f"     共下发 {len(scenarios)} 个场景:\n")
+
+    for sc in scenarios:
+        print(f"  📌 {sc.get('name', '?')} (ID: {sc.get('scenario_id', '?')})")
+        print(f"     分类: {sc.get('category', '?')} | 难度: {sc.get('difficulty', '?')}")
+        print(f"     描述: {sc.get('description', '?')}")
+        print(f"\n     学习目标:")
+        for obj in sc.get("objectives", []):
+            print(f"       • {obj}")
+        print(f"\n     任务列表:")
+        for task in sc.get("tasks", []):
+            print(f"       [{task.get('task_id', '?')}] {task.get('title', '?')}")
+            print(f"         {task.get('description', '?')[:60]}...")
+        print()
+
+
+def _print_optimize_natural(result):
+    """脚本优化自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '优化失败')}")
+        return
+
+    data = result.get("data", {})
+    print(f"\n  ✨ 脚本优化结果")
+    print(f"     评分: {data.get('score', '?')}/100")
+    print(f"     类型: {data.get('script_type', '?')}")
+
+    issues = data.get("issues", [])
+    if issues:
+        print(f"\n  ⚠️ 发现问题:")
+        for issue in issues:
+            print(f"     • {issue}")
+
+    suggestions = data.get("suggestions", [])
+    if suggestions:
+        print(f"\n  💡 优化建议:")
+        for s in suggestions:
+            print(f"     • {s}")
+
+    optimized = data.get("optimized_script", "")
+    if optimized:
+        print(f"\n  📜 优化后脚本:")
+        print(f"     {optimized}")
+
+
+def _print_qa_natural(result):
+    """合规问答自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '查询失败')}")
+        return
+
+    data = result.get("data", {})
+    items = data.get("answered_questions", [])
+    standards = data.get("standards", [])
+
+    if not items:
+        print(f"\n  ❓ 未找到匹配的合规标准")
+        print(f"     提示: {data.get('note', '尝试扩大查询范围')}")
+        return
+
+    print(f"\n  📚 合规问答结果")
+    print(f"     匹配 {len(items)} 条合规要求:\n")
+
+    for std in standards:
+        print(f"  📖 {std.get('name', '?')} ({std.get('standard_id', '?')})")
+        for item in std.get("matched_items", []):
+            print(f"     [{item.get('item_id', '?')}] {item.get('requirement', '?')}")
+            print(f"       详情: {item.get('detail', '?')[:80]}...")
+            print(f"       风险: {item.get('risk_if_not', '?')[:60]}...")
+        print()
+
+
+def _print_train_natural(result):
+    """实训场景自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '下发失败')}")
+        return
+
+    data = result.get("data", {})
+    scenarios = data.get("scenarios", [])
+
+    print(f"\n  🎓 实训场景下发")
+    print(f"     共下发 {len(scenarios)} 个场景:\n")
+
+    for sc in scenarios:
+        print(f"  📌 {sc.get('name', '?')} (ID: {sc.get('scenario_id', '?')})")
+        print(f"     分类: {sc.get('category', '?')} | 难度: {sc.get('difficulty', '?')}")
+        print(f"     描述: {sc.get('description', '?')}")
+        print(f"\n     学习目标:")
+        for obj in sc.get("objectives", []):
+            print(f"       • {obj}")
+        print(f"\n     任务列表:")
+        for task in sc.get("tasks", []):
+            print(f"       [{task.get('task_id', '?')}] {task.get('title', '?')}")
+            print(f"         {task.get('description', '?')[:60]}...")
+        print()
+
+
 def run_command(args: argparse.Namespace):
     """命令行模式（无交互）"""
     log_reader = LogReader()
 
     if args.log_file and not os.path.exists(args.log_file):
-        print(Result.fail(f"文件不存在: {args.log_file}"))
+        print(f"  ❌ 文件不存在: {args.log_file}")
         return
 
     if args.list_logs:
         files = log_reader.list_log_files(args.log_dir)
-        _print_json(files)
+        if args.json_output:
+            _print_json(files)
+        else:
+            _print_list_logs_natural(files)
         return
 
     if args.sample:
         if not args.log_file:
-            print("请指定 --log-file")
+            print("  请指定 --log-file")
             return
         preview = log_reader.sample_log(args.log_file, n=args.sample)
-        _print_json(preview)
+        if args.json_output:
+            _print_json(preview)
+        else:
+            _print_sample_natural(preview)
         return
 
-    if args.parse:
+    if args.parse is not None:
         if args.log_file:
             result = log_reader.read_log(args.log_file, line_limit=args.lines or 100, grep=args.grep)
             lines = result.get("lines", [])
@@ -879,65 +1289,101 @@ def run_command(args: argparse.Namespace):
                     continue
                 r = _log_parse_svc.parse_log(line)
                 items.append(r)
-            _print_json({"total": len(lines), "parsed": items})
+            output = {"total": len(lines), "parsed": items}
+            if args.json_output:
+                _print_json(output)
+            else:
+                _print_parse_batch_natural({"code": 0, "data": output})
         else:
-            result = _log_parse_svc.parse_log(args.parse)
-            _print_json(result)
+            # args.parse is the log line string when --parse is used with a value
+            log_line = args.parse if isinstance(args.parse, str) and args.parse else None
+            if log_line:
+                result = _log_parse_svc.parse_log(log_line)
+                if args.json_output:
+                    _print_json(result)
+                else:
+                    _print_parse_single_natural(result)
+            else:
+                print("  请指定日志行字符串，例如: --parse \"Failed password for root from 192.168.1.100\"")
         return
 
     if args.batch_parse:
         if not args.log_file:
-            print("请指定 --log-file")
+            print("  请指定 --log-file")
             return
         result = log_reader.read_log(args.log_file, line_limit=args.lines or 200, grep=args.grep)
         lines = result.get("lines", [])
         batch = _log_parse_svc.batch_parse(lines, do_assess=args.assess)
-        _print_json(batch)
+        if args.json_output:
+            _print_json(batch)
+        else:
+            _print_parse_batch_natural(batch)
         return
 
     if args.diagnose:
         if _log_collect_svc is None:
-            print("采集模块未加载")
+            print("  采集模块未加载")
             return
         result = _log_collect_svc.diagnose_fault(
             symptom=args.diagnose, device_type=args.device_type,
             protocol=args.protocol, error_log=args.error_log
         )
-        _print_json(result)
+        if args.json_output:
+            _print_json(result)
+        else:
+            _print_diagnose_natural(result)
         return
 
     if args.regex:
         result = _script_gen_svc.generate_regex(args.regex, args.log_sample, args.device_type)
-        _print_json(result)
+        if args.json_output:
+            _print_json(result)
+        else:
+            _print_regex_natural(result)
         return
 
     if args.es_query:
         result = _script_gen_svc.generate_es_query(search_scenario=args.es_query)
-        _print_json(result)
+        if args.json_output:
+            _print_json(result)
+        else:
+            _print_es_query_natural(result)
         return
 
     if args.baseline is not None:
         result = _compliance_svc.generate_baseline(asset_count=args.baseline)
-        _print_json(result)
+        if args.json_output:
+            _print_json(result)
+        else:
+            _print_baseline_natural(result)
         return
 
     if args.optimize:
         script, script_type = args.optimize
         result = _script_gen_svc.optimize_script(script=script, script_type=script_type)
-        _print_json(result)
+        if args.json_output:
+            _print_json(result)
+        else:
+            _print_optimize_natural(result)
         return
 
     if args.qa:
         result = _compliance_svc.compliance_qa(args.qa, args.asset_type)
-        _print_json(result)
+        if args.json_output:
+            _print_json(result)
+        else:
+            _print_qa_natural(result)
         return
 
     if args.train:
         result = _training_svc.dispatch_tasks(category=args.train)
-        _print_json(result)
+        if args.json_output:
+            _print_json(result)
+        else:
+            _print_train_natural(result)
         return
 
-    if args.correlate:
+    if args.correlate is not None:
         if args.log_file:
             window = args.time_window or 5
             result = _log_correlate_svc.correlate_logs_from_file(
@@ -946,8 +1392,10 @@ def run_command(args: argparse.Namespace):
                 detailed=True,
             )
         else:
+            correlate_input = args.correlate if isinstance(args.correlate, str) and args.correlate else ""
             result = _log_correlate_svc.correlate_logs(
-                [args.correlate], time_window_minutes=args.time_window or 5,
+                [correlate_input] if correlate_input else [],
+                time_window_minutes=args.time_window or 5,
                 detailed=True,
             )
         if args.json_output:
@@ -982,8 +1430,8 @@ def main():
         parser.add_argument("--log-file", "-f", help="日志文件路径")
         parser.add_argument("--log-dir", "-d", help="日志文件目录")
         parser.add_argument("--list-logs", "-l", action="store_true", help="列出常见位置的日志文件")
-        parser.add_argument("--sample", "-s", type=int, nargs="?", const=20, help="预览日志文件")
-        parser.add_argument("--parse", "-p", nargs="?", const=True, help="解析日志")
+        parser.add_argument("--sample", "-s", nargs="?", type=int, const=20, help="预览日志文件")
+        parser.add_argument("--parse", "-p", nargs="?", const="", help="解析日志（可选：传入日志行字符串）")
         parser.add_argument("--batch-parse", "-b", action="store_true", help="批量解析")
         parser.add_argument("--assess", "-a", action="store_true", help="解析时同时风险研判")
         parser.add_argument("--lines", "-n", type=int, default=100, help="读取行数")
@@ -1000,7 +1448,7 @@ def main():
         parser.add_argument("--optimize", nargs=2, metavar=("SCRIPT", "TYPE"), help="脚本优化（脚本内容 + 类型: regex/es_query）")
         parser.add_argument("--asset-type", help="资产类型")
         parser.add_argument("--train", help="实训场景分类")
-        parser.add_argument("--correlate", "-c", nargs="?", const=True, help="联合日志审查（关联分析）")
+        parser.add_argument("--correlate", "-c", nargs="?", const="", help="联合日志审查（关联分析）")
         parser.add_argument("--time-window", "-w", type=int, default=5, help="关联时间窗口（分钟）")
 
         args = parser.parse_args()
