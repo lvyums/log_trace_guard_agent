@@ -125,9 +125,9 @@
       "type": "sequence",
       "severity": "major",
       "patterns": [
-        {"keyword": "authentication failed|login failed|invalid credential", "source": "auth|security|.*"},
-        {"keyword": "account locked|too many attempts|rate limit", "source": "auth|security"},
-        {"keyword": "access denied|permission denied|forbidden", "source": "auth|security"}
+        {"keyword": "authentication failed|login failed|invalid credential|Failed password", "source": "auth|security|ssh|.*"},
+        {"keyword": "account locked|too many attempts|rate limit|Invalid user", "source": "auth|security|ssh"},
+        {"keyword": "access denied|permission denied|forbidden|sudo", "source": "auth|security|ssh|.*"}
       ],
       "time_window": 300,
       "required_matches": 2
@@ -138,13 +138,26 @@
       "type": "time_window",
       "severity": "critical",
       "patterns": [
-        {"keyword": "login failed|invalid password|wrong credential", "source": "auth|ssh|application"},
-        {"keyword": "failed login from|invalid user", "source": "ssh|auth"},
-        {"keyword": "brute force|intrusion|blocked ip", "source": "security|waf|ids"}
+        {"keyword": "login failed|invalid password|wrong credential|Failed password", "source": "auth|ssh|application|.*"},
+        {"keyword": "failed login from|invalid user|Invalid user", "source": "ssh|auth|.*"},
+        {"keyword": "brute force|intrusion|blocked ip|Accepted password", "source": "security|waf|ids|ssh|.*"}
       ],
-      "time_window": 60,
+      "time_window": 300,
       "required_matches": 2,
-      "min_freq": 10
+      "min_freq": 3
+    },
+    {
+      "name": "ssh_brute_to_privesc",
+      "description": "检测SSH暴力破解后提权攻击链：多次登录失败 → 登录成功 → sudo提权",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "Failed password", "source": "ssh|.*"},
+        {"keyword": "Accepted password", "source": "ssh|.*"},
+        {"keyword": "sudo.*COMMAND=", "source": "ssh|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 3
     },
     {
       "name": "certificate_expiry_chain",
@@ -260,6 +273,19 @@
         {"keyword": "dependency|upstream|downstream", "source": "service|api|gateway"},
         {"keyword": "upstream timeout|connection to.*failed|service unavailable", "source": "gateway|proxy|nginx"},
         {"keyword": "cascade|cascading failure|dependency failure", "source": "service|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "sql_injection_chain",
+      "description": "检测SQL注入攻击链：登录成功后执行异常SQL查询",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "Accepted password|sudo.*COMMAND=", "source": "ssh|.*"},
+        {"keyword": "SELECT.*FROM|INSERT.*INTO|DROP.*TABLE|UPDATE.*SET|DELETE.*FROM", "source": "db|mysql|.*"},
+        {"keyword": "OR.*=.*1|UNION.*SELECT|--.*|'.*OR.*'", "source": "db|mysql|.*"}
       ],
       "time_window": 300,
       "required_matches": 2
