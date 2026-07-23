@@ -28,7 +28,43 @@ class LogParseService:
 
     @staticmethod
     async def identify_log_type(log_line: str, context: ContextManager) -> Result:
-        """识别日志类型 — 多特征加权识别 + LLM 降级"""
+        """识别日志类型 — 支持单行和多行（自动拆分分别识别）"""
+        if not log_line or not log_line.strip():
+            return Result.fail("日志内容为空或无效")
+
+        # 按换行拆分，去空行
+        lines = [l.strip() for l in log_line.split("\n") if l.strip()]
+        if not lines:
+            return Result.fail("日志内容为空或无效")
+
+        # 单条走原有逻辑（保持向后兼容）
+        if len(lines) == 1:
+            return await LogParseService._identify_single(lines[0], context)
+
+        # 多条：逐条识别，收集结果
+        items = []
+        for line in lines:
+            item_result = await LogParseService._identify_single(line, context)
+            if item_result["code"] == 0:
+                item = item_result["data"]
+                item["raw_log"] = line[:200]
+                items.append(item)
+            else:
+                items.append({
+                    "device_type": "unknown",
+                    "confidence": 0,
+                    "identify_reason": "识别失败",
+                    "raw_log": line[:200],
+                })
+
+        return Result.ok({
+            "total": len(items),
+            "items": items,
+        })
+
+    @staticmethod
+    async def _identify_single(log_line: str, context: ContextManager) -> Result:
+        """识别单条日志类型 — 多特征加权识别 + LLM 降级"""
         # 0. 预处理
         cleaned = LogParseService._preprocess(log_line)
         if not cleaned:
@@ -43,27 +79,24 @@ class LogParseService:
         if rule_match:
             device_type = rule_match.rule.device_type
             priority_weight = min(rule_match.rule.priority / 10, 1.0)
-            confidence = 60 + priority_weight * 30  # 60-90
+            confidence = 60 + priority_weight * 30
             identify_reason = f"规则引擎命中: {rule_match.rule.name}"
         else:
-            # 2. 多特征加权识别
             features = LogParseService._extract_features(cleaned)
             if features:
                 device_type, confidence, identify_reason = features
 
-        # 3. RAG 检索补充
-        rag_context = ""
+        # 2. RAG 检索补充
         try:
             kb = RAGFactory.get_kb("log_basics")
             rag_result = kb.retrieve(cleaned, top_k=3)
             if rag_result.items:
-                rag_context = rag_result.items[0].get("document", "")
                 if not identify_reason:
                     identify_reason = "RAG知识库匹配"
         except Exception as e:
             logger.warning(f"RAG 检索失败: {e}")
 
-        # 4. LLM 降级：当规则引擎和特征匹配都失败时
+        # 3. LLM 降级
         if device_type == "unknown" or confidence < 30:
             llm_result = await LogParseService._llm_identify_fallback(cleaned)
             if llm_result:
@@ -78,7 +111,7 @@ class LogParseService:
         if not identify_reason:
             identify_reason = "未能识别日志类型，特征不明确"
 
-        # 5. 更新上下文
+        # 4. 更新上下文
         ctx = ModuleContext(
             module_id="log_parse",
             status=ModuleStatus.SUCCESS if device_type != "unknown" else ModuleStatus.WARNING,
