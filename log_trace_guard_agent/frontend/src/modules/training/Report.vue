@@ -25,17 +25,18 @@
       </div>
       <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
         <el-descriptions-item label="场景名称">{{ report.scenario_name || selectedScenario }}</el-descriptions-item>
-        <el-descriptions-item label="完成状态">{{ report.status || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="总分">{{ report.score ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="用时">{{ report.duration || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="完成状态">{{ report.overall_grade || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="总分">{{ report.average_score ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="任务数">{{ report.completed_tasks || 0 }} / {{ report.total_tasks || 0 }}</el-descriptions-item>
       </el-descriptions>
-      <div v-if="report.details?.length">
+      <div v-if="report.task_records?.length">
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">详细得分</div>
-        <div v-for="(item,i) in report.details" :key="i" style="margin-bottom:8px;padding:8px;border:1px solid var(--border-color);border-radius:4px">
+        <div v-for="(item,i) in report.task_records" :key="i" style="margin-bottom:8px;padding:8px;border:1px solid var(--border-color);border-radius:4px">
           <div style="display:flex;justify-content:space-between;font-size:13px">
-            <span>{{ item.field }}</span>
+            <span>{{ item.title }}</span>
             <RiskBadge :level="item.score>=80?'normal':item.score>=60?'P2':'P0'" :label="item.score+'分'" />
           </div>
+          <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">尝试次数: {{ item.attempts }} | 等级: {{ item.grade }}</div>
         </div>
       </div>
       <div v-if="report.summary" style="margin-top:12px;font-size:13px;color:var(--text-secondary);line-height:1.8;white-space:pre-wrap">{{ report.summary }}</div>

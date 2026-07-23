@@ -275,6 +275,10 @@ async function submit() {
     })
 
     if (res.success) {
+      // 合并 chains_detailed 到 chains，使事件详情可用
+      if (res.data?.chains_detailed?.length) {
+        res.data.chains = res.data.chains_detailed
+      }
       result.value = res.data
     } else {
       ElMessage.error(res.msg || '分析失败')
