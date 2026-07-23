@@ -25,7 +25,28 @@
       </div>
       <div class="g-card">
         <div class="g-card-title" style="margin-bottom:12px"><el-icon><View /></el-icon> 基线报告预览</div>
-        <div v-if="result" class="compliance-preview" v-html="renderMarkdown(result.report||result.baseline||JSON.stringify(result,null,2))"></div>
+        <div v-if="result" class="compliance-preview">
+          <div v-if="result.summary" style="margin-bottom:16px;padding:12px;background:var(--bg-secondary);border-radius:6px;font-size:13px;line-height:1.8" v-html="renderMarkdown(result.summary)"></div>
+          <div v-if="result.note" style="margin-bottom:12px;font-size:12px;color:var(--text-secondary);font-style:italic">{{ result.note }}</div>
+          <div v-for="(bl,i) in (result.baselines || [])" :key="i" style="margin-bottom:16px;border:1px solid var(--border-color);border-radius:8px;padding:16px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <el-tag :type="bl.severity==='high'?'danger':bl.severity==='medium'?'warning':'info'" size="small">{{ bl.severity==='high'?'高':'中' }}</el-tag>
+              <span style="font-weight:600;font-size:14px">{{ bl.name }}</span>
+              <span style="font-size:12px;color:var(--text-tertiary)">[{{ bl.baseline_id }}]</span>
+            </div>
+            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">{{ bl.description }}</div>
+            <div v-if="bl.thresholds?.length" style="margin-bottom:12px">
+              <div style="font-size:12px;font-weight:500;margin-bottom:6px">监控阈值：</div>
+              <div v-for="(th,j) in bl.thresholds" :key="j" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px">
+                <el-tag :type="th.severity==='high'?'danger':'warning'" size="small" style="font-size:10px">{{ th.severity }}</el-tag>
+                <span><strong>{{ th.name }}</strong>: {{ th.description }}</span>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px"><strong>适用设备：</strong>{{ bl.applicable_devices?.join(', ') }}</div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px"><strong>检查频率：</strong>{{ bl.check_frequency }}</div>
+            <div v-if="bl.remediation" style="font-size:12px;color:var(--text-secondary);margin-top:8px;padding:8px;background:var(--bg-tertiary);border-radius:4px"><strong>整改措施：</strong>{{ bl.remediation }}</div>
+          </div>
+        </div>
         <div v-else style="text-align:center;padding:40px;color:var(--text-secondary)"><el-icon :size="48"><Document /></el-icon><div style="margin-top:8px">填写左侧表单生成报告</div></div>
       </div>
     </div>

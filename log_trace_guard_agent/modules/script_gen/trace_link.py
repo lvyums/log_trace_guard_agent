@@ -1,5 +1,6 @@
 """模块四：攻击链路溯源策略 — 基于多源日志关键字段关联，梳理攻击链路"""
 
+import json
 import re
 from typing import Optional
 
@@ -98,12 +99,16 @@ class TraceLinkStrategy(BaseScriptStrategy):
                 if summary:
                     summary += "（注：部分数据来自知识库检索，建议人工验证）"
 
+        # 7. 生成溯源检索脚本
+        scripts = self._generate_scripts(events, entry_point, attack_type, params)
+
         return {
             "attack_chain": events,
             "entry_point": entry_point or "未识别到明确攻击入口",
             "affected_assets": list(affected_assets) if affected_assets else ["未识别到受影响资产"],
             "attack_stage": attack_stage,
             "summary": summary,
+            "scripts": scripts,
         }
 
     def _try_rag_trace(self, logs: list, attack_type: Optional[str]) -> tuple[list, Optional[str]]:
@@ -241,3 +246,147 @@ class TraceLinkStrategy(BaseScriptStrategy):
 
         summary += " 建议对高危事件进行人工复核，并排查受影响资产的安全状态。"
         return summary
+
+    def _generate_scripts(self, events: list, entry_point: Optional[str],
+                          attack_type: Optional[str], params: dict) -> list[dict]:
+        """生成溯源检索脚本（grep / ES DSL / SIEM 查询）"""
+        scripts = []
+        start_time = params.get("start_time", "")
+        end_time = params.get("end_time", "")
+        target_ip = params.get("target_ip") or entry_point
+
+        # 1. grep 脚本
+        grep_patterns = self._build_grep_patterns(events, attack_type)
+        if grep_patterns:
+            grep_cmd = self._build_grep_command(grep_patterns, target_ip, start_time, end_time)
+            scripts.append({
+                "name": "grep 检索脚本",
+                "lang": "bash",
+                "description": "在本地日志文件中检索相关攻击事件",
+                "code": grep_cmd,
+            })
+
+        # 2. Elasticsearch DSL 查询
+        es_query = self._build_es_query(events, attack_type, target_ip, start_time, end_time)
+        if es_query:
+            scripts.append({
+                "name": "Elasticsearch 查询",
+                "lang": "json",
+                "description": "在 ELK 中检索关联日志",
+                "code": es_query,
+            })
+
+        # 3. Splunk SPL 查询
+        splunk_query = self._build_splunk_query(events, attack_type, target_ip, start_time, end_time)
+        if splunk_query:
+            scripts.append({
+                "name": "Splunk SPL 查询",
+                "lang": "spl",
+                "description": "在 Splunk 中检索关联日志",
+                "code": splunk_query,
+            })
+
+        return scripts
+
+    def _build_grep_patterns(self, events: list, attack_type: Optional[str]) -> list[str]:
+        """根据事件类型构建 grep 正则"""
+        patterns = []
+        event_types = set(e.get("event_type", "") for e in events)
+
+        if "brute_force" in event_types or (attack_type and "ssh" in attack_type.lower()):
+            patterns.append(r"Failed password|Invalid user|authentication failure")
+        if "sql_injection" in event_types or (attack_type and "sql" in attack_type.lower()):
+            patterns.append(r"(?i)(union.*select|OR\s+'1'='1|DROP\s+TABLE|DELETE\s+FROM)")
+        if "webshell" in event_types or (attack_type and "webshell" in attack_type.lower()):
+            patterns.append(r"(?i)(eval\(|system\(|exec\(|base64_decode)")
+        if "lateral_move" in event_types:
+            patterns.append(r"(?i)(psexec|wmiexec|smbexec|PsExec)")
+        if "port_scan" in event_types:
+            patterns.append(r"(?i)(SYN.*scan|nmap|masscan|port.*scan)")
+
+        if not patterns:
+            patterns.append(r"(?i)(failed|error|attack|blocked|denied)")
+
+        return patterns
+
+    def _build_grep_command(self, patterns: list, target_ip: Optional[str],
+                            start_time: str, end_time: str) -> str:
+        """构建 grep 命令"""
+        combined = "|".join(patterns)
+        cmd = f'grep -E -i "{combined}" /var/log/*.log'
+
+        if target_ip:
+            cmd += f' | grep "{target_ip}"'
+
+        cmd += " # 按时间范围过滤: head -n <行数> 或配合 awk 筛选"
+        return cmd
+
+    def _build_es_query(self, events: list, attack_type: Optional[str],
+                        target_ip: str, start_time: str, end_time: str) -> str:
+        """构建 Elasticsearch DSL 查询"""
+        must_conditions = []
+
+        # IP 过滤
+        if target_ip:
+            must_conditions.append({"bool": {"should": [
+                {"match": {"source.ip": target_ip}},
+                {"match": {"destination.ip": target_ip}},
+                {"match": {"src_ip": target_ip}},
+                {"match": {"src": target_ip}},
+            ]}})
+
+        # 关键词过滤
+        event_types = set(e.get("event_type", "") for e in events)
+        keywords = []
+        if "brute_force" in event_types:
+            keywords.extend(["Failed password", "Invalid user", "authentication failure"])
+        if "sql_injection" in event_types:
+            keywords.extend(["UNION SELECT", "OR 1=1", "DROP TABLE"])
+        if "webshell" in event_types:
+            keywords.extend(["eval(", "system(", "webshell"])
+        if not keywords:
+            keywords.append(attack_type or "attack")
+
+        must_conditions.append({"match": {"message": " OR ".join(keywords)}})
+
+        # 时间范围
+        time_range = {}
+        if start_time:
+            time_range["gte"] = start_time
+        if end_time:
+            time_range["lte"] = end_time
+        if time_range:
+            must_conditions.append({"range": {"@timestamp": time_range}})
+
+        query = {
+            "query": {"bool": {"must": must_conditions}},
+            "size": 100,
+            "sort": [{"@timestamp": {"order": "asc"}}],
+        }
+        return json.dumps(query, indent=2, ensure_ascii=False)
+
+    def _build_splunk_query(self, events: list, attack_type: Optional[str],
+                            target_ip: str, start_time: str, end_time: str) -> str:
+        """构建 Splunk SPL 查询"""
+        event_types = set(e.get("event_type", "") for e in events)
+        search_terms = []
+
+        if "brute_force" in event_types:
+            search_terms.append("(Failed password OR Invalid user)")
+        elif "sql_injection" in event_types:
+            search_terms.append("(UNION SELECT OR OR 1=1)")
+        elif "webshell" in event_types:
+            search_terms.append("(eval OR system OR webshell)")
+        else:
+            search_terms.append(attack_type or "attack")
+
+        query = "index=* " + " ".join(search_terms)
+
+        if target_ip:
+            query += f' | search src="{target_ip}" OR dest="{target_ip}" OR src_ip="{target_ip}"'
+
+        if start_time and end_time:
+            query += f' earliest="{start_time}" latest="{end_time}"'
+
+        query += " | stats count by src_ip, dest_ip, _time | sort _time"
+        return query

@@ -28,7 +28,15 @@
         </div>
       </div>
       <div v-if="result.summary" style="font-size:13px;color:var(--text-secondary);margin-bottom:8px"><strong>总结：</strong>{{ result.summary }}</div>
-      <div v-if="result.entry_point" style="font-size:13px;color:var(--text-tertiary)"><strong>攻击入口：</strong>{{ result.entry_point }}</div>
+      <div v-if="result.entry_point" style="font-size:13px;color:var(--text-tertiary);margin-bottom:16px"><strong>攻击入口：</strong>{{ result.entry_point }}</div>
+      <div v-if="result.scripts?.length">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px">溯源检索脚本</div>
+        <div v-for="(script,i) in result.scripts" :key="i" style="margin-bottom:16px">
+          <div style="font-size:13px;font-weight:500;margin-bottom:4px">{{ script.name }}</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">{{ script.description }}</div>
+          <CodeBlock :code="script.code" :lang="script.lang" />
+        </div>
+      </div>
     </div>
     <div v-if="!result && !loading" class="g-card">
       <EmptyGuide title="输入攻击线索" desc="输入攻击类型和相关日志，AI生成溯源检索脚本" action-text="填充示例" @action="fillSample" />
@@ -41,6 +49,7 @@ import { ElMessage } from 'element-plus'
 import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
+import CodeBlock from '../../components/CodeBlock.vue'
 defineProps<{ mode?: string }>()
 const attackType=ref(''); const targetIp=ref(''); const timeRange=ref(''); const logs=ref(''); const loading=ref(false); const result=ref<any>(null)
 function fillSample(){attackType.value='SSH暴力破解';targetIp.value='192.168.1.50';timeRange.value='2024-01-05 10:00 ~ 2024-01-05 14:00';logs.value='<22>Jan  5 12:34:56 sshd[12345]: Failed password for root from 192.168.1.100 port 22'}
