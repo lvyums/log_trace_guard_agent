@@ -1,0 +1,52 @@
+name: Release CLI Package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'log_trace_guard_cli/**'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Package CLI
+        run: |
+          zip -r log-guard-cli.zip log_trace_guard_cli/ \
+            -x "log_trace_guard_cli/__pycache__/*" \
+            -x "log_trace_guard_cli/**/__pycache__/*" \
+            -x "log_trace_guard_cli/*.pyc" \
+            -x "log_trace_guard_cli/**/*.pyc" \
+            -x "log_trace_guard_cli/.pytest_cache/*" \
+            -x "log_trace_guard_cli/**/.pytest_cache/*"
+
+      - name: Get version
+        id: version
+        run: echo "tag=v2.1.0-$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "CLI ${{ steps.version.outputs.tag }}"
+          body: |
+            ## 日志溯源卫士 CLI v2.1
+
+            ### 安装
+            ```bash
+            # 下载解压后
+            cd log_trace_guard_cli
+            pip install -e .
+
+            # 运行
+            log-guard
+            ```
+          files: log-guard-cli.zip
+          draft: false
+          prerelease: false

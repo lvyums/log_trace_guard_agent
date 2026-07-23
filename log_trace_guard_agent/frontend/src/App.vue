@@ -37,6 +37,8 @@
       </div>
     </header>
 
+    <CliDownloadBanner />
+
     <div class="app-body" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <aside class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
         <div v-for="mod in modules" :key="mod.key" class="sidebar-section" v-show="currentModule === mod.key">
@@ -61,6 +63,7 @@
 import { ref, computed, shallowRef, markRaw, onMounted } from 'vue'
 import { APP_CONFIG } from './config'
 import GlobalTour from './components/GlobalTour.vue'
+import CliDownloadBanner from './components/CliDownloadBanner.vue'
 
 // Import all page components
 import LogParseIdentify from './modules/log-parse/Identify.vue'
