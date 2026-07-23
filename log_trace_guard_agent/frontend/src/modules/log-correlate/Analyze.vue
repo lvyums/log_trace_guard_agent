@@ -131,6 +131,44 @@
         <el-alert :title="result.summary" type="info" :closable="false" show-icon />
       </div>
 
+      <!-- 完整时间线 -->
+      <div v-if="result.timeline?.length" style="margin-top:16px;margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:12px;font-size:14px">
+          <el-icon><Clock /></el-icon> 事件时间线（{{ result.timeline.length }} 条）
+        </div>
+        <el-timeline>
+          <el-timeline-item
+            v-for="(evt, ti) in result.timeline"
+            :key="ti"
+            :timestamp="evt.timestamp || `#${evt.line_number || ti + 1}`"
+            placement="top"
+          >
+            <div class="g-timeline-event">
+              <div class="g-timeline-event-header">
+                <el-tag size="small" :type="evt.device_type === 'unknown' ? 'info' : 'primary'" effect="plain">
+                  {{ evt.device_type }}
+                </el-tag>
+                <span v-if="evt.risk_level" style="margin-left:4px">
+                  <RiskBadge :level="getRiskKey(evt.risk_level)" :label="evt.risk_level" />
+                </span>
+              </div>
+              <div class="g-timeline-event-meta">
+                <span v-if="evt.src_ip"><el-icon><User /></el-icon> {{ evt.src_ip }}</span>
+                <span v-if="evt.dst_ip"> → {{ evt.dst_ip }}</span>
+                <span v-if="evt.user"> | 用户: {{ evt.user }}</span>
+                <span v-if="evt.command"> | 命令: <code style="font-size:11px">{{ evt.command }}</code></span>
+              </div>
+              <div v-if="evt.risk_desc" class="g-timeline-event-desc ellipsis" :title="evt.risk_desc">
+                {{ evt.risk_desc }}
+              </div>
+              <div class="g-timeline-event-raw ellipsis" :title="evt.raw_log">
+                <code style="font-size:11px;color:var(--text-tertiary)">{{ evt.raw_log }}</code>
+              </div>
+            </div>
+          </el-timeline-item>
+        </el-timeline>
+      </div>
+
       <!-- 攻击链列表 -->
       <div v-if="result.chains?.length" style="margin-top:16px">
         <div style="font-weight:600;margin-bottom:12px;font-size:14px">
@@ -138,11 +176,13 @@
         </div>
 
         <div v-for="(chain, idx) in result.chains" :key="idx" class="g-chain-card" style="margin-bottom:12px">
-          <div class="g-chain-header" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div class="g-chain-header" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
             <RiskBadge :level="getRiskKey(chain.risk_level)" :label="chain.risk_level" />
             <strong>{{ chain.chain_name }}</strong>
             <el-tag size="small" type="info">置信度: {{ Math.round(chain.confidence * 100) }}%</el-tag>
             <el-tag size="small" type="info">事件数: {{ chain.event_count }}</el-tag>
+            <el-tag v-if="chain.chain_id" size="small" type="warning">ID: {{ chain.chain_id }}</el-tag>
+            <el-tag v-if="chain.entity_key" size="small" type="success">实体: {{ chain.entity_key }}</el-tag>
           </div>
           <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px">
             {{ chain.description }}
@@ -176,6 +216,25 @@
                 <el-descriptions-item label="目标IP">{{ evt.dst_ip || '-' }}</el-descriptions-item>
                 <el-descriptions-item label="用户">{{ evt.user || '-' }}</el-descriptions-item>
                 <el-descriptions-item label="状态">{{ evt.status || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="命令">
+                  <el-tag v-if="evt.command" size="small" type="info" effect="plain" style="max-width:200px">
+                    <span class="ellipsis">{{ evt.command }}</span>
+                  </el-tag>
+                  <span v-else>-</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="风险等级">
+                  <span v-if="evt.risk_level">
+                    <RiskBadge :level="getRiskKey(evt.risk_level)" :label="evt.risk_level" />
+                  </span>
+                  <span v-else>-</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="风险描述" :span="2">
+                  <span v-if="evt.risk_desc" class="ellipsis" :title="evt.risk_desc" style="max-width:400px;display:inline-block">{{ evt.risk_desc }}</span>
+                  <span v-else>-</span>
+                </el-descriptions-item>
+                <el-descriptions-item v-if="evt.extra_info && Object.keys(evt.extra_info).length" label="扩展信息" :span="2">
+                  <code style="font-size:11px;word-break:break-all"> {{ JSON.stringify(evt.extra_info) }} </code>
+                </el-descriptions-item>
                 <el-descriptions-item label="原始日志" :span="2">
                   <code style="word-break:break-all;font-size:11px">{{ evt.raw_log }}</code>
                 </el-descriptions-item>
@@ -323,5 +382,31 @@ async function submit() {
 }
 .g-summary {
   font-size: 13px;
+}
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-timeline-event {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.g-timeline-event-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+.g-timeline-event-meta {
+  color: var(--text-secondary, #4e5969);
+  margin-bottom: 2px;
+}
+.g-timeline-event-desc {
+  color: var(--color-danger, #f56c6c);
+  margin-bottom: 2px;
+}
+.g-timeline-event-raw {
+  max-width: 600px;
 }
 </style>

@@ -31,10 +31,17 @@
           <div v-for="(bl,i) in (result.baselines || [])" :key="i" style="margin-bottom:16px;border:1px solid var(--border-color);border-radius:8px;padding:16px">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
               <el-tag :type="bl.severity==='high'?'danger':bl.severity==='medium'?'warning':'info'" size="small">{{ bl.severity==='high'?'高':'中' }}</el-tag>
+              <el-tag type="primary" size="small" effect="plain">{{ bl.category }}</el-tag>
               <span style="font-weight:600;font-size:14px">{{ bl.name }}</span>
               <span style="font-size:12px;color:var(--text-tertiary)">[{{ bl.baseline_id }}]</span>
             </div>
             <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">{{ bl.description }}</div>
+            <el-descriptions :column="1" border size="small" style="margin-bottom:12px">
+              <el-descriptions-item label="监控场景">{{ bl.monitor_scenario }}</el-descriptions-item>
+              <el-descriptions-item label="告警标准">{{ bl.alert_standard }}</el-descriptions-item>
+              <el-descriptions-item label="检查频率">{{ bl.check_frequency }}</el-descriptions-item>
+              <el-descriptions-item label="适用设备">{{ bl.applicable_devices?.join(', ') }}</el-descriptions-item>
+            </el-descriptions>
             <div v-if="bl.thresholds?.length" style="margin-bottom:12px">
               <div style="font-size:12px;font-weight:500;margin-bottom:6px">监控阈值：</div>
               <div v-for="(th,j) in bl.thresholds" :key="j" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px">
@@ -42,8 +49,6 @@
                 <span><strong>{{ th.name }}</strong>: {{ th.description }}</span>
               </div>
             </div>
-            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px"><strong>适用设备：</strong>{{ bl.applicable_devices?.join(', ') }}</div>
-            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px"><strong>检查频率：</strong>{{ bl.check_frequency }}</div>
             <div v-if="bl.remediation" style="font-size:12px;color:var(--text-secondary);margin-top:8px;padding:8px;background:var(--bg-tertiary);border-radius:4px"><strong>整改措施：</strong>{{ bl.remediation }}</div>
           </div>
         </div>

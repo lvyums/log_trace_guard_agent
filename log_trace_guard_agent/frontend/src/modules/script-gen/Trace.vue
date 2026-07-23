@@ -21,14 +21,38 @@
     </div>
     <div v-if="result" class="g-card slide">
       <div class="g-card-title" style="margin-bottom:12px"><el-icon><Tickets /></el-icon> 溯源结果</div>
+
+      <!-- Attack stage & entry point -->
+      <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
+        <el-descriptions-item label="攻击阶段">
+          <el-tag :type="result.attack_stage==='入侵成功'?'danger':result.attack_stage==='横向移动'?'warning':'info'" size="small">{{ result.attack_stage || '未知' }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="攻击入口">{{ result.entry_point || '未知' }}</el-descriptions-item>
+      </el-descriptions>
+
+      <!-- Affected assets -->
+      <div v-if="result.affected_assets?.length" style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:6px;font-size:13px">受影响资产</div>
+        <el-tag v-for="(asset,i) in result.affected_assets" :key="i" type="danger" size="small" style="margin-right:6px;margin-bottom:4px">{{ asset }}</el-tag>
+      </div>
+
+      <!-- Attack chain events -->
       <div v-if="result.attack_chain?.length" style="margin-bottom:16px">
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">攻击链路</div>
-        <div v-for="(event,i) in result.attack_chain" :key="i" class="g-alert g-alert--info" style="margin-bottom:8px">
-          <span>Step {{i+1}}: {{ event.action }} — {{ event.source }} → {{ event.target||'未知' }}</span>
+        <div v-for="(event,i) in result.attack_chain" :key="i" class="g-alert g-alert--info" style="margin-bottom:10px;padding:10px 12px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-weight:600;font-size:13px;min-width:48px">Step {{i+1}}</span>
+            <el-tag size="small" type="primary" effect="plain">{{ event.event_type || '事件' }}</el-tag>
+            <RiskBadge v-if="event.risk_level" :level="event.risk_level" :label="event.risk_level" size="small" />
+            <span v-if="event.timestamp" style="font-size:12px;color:var(--text-tertiary);margin-left:auto">{{ event.timestamp }}</span>
+          </div>
+          <div style="font-size:13px">{{ event.action }} — {{ event.source }}<span v-if="event.target"> → {{ event.target }}</span></div>
+          <div v-if="event.detail" style="font-size:12px;color:var(--text-tertiary);margin-top:4px">{{ event.detail }}</div>
         </div>
       </div>
+
+      <!-- Summary -->
       <div v-if="result.summary" style="font-size:13px;color:var(--text-secondary);margin-bottom:8px"><strong>总结：</strong>{{ result.summary }}</div>
-      <div v-if="result.entry_point" style="font-size:13px;color:var(--text-tertiary);margin-bottom:16px"><strong>攻击入口：</strong>{{ result.entry_point }}</div>
       <div v-if="result.scripts?.length">
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">溯源检索脚本</div>
         <div v-for="(script,i) in result.scripts" :key="i" style="margin-bottom:16px">
@@ -50,6 +74,7 @@ import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
 import CodeBlock from '../../components/CodeBlock.vue'
+import RiskBadge from '../../components/RiskBadge.vue'
 defineProps<{ mode?: string }>()
 const attackType=ref(''); const targetIp=ref(''); const timeRange=ref(''); const logs=ref(''); const loading=ref(false); const result=ref<any>(null)
 function fillSample(){attackType.value='SSH暴力破解';targetIp.value='192.168.1.50';timeRange.value='2024-01-05 10:00 ~ 2024-01-05 14:00';logs.value='<22>Jan  5 12:34:56 sshd[12345]: Failed password for root from 192.168.1.100 port 22'}

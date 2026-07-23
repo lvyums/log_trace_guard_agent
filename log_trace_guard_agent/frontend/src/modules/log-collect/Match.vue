@@ -31,13 +31,34 @@
       </div>
       <el-descriptions :column="2" border size="small">
         <el-descriptions-item label="设备类型">{{ result.device_info?.device_type || result.plan?.device_type || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="设备型号">{{ result.device_info?.model || result.plan?.device_model || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="设备厂商">{{ result.device_info?.vendor || '-' }}</el-descriptions-item>
         <el-descriptions-item label="采集协议">{{ result.plan?.protocol || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="采集架构">{{ result.plan?.architecture || '-' }}</el-descriptions-item>
         <el-descriptions-item label="匹配置信度">{{ result.match_confidence ? Math.round(result.match_confidence) + '%' : '-' }}</el-descriptions-item>
         <el-descriptions-item label="匹配来源">{{ result.match_source || '工厂匹配' }}</el-descriptions-item>
       </el-descriptions>
+      <div v-if="result.low_confidence_note" style="margin-top:12px">
+        <el-alert :title="result.low_confidence_note" type="warning" show-icon :closable="false" />
+      </div>
+      <div v-if="result.plan?.steps?.length" style="margin-top:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px">实施步骤</div>
+        <div v-for="(step, i) in result.plan.steps" :key="i" style="display:flex;align-items:flex-start;gap:12px;margin-bottom:8px">
+          <div style="width:24px;height:24px;border-radius:50%;background:var(--el-color-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">{{ i+1 }}</div>
+          <div style="flex:1;font-size:13px;color:var(--text-secondary)">{{ step }}</div>
+        </div>
+      </div>
+      <div v-if="result.plan?.notes?.length" style="margin-top:12px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px">注意事项</div>
+        <div v-for="(note, i) in result.plan.notes" :key="i" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;padding-left:12px;border-left:2px solid var(--el-color-warning)">{{ note }}</div>
+      </div>
       <div v-if="result.plan?.config_template" style="margin-top:16px">
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">配置模板</div>
         <CodeBlock :code="typeof result.plan.config_template === 'string' ? result.plan.config_template : JSON.stringify(result.plan.config_template, null, 2)" lang="bash" />
+      </div>
+      <div v-if="result.rag_supplements?.length || result.plan?.rag_supplements?.length" style="margin-top:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px">知识库补充</div>
+        <div v-for="(s, i) in (result.rag_supplements || result.plan?.rag_supplements || [])" :key="i" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;padding:8px;background:var(--bg-tertiary);border-radius:4px">{{ s }}</div>
       </div>
     </div>
     <div v-if="!result && !loading" class="g-card">

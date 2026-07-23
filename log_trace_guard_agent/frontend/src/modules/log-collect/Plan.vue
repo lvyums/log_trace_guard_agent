@@ -33,6 +33,11 @@
     <div v-if="result" class="g-card slide">
       <div class="g-card-header"><div class="g-card-title"><el-icon><Document /></el-icon> 采集方案</div></div>
       <div style="font-weight:600;font-size:15px;margin-bottom:12px">{{ result.device_type }} 采集方案</div>
+      <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
+        <el-descriptions-item label="设备型号">{{ result.device_model || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="采集协议">{{ result.protocol || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="采集架构">{{ result.architecture || '-' }}</el-descriptions-item>
+      </el-descriptions>
       <div v-if="result.steps?.length" style="margin-bottom:16px">
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">实施步骤</div>
         <div v-for="(step, i) in result.steps" :key="i" style="display:flex;align-items:flex-start;gap:12px;margin-bottom:8px">
@@ -40,9 +45,17 @@
           <div style="flex:1;font-size:13px;color:var(--text-secondary)">{{ step }}</div>
         </div>
       </div>
+      <div v-if="result.notes?.length" style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px">注意事项</div>
+        <div v-for="(note, i) in result.notes" :key="i" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;padding-left:12px;border-left:2px solid var(--el-color-warning)">{{ note }}</div>
+      </div>
       <div v-if="result.config_template">
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">配置代码</div>
         <CodeBlock :code="typeof result.config_template === 'string' ? result.config_template : JSON.stringify(result.config_template,null,2)" lang="bash" />
+      </div>
+      <div v-if="result.rag_supplements?.length" style="margin-top:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px">知识库补充</div>
+        <div v-for="(s, i) in result.rag_supplements" :key="i" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;padding:8px;background:var(--bg-tertiary);border-radius:4px">{{ s }}</div>
       </div>
     </div>
     <div v-if="!result && !loading" class="g-card">

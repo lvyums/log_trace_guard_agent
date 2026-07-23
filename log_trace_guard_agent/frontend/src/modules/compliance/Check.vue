@@ -43,10 +43,14 @@
         <div style="font-size:32px;font-weight:700" :style="{color: result.overall_score>=80?'var(--risk-normal)':result.overall_score>=60?'var(--risk-p2)':'var(--risk-p0)'}">{{ result.overall_score }}</div>
         <div style="font-size:13px;color:var(--text-secondary)">合规评分（满分100）</div>
       </div>
+      <div v-if="result.note" style="margin-bottom:16px">
+        <el-alert :title="result.note" type="info" show-icon :closable="false" />
+      </div>
       <el-descriptions :column="3" border size="small" style="margin-bottom:16px">
         <el-descriptions-item label="总检查项">{{ (result.gaps||[]).length }}</el-descriptions-item>
         <el-descriptions-item label="高风险"><span style="color:var(--risk-p0)">{{ result.critical_count||0 }}</span></el-descriptions-item>
         <el-descriptions-item label="中风险"><span style="color:var(--risk-p2)">{{ result.medium_count||0 }}</span></el-descriptions-item>
+        <el-descriptions-item label="低风险"><span style="color:var(--risk-p3)">{{ result.low_count||0 }}</span></el-descriptions-item>
       </el-descriptions>
       <div v-if="result.gaps?.length">
         <div v-for="(gap,i) in result.gaps" :key="i" style="margin-bottom:12px;padding:12px;border:1px solid var(--border-color);border-radius:6px">
@@ -55,6 +59,10 @@
             <span style="font-weight:500;font-size:13px">{{ gap.requirement }}</span>
             <span style="font-size:11px;color:var(--text-tertiary)">[{{ gap.standard_ref }}]</span>
           </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+            <el-tag v-if="gap.gap_id" size="small" type="info">{{ gap.gap_id }}</el-tag>
+            <el-tag v-if="gap.priority" size="small" :type="gap.priority?.startsWith('P0')||gap.priority?.startsWith('P1')?'danger':'warning'">{{ gap.priority }}</el-tag>
+          </div>
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px"><strong>当前状态：</strong>{{ gap.current_status }}</div>
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px"><strong>风险描述：</strong>{{ gap.risk_description }}</div>
           <div v-if="gap.remediation_steps?.length" style="margin-top:8px;padding:8px;background:var(--bg-tertiary);border-radius:4px">
@@ -62,6 +70,10 @@
             <div v-for="(step,j) in gap.remediation_steps" :key="j" style="font-size:12px;color:var(--text-secondary);margin-bottom:2px">{{ j+1 }}. {{ step }}</div>
           </div>
         </div>
+      </div>
+      <div v-if="result.llm_remediation" style="margin-top:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px">LLM 智能整改建议</div>
+        <div style="padding:12px;background:var(--bg-tertiary);border-radius:6px;font-size:13px;line-height:1.8;white-space:pre-wrap">{{ result.llm_remediation }}</div>
       </div>
     </div>
     <div v-if="!result && !loading" class="g-card">
