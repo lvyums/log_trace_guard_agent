@@ -44,6 +44,20 @@
             <RiskBadge v-if="item.risk_result?.risk_level" :level="getLevelKey(item.risk_result.risk_level)" :label="item.risk_result.risk_level" size="small" />
             <span v-if="item.parse_result?.user" style="margin-left:8px;color:var(--text-secondary)">用户: {{ item.parse_result.user }}</span>
             <span v-if="item.parse_result?.src_ip" style="margin-left:8px;color:var(--text-secondary)">源IP: {{ item.parse_result.src_ip }}</span>
+            <div v-if="item.risk_result" style="margin-top:4px;padding:6px 8px;background:var(--bg-secondary);border-radius:4px;line-height:1.6">
+              <div v-if="item.risk_result.risk_desc" style="color:var(--text-secondary)">
+                <el-icon style="margin-right:4px;vertical-align:middle"><Warning /></el-icon>
+                <span>{{ item.risk_result.risk_desc }}</span>
+              </div>
+              <div v-if="item.risk_result.attack_type" style="margin-top:2px;color:var(--text-secondary)">
+                <el-icon style="margin-right:4px;vertical-align:middle"><SoldOut /></el-icon>
+                <span>攻击类型: {{ item.risk_result.attack_type }}</span>
+              </div>
+              <div v-if="item.risk_result.suggestion" style="margin-top:2px;color:var(--el-color-primary)">
+                <el-icon style="margin-right:4px;vertical-align:middle"><ChatLineSquare /></el-icon>
+                <span>{{ item.risk_result.suggestion }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
