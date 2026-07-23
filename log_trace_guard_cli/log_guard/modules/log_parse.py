@@ -845,7 +845,7 @@ class LogParseService:
         parser for deep field extraction.
 
         Returns:
-            dict with parsed fields, including device_type and raw_log.
+            Result.ok(data=parsed_fields) or Result.fail(...)
         """
         result: Dict[str, Any] = {
             "timestamp": None,
@@ -860,7 +860,7 @@ class LogParseService:
         }
 
         if not log_line or not log_line.strip():
-            return result
+            return Result.fail("Empty log line")
 
         # Identify type
         id_result = self.identify_log_type(log_line)
@@ -878,7 +878,7 @@ class LogParseService:
                 if parsed.extra_info:
                     result["extra_info"] = parsed.extra_info
 
-        return result
+        return Result.ok(data=result)
 
     # ------------------------------------------------------------------
     # assess_risk
@@ -895,8 +895,7 @@ class LogParseService:
             parsed_fields: Dict of parsed log fields (e.g. from parse_log).
 
         Returns:
-            dict with keys: risk_level, confidence, attack_type,
-            risk_desc, suggestion, match_rule_ids
+            Result.ok(data=risk_dict) or Result.fail(...)
         """
         default = {
             "risk_level": "P3_噪音",
@@ -908,13 +907,13 @@ class LogParseService:
         }
 
         if not parsed_fields:
-            return default
+            return Result.ok(data=default)
 
         try:
             rules = JsonConfigLoader.load("risk_rules.json")
         except (FileNotFoundError, ValueError, Exception) as e:
             logger.warning(f"Could not load risk_rules.json: {e}")
-            return default
+            return Result.ok(data=default)
 
         best_match = None
         best_confidence = 0.0
@@ -939,9 +938,9 @@ class LogParseService:
 
         if best_match:
             best_match["confidence"] = round(best_match["confidence"], 4)
-            return best_match
+            return Result.ok(data=best_match)
 
-        return default
+        return Result.ok(data=default)
 
     @staticmethod
     def _evaluate_condition(condition: Dict[str, Any],
@@ -1028,7 +1027,8 @@ class LogParseService:
                 })
                 continue
 
-            parsed = self.parse_log(log_line)
+            parse_result = self.parse_log(log_line)
+            parsed = parse_result.get("data", {})
             item: Dict[str, Any] = {
                 "raw_log": parsed.get("raw_log", log_line),
                 "device_type": parsed.get("device_type", "unknown"),
@@ -1051,7 +1051,8 @@ class LogParseService:
                 item["error"] = "Could not identify or parse log type"
 
             if do_assess:
-                risk = self.assess_risk(parsed)
+                risk_result = self.assess_risk(parsed)
+                risk = risk_result.get("data", {})
                 item["risk_assessment"] = risk
                 risk_summary["total_assessed"] += 1
                 rl = risk.get("risk_level", "P3_噪音")

@@ -124,7 +124,7 @@ class AttackChain:
 _RE_ISO = re.compile(
     r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})"
 )
-# Syslog: Jan 15 10:30:00
+# Syslog: Jan 15 10:30:00 (with optional fractional seconds)
 _RE_SYSLOG = re.compile(
     r"(\w{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})"
 )
@@ -132,9 +132,13 @@ _RE_SYSLOG = re.compile(
 _RE_WEB = re.compile(
     r"(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2})"
 )
-# Full: 2024-01-01T10:00:00.123+08:00
+# Full: 2024-01-01T10:00:00.123+08:00 or 2024-01-01 10:00:00.123
 _RE_ISO_FULL = re.compile(
     r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})"
+)
+# Syslog with fractional: Jul 21 16:01:00.123 CST
+_RE_SYSLOG_FRAC = re.compile(
+    r"(\w{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\.\d+"
 )
 
 _MONTH_MAP = {
@@ -182,6 +186,20 @@ def _parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
                 return datetime(
                     int(m.group(3)), month, int(m.group(1)),
                     int(m.group(4)), int(m.group(5)), int(m.group(6)),
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # Try Syslog with fractional seconds: Jul 21 16:01:00.123 CST
+    m = _RE_SYSLOG_FRAC.match(ts_str)
+    if m:
+        try:
+            month = _MONTH_MAP.get(m.group(1).lower())
+            if month:
+                now = datetime.now()
+                return datetime(
+                    now.year, month, int(m.group(2)),
+                    int(m.group(3)), int(m.group(4)), int(m.group(5)),
                 )
         except (ValueError, TypeError):
             pass
@@ -236,10 +254,15 @@ class TimelineBuilder:
             line = line.strip()
             if not line:
                 continue
+            # Skip comment lines and section headers
+            if line.startswith("#") or line.startswith("──") or line.startswith("───"):
+                continue
 
             # Reuse LogParseService for parsing and risk assessment
-            parsed = self._parse_svc.parse_log(line)
-            risk = self._parse_svc.assess_risk(parsed)
+            parse_result = self._parse_svc.parse_log(line)
+            parsed = parse_result.get("data", {})
+            risk_result = self._parse_svc.assess_risk(parsed)
+            risk = risk_result.get("data", {})
 
             event = CorrelatedEvent(
                 timestamp=parsed.get("timestamp"),

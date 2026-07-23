@@ -19,27 +19,42 @@ from typing import Optional
 # 编码检测
 # ---------------------------------------------------------------------------
 
-_ENCODING_CANDIDATES = ["utf-8", "gbk", "latin-1", "utf-16"]
+_ENCODING_CANDIDATES = ["utf-8", "utf-8-sig", "gbk", "utf-16", "latin-1"]
 
 
 def _detect_encoding(file_path: str) -> str:
     """尝试自动检测文件编码，返回最可能的编码名称。"""
-    with open(file_path, "rb") as f:
-        raw = f.read(min(8192, os.path.getsize(file_path) or 1))
+    try:
+        file_size = os.path.getsize(file_path) or 1
+        with open(file_path, "rb") as f:
+            raw = f.read(min(8192, file_size))
+    except PermissionError:
+        return "binary"
 
     if raw[:3] == b"\xef\xbb\xbf":
         return "utf-8-sig"
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
         return "utf-16"
 
-    # 按优先级尝试解码
-    for enc in _ENCODING_CANDIDATES:
+    # UTF-8 优先 — 用 errors='ignore' 忽略末尾不完整的多字节字符
+    try:
+        decoded = raw.decode("utf-8", errors="ignore")
+        if decoded and any(ord(c) > 127 for c in decoded):
+            return "utf-8"
+        return "utf-8"
+    except Exception:
+        pass
+
+    # 尝试其他编码
+    for enc in ["utf-8-sig", "gbk"]:
         try:
-            raw.decode(enc)
+            raw.decode(enc, errors="ignore")
             return enc
-        except (UnicodeDecodeError, LookupError):
+        except Exception:
             continue
-    return "utf-8"  # 兜底
+
+    # 兜底
+    return "latin-1"
 
 
 def _safe_read_lines(
@@ -364,6 +379,19 @@ class LogReader:
 
         file_size = os.path.getsize(file_path)
         encoding = _detect_encoding(file_path)
+
+        # .evtx files are binary Windows Event Log format - cannot read as text
+        if encoding == "binary" or file_path.lower().endswith(".evtx"):
+            return {
+                "lines": [],
+                "total_lines": 0,
+                "matched_lines": 0,
+                "encoding": "binary",
+                "file_size": file_size,
+                "truncated": False,
+                "error": "Windows Event Log (.evtx) files require administrator privileges or specialized tools to read",
+                "is_binary": True,
+            }
 
         try:
             lines, total_lines, matched_lines, truncated = _safe_read_lines(

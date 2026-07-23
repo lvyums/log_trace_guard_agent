@@ -19,7 +19,6 @@ from log_guard.core.log_reader import LogReader
 from log_guard.modules.log_parse import LogParseService
 from log_guard.modules.script_gen import ScriptGenService
 from log_guard.modules.compliance import ComplianceService
-from log_guard.modules.training import TrainingService
 from log_guard.modules.log_correlate import LogCorrelateService
 
 try:
@@ -41,7 +40,6 @@ logger = LogManager.get_logger()
 _log_parse_svc = LogParseService()
 _script_gen_svc = ScriptGenService()
 _compliance_svc = ComplianceService()
-_training_svc = TrainingService()
 _log_collect_svc = None
 if LogCollectService:
     _log_collect_svc = LogCollectService()
@@ -111,6 +109,30 @@ def _fmt_size(size: int) -> str:
         return f"{size // 1024}KB"
     else:
         return f"{size // (1024 * 1024)}MB"
+
+
+def _input_int(prompt: str, default: int, min_val: int = 1, max_val: int = 10000) -> int:
+    """读取整数输入，带范围校验和默认值。"""
+    raw = input(prompt).strip()
+    if not raw:
+        return default
+    try:
+        val = int(raw)
+    except ValueError:
+        print(f"  ⚠️ 无效数字，使用默认值 {default}")
+        return default
+    if val < min_val or val > max_val:
+        print(f"  ⚠️ 数值需在 {min_val}-{max_val} 之间，使用默认值 {default}")
+        return default
+    return val
+
+
+def _confirm(prompt: str = "  确认执行？[Y/n]: ", default: bool = True) -> bool:
+    """确认提示，返回 True/False。"""
+    raw = input(prompt).strip().lower()
+    if not raw:
+        return default
+    return raw in ("y", "yes", "是")
 
 
 def _ensure_log_file_interactive(log_reader: LogReader) -> str:
@@ -199,7 +221,7 @@ def _show_ai_welcome():
 
 def _run_ai_mode():
     """AI 智能对话主循环"""
-    ai_available = _AI_AVAILABLE and ai_settings.is_configured
+    ai_available = _AI_AVAILABLE and getattr(ai_settings, 'is_configured', False)
 
     if not ai_available:
         _print_header("⚠️ AI 模式未就绪")
@@ -211,7 +233,7 @@ def _run_ai_mode():
         choice = input("  是否立即配置？[y/N]: ").strip().lower()
         if choice == "y":
             _first_run_wizard()
-            ai_available = _AI_AVAILABLE and ai_settings.is_configured
+            ai_available = _AI_AVAILABLE and getattr(ai_settings, 'is_configured', False)
             if not ai_available:
                 print("  配置后仍未就绪，请检查 API Key 是否正确。")
                 input("  按 Enter 返回菜单...")
@@ -309,7 +331,7 @@ def _show_menu_status_bar(context: dict):
     """显示菜单模式状态栏"""
     width = 60
     sep = "─" * width
-    mode = "AI 可用" if (_AI_AVAILABLE and ai_settings.is_configured) else "仅菜单"
+    mode = "AI 可用" if (_AI_AVAILABLE and getattr(ai_settings, 'is_configured', False)) else "仅菜单"
     log_info = f"日志: {context.get('log_file', '未选择')}" if context.get("log_file") else "日志: 未选择"
     print(f"\n{sep}")
     print(f"  📋 菜单模式 | {log_info} | 输入 /ai 进入对话 | 模式: {mode}")
@@ -322,7 +344,7 @@ def _run_interactive_mode():
     context = {"source": "cli"}
 
     # 首次运行检查
-    if _AI_AVAILABLE and not ai_settings.is_configured:
+    if _AI_AVAILABLE and not getattr(ai_settings, 'is_configured', False):
         _first_run_wizard()
 
     while True:
@@ -340,7 +362,6 @@ def _run_interactive_mode():
             {"label": "📡 日志采集", "desc": "采集方案、故障诊断、架构推荐"},
             {"label": "📝 脚本生成", "desc": "正则、ES查询、攻击溯源、脚本优化"},
             {"label": "📋 合规审计", "desc": "合规问答、基线生成、合规自查"},
-            {"label": "🎓 攻防实训", "desc": "实训场景、答案提交、成绩报告"},
             {"label": "🔄 联合日志审查", "desc": "多源日志关联分析、攻击链推演"},
             {"label": "🤖 AI 智能对话", "desc": "自由提问，AI 智能解析意图"},
             {"label": "🚪 退出", "desc": "退出 CLI 智能体"},
@@ -362,12 +383,10 @@ def _run_interactive_mode():
         elif idx == 4:
             _menu_compliance(context)
         elif idx == 5:
-            _menu_training(context)
-        elif idx == 6:
             _menu_log_correlate(context)
-        elif idx == 7:
+        elif idx == 6:
             _run_ai_mode()
-        elif idx == 8:
+        elif idx == 7:
             print("\n  👋 再见！")
             break
 
@@ -403,7 +422,13 @@ def _menu_select_log(context: dict, log_reader: LogReader) -> dict:
         return context
 
     preview = log_reader.sample_log(file_path, n=10)
-    if preview.get("lines"):
+    if preview.get("is_binary"):
+        print(f"\n  ⚠️ 二进制文件: {os.path.basename(file_path)}")
+        print(f"     类型: Windows Event Log (.evtx)")
+        print(f"     大小: {_fmt_size(preview['file_size'])}")
+        print(f"     提示: .evtx 文件需要管理员权限或专用工具读取")
+        print(f"     建议: 请以管理员身份运行，或使用 wevtutil/evenvtx 等工具导出")
+    elif preview.get("lines"):
         print(f"\n  ✅ 已加载: {os.path.basename(file_path)}")
         print(f"     大小: {_fmt_size(preview['file_size'])}")
         format_type = log_reader.detect_log_format(preview["lines"])
@@ -444,8 +469,7 @@ def _menu_log_parse(context: dict, log_reader: LogReader):
             return
         file_path = context["log_file"]
         grep = input("\n  关键词过滤（可选，直接回车不过滤）: ").strip()
-        n = input("  读取行数 [默认50]: ").strip()
-        line_limit = int(n) if n.isdigit() else 50
+        line_limit = _input_int("  读取行数 [默认50]: ", default=50)
 
         result = log_reader.read_log(file_path, line_limit=line_limit, grep=grep or None)
         lines = result.get("lines", [])
@@ -480,35 +504,33 @@ def _menu_log_parse(context: dict, log_reader: LogReader):
         line = input("\n  输入日志行: ").strip()
         if not line:
             return
-        result = _log_parse_svc.identify_log_type(line)
-        print("\n【类型识别】")
-        _print_json(result)
         parse_result = _log_parse_svc.parse_log(line)
-        print("\n【解析结果】")
-        _print_json(parse_result)
+        _print_parse_single_natural(parse_result)
         if parse_result.get("code") == 0 and "data" in parse_result:
             risk = _log_parse_svc.assess_risk(parse_result["data"])
-            print("\n【风险研判】")
-            _print_json(risk)
+            rdata = risk.get("data", {})
+            if rdata.get("risk_level") not in ("P3_NOISE", "P3_噪音", None):
+                print(f"\n  ⚠️ 风险: {rdata.get('risk_level', '-')} - {rdata.get('risk_desc', '-')}")
 
     elif idx == 2:
         if not context.get("log_file"):
             print("\n  ⚠️ 请先选择日志文件")
             input("  按 Enter 继续...")
             return
-        n = input("\n  读取行数 [默认200]: ").strip()
-        line_limit = int(n) if n.isdigit() else 200
+        line_limit = _input_int("\n  读取行数 [默认200]: ", default=200)
+        if not _confirm(f"  将解析 {line_limit} 行日志并进行风险研判，确认？[Y/n] "):
+            return
         result = log_reader.read_log(context["log_file"], line_limit=line_limit)
         lines = result.get("lines", [])
-        print(f"\n  正在批量解析 {len(lines)} 行，含风险研判...")
+        _show_status_bar(f"正在批量解析 {len(lines)} 行，含风险研判...")
         batch = _log_parse_svc.batch_parse(lines, do_assess=True)
-        _print_json(batch)
+        _print_parse_batch_natural(batch)
 
     elif idx == 3:
         field = input("\n  输入字段名称（如 src_ip, timestamp, user）: ").strip()
         if field:
             result = _log_parse_svc.explain_field(field)
-            _print_json(result)
+            _print_natural(result)
 
     input("  按 Enter 继续...")
 
@@ -536,7 +558,7 @@ def _menu_log_collect(context: dict):
         model = input("设备型号 (可选): ").strip()
         scale = input("规模 [small/medium/large] (默认small): ").strip() or "small"
         result = _log_collect_svc.match_device(dtype, model, scale)
-        _print_json(result)
+        _print_diagnose_natural(result)
 
     elif idx == 1:
         dtype = input("设备类型: ").strip()
@@ -544,7 +566,7 @@ def _menu_log_collect(context: dict):
         scale = input("规模 [small/medium/large] (默认small): ").strip() or "small"
         include = input("包含配置模板 [y/N]: ").strip().lower() == "y"
         result = _log_collect_svc.generate_plan(dtype, model, scale, include)
-        _print_json(result)
+        _print_collect_plan_natural(result)
 
     elif idx == 2:
         symptom = input("故障症状描述: ").strip()
@@ -552,16 +574,15 @@ def _menu_log_collect(context: dict):
         proto = input("传输协议 (可选): ").strip() or None
         err = input("错误日志 (可选): ").strip() or None
         result = _log_collect_svc.diagnose_fault(symptom, dev, proto, err)
-        _print_json(result)
+        _print_diagnose_natural(result)
 
     elif idx == 3:
-        count_str = input("设备数量: ").strip()
-        count = int(count_str) if count_str.isdigit() else 10
+        count = _input_int("设备数量 (默认10): ", default=10)
         volume = input("日日志量 [small/medium/large] (默认medium): ").strip() or "medium"
         budget = input("预算 [low/medium/high] (默认medium): ").strip() or "medium"
         skill = input("团队水平 [basic/intermediate/advanced] (默认basic): ").strip() or "basic"
         result = _log_collect_svc.recommend_architecture(count, volume, budget, skill)
-        _print_json(result)
+        _print_collect_arch_natural(result)
 
     input("  按 Enter 继续...")
 
@@ -585,14 +606,14 @@ def _menu_script_gen(context: dict):
         sample = input("日志样例 (可选): ").strip() or None
         device = input("设备类型 (可选): ").strip() or None
         result = _script_gen_svc.generate_regex(scenario, sample, device)
-        _print_json(result)
+        _print_regex_natural(result)
 
     elif idx == 1:
         scenario = input("检索场景描述: ").strip()
         index = input("索引模式 (如 logstash-*): ").strip() or None
         time_range = input("时间范围 (如 last_24h, last_7d): ").strip() or None
         result = _script_gen_svc.generate_es_query(scenario, index, time_range)
-        _print_json(result)
+        _print_es_query_natural(result)
 
     elif idx == 2:
         file_path = context.get("log_file")
@@ -603,23 +624,22 @@ def _menu_script_gen(context: dict):
         attack_type = input("攻击类型 (如 ssh_bruteforce, web_sql_injection, 可选): ").strip() or None
         logs = LogReader().read_log(file_path, line_limit=100).get("lines", [])
         result = _script_gen_svc.trace_attack(logs, attack_type)
-        _print_json(result)
+        _print_collect_plan_natural(result)
 
     elif idx == 3:
-        count_str = input("设备数量 (默认50): ").strip()
-        count = int(count_str) if count_str.isdigit() else 50
+        count = _input_int("设备数量 (默认50): ", default=50)
         volume = input("日日志量 [small/medium/large] (默认medium): ").strip() or "medium"
         budget = input("预算 [low/medium/high] (默认medium): ").strip() or "medium"
         skill = input("团队水平 [basic/intermediate/advanced] (默认basic): ").strip() or "basic"
         result = _script_gen_svc.recommend_platform(count, volume, budget, skill)
-        _print_json(result)
+        _print_collect_arch_natural(result)
 
     elif idx == 4:
         script = input("输入脚本内容: ").strip()
         stype = input("脚本类型 [regex/es_query] (默认regex): ").strip() or "regex"
         scenario = input("使用场景 (可选): ").strip() or None
         result = _script_gen_svc.optimize_script(script, stype, scenario)
-        _print_json(result)
+        _print_optimize_natural(result)
 
     input("  按 Enter 继续...")
 
@@ -644,70 +664,29 @@ def _menu_compliance(context: dict):
         _print_qa_natural(result, question=question)
 
     elif idx == 1:
-        count_str = input("资产数量: ").strip()
-        count = int(count_str) if count_str.isdigit() else 10
+        count = _input_int("资产数量 (默认10): ", default=10)
         biz = input("业务类型 (如 enterprise, finance): ").strip() or "enterprise"
         devices_str = input("设备类型 (逗号分隔, 如 firewall,switch,server): ").strip()
         devices = [d.strip() for d in devices_str.split(",") if d.strip()]
         industry = input("行业 (可选): ").strip() or None
         result = _compliance_svc.generate_baseline(count, biz, devices, industry=industry)
-        _print_json(result)
+        _print_baseline_natural(result)
 
     elif idx == 2:
-        days_str = input("日志保留天数: ").strip()
-        days = int(days_str) if days_str.isdigit() else None
+        days = _input_int("日志保留天数: ", default=90, min_val=1, max_val=3650)
         backup = input("是否有备份 [y/N]: ").strip().lower() == "y"
         tamper = input("是否防篡改 [y/N]: ").strip().lower() == "y"
-        dev_count_str = input("设备数量: ").strip()
-        dev_count = int(dev_count_str) if dev_count_str.isdigit() else 0
+        dev_count = _input_int("设备数量: ", default=0, min_val=0, max_val=10000)
         result = _compliance_svc.compliance_check(
             log_retention_days=days, has_backup=backup,
             has_tamper_proof=tamper, device_count=dev_count
         )
-        _print_json(result)
+        _print_compliance_check_natural(result)
 
     input("  按 Enter 继续...")
 
 
-def _menu_training(context: dict):
-    _print_header("🎓 攻防实训")
-    items = [
-        {"label": "下发实训场景", "desc": "获取实训任务"},
-        {"label": "提交答案", "desc": "提交实训任务答案"},
-        {"label": "生成实训报告", "desc": "查看实训成绩报告"},
-    ]
 
-    idx = _show_nav_menu(items)
-    if idx < 0:
-        return
-
-    if idx == 0:
-        cat = input("场景分类 [basic/collection/filtering/web_attack/lateral_movement/compliance] (可选): ").strip() or None
-        sid = input("场景ID (如 S001, 可选): ").strip() or None
-        result = _training_svc.dispatch_tasks(scenario_id=sid, category=cat)
-        _print_json(result)
-
-    elif idx == 1:
-        sid = input("场景ID: ").strip()
-        tid = input("任务ID: ").strip()
-        stype = input("提交类型 [rule/script/conclusion/plan]: ").strip()
-        content_str = input("答案内容 (JSON格式): ").strip()
-        try:
-            import json
-            content = json.loads(content_str)
-        except json.JSONDecodeError:
-            content = {"text": content_str}
-        student = input("学员ID (可选): ").strip() or None
-        result = _training_svc.submit_answer(sid, tid, stype, content, student)
-        _print_json(result)
-
-    elif idx == 2:
-        student = input("学员ID (可选): ").strip() or "anonymous"
-        sid = input("场景ID (可选): ").strip() or None
-        result = _training_svc.generate_report(student, sid)
-        _print_json(result)
-
-    input("  按 Enter 继续...")
 
 
 # ════════════════════════════════════════════
@@ -734,11 +713,9 @@ def _menu_log_correlate(context: dict):
             input("  按 Enter 继续...")
             return
 
-        n = input("\n  读取行数 [默认500]: ").strip()
-        line_limit = int(n) if n.isdigit() else 500
+        line_limit = _input_int("\n  读取行数 [默认500]: ", default=500, max_val=10000)
         grep = input("  关键词过滤（可选）: ").strip() or None
-        window_str = input("  关联时间窗口(分钟) [默认5]: ").strip()
-        window = int(window_str) if window_str.isdigit() else 5
+        window = _input_int("  关联时间窗口(分钟) [默认5]: ", default=5, max_val=60)
 
         _show_status_bar(f"正在对 {os.path.basename(file_path)} 进行关联分析...")
         result = _log_correlate_svc.correlate_logs_from_file(
@@ -762,8 +739,7 @@ def _menu_log_correlate(context: dict):
             input("  按 Enter 继续...")
             return
 
-        window_str = input("\n  关联时间窗口(分钟) [默认5]: ").strip()
-        window = int(window_str) if window_str.isdigit() else 5
+        window = _input_int("\n  关联时间窗口(分钟) [默认5]: ", default=5, max_val=60)
 
         _show_status_bar(f"正在分析 {len(lines)} 条日志...")
         result = _log_correlate_svc.correlate_logs(lines, time_window_minutes=window, detailed=True)
@@ -828,11 +804,30 @@ def _print_correlation_result(result):
             if c.get("suggestion"):
                 print(f"       处置建议: {c['suggestion']}")
 
-    # Show detailed timeline
+    # Show detailed timeline (limit to 30 entries, skip events with no timestamp)
     timeline = data.get("timeline", [])
     if timeline:
-        print(f"\n  📋 时间线详情:")
+        # Filter to events with timestamps and/or risk
+        display_events = [
+            e for e in timeline
+            if e.get("timestamp") and e.get("timestamp") != "?"
+        ]
+        # Also include high/medium risk events even without timestamp
         for e in timeline:
+            rl = e.get("risk_level", "")
+            if rl and not rl.startswith("P3") and e not in display_events:
+                display_events.append(e)
+
+        # Sort by timestamp
+        from log_guard.modules.log_correlate import _parse_timestamp
+        display_events.sort(key=lambda e: _parse_timestamp(e.get("timestamp")) or datetime.min)
+
+        if len(display_events) > 30:
+            print(f"\n  📋 时间线详情 (前30条，共{len(display_events)}条):")
+        else:
+            print(f"\n  📋 时间线详情 ({len(display_events)}条):")
+
+        for e in display_events[:30]:
             risk_indicator = ""
             rl = e.get("risk_level", "")
             if rl and not rl.startswith("P3"):
@@ -888,13 +883,7 @@ def _print_list_logs_natural(result):
     if isinstance(result, list):
         print(f"\n  找到 {len(result)} 个日志文件:\n")
         for i, f in enumerate(result[:20], 1):
-            size = f.get("size", 0)
-            if size < 1024:
-                size_str = f"{size}B"
-            elif size < 1024 * 1024:
-                size_str = f"{size // 1024}KB"
-            else:
-                size_str = f"{size // (1024 * 1024)}MB"
+            size_str = _fmt_size(f.get("size", 0))
             print(f"  [{i}] {f['name']}")
             print(f"      类型: {f.get('type', '?')} | 大小: {size_str}")
             print(f"      路径: {f['path']}")
@@ -910,14 +899,7 @@ def _print_sample_natural(result):
     lines = result.get("lines", [])
     total = result.get("total_lines", 0)
     encoding = result.get("encoding", "?")
-    size = result.get("file_size", 0)
-
-    if size < 1024:
-        size_str = f"{size}B"
-    elif size < 1024 * 1024:
-        size_str = f"{size // 1024}KB"
-    else:
-        size_str = f"{size // (1024 * 1024)}MB"
+    size_str = _fmt_size(result.get("file_size", 0))
 
     print(f"\n  📄 日志预览")
     print(f"     总行数: {total} | 编码: {encoding} | 大小: {size_str}")
@@ -985,7 +967,7 @@ def _print_parse_batch_natural(result):
 
 
 def _print_diagnose_natural(result):
-    """故障诊断自然语言输出"""
+    """故障诊断/设备匹配自然语言输出"""
     if result.get("code") != 0:
         print(f"  ❌ {result.get('msg', '诊断失败')}")
         return
@@ -993,30 +975,50 @@ def _print_diagnose_natural(result):
     data = result.get("data", {})
     best = data.get("best_diagnosis", {})
 
-    print(f"\n  🔧 故障诊断结果")
-    print(f"     症状: {data.get('symptom', '?')}")
-    print(f"     设备: {data.get('device_type', '?')}")
-    print(f"     诊断: {best.get('fault_type', '?')}")
-    print(f"     描述: {best.get('fault_desc', '?')}")
-    print(f"     严重度: {best.get('severity', '?')}")
+    if best:
+        # diagnose_fault result
+        print(f"\n  🔧 故障诊断结果")
+        print(f"     症状: {data.get('symptom', '?')}")
+        print(f"     设备: {data.get('device_type', '?')}")
+        print(f"     诊断: {best.get('fault_type', '?')}")
+        print(f"     描述: {best.get('fault_desc', '?')}")
+        print(f"     严重度: {best.get('severity', '?')}")
 
-    causes = best.get("possible_causes", [])
-    if causes:
-        print(f"\n  📋 可能原因:")
-        for i, c in enumerate(causes, 1):
-            print(f"     {i}. {c}")
+        causes = best.get("possible_causes", [])
+        if causes:
+            print(f"\n  📋 可能原因:")
+            for i, c in enumerate(causes, 1):
+                print(f"     {i}. {c}")
 
-    steps = best.get("fix_steps", [])
-    if steps:
-        print(f"\n  🔨 修复步骤:")
-        for s in steps:
-            print(f"     {s}")
+        steps = best.get("fix_steps", [])
+        if steps:
+            print(f"\n  🔨 修复步骤:")
+            for s in steps:
+                print(f"     {s}")
 
-    prevention = best.get("prevention", [])
-    if prevention:
-        print(f"\n  🛡️ 预防措施:")
-        for p in prevention:
-            print(f"     • {p}")
+        prevention = best.get("prevention", [])
+        if prevention:
+            print(f"\n  🛡️ 预防措施:")
+            for p in prevention:
+                print(f"     • {p}")
+    else:
+        # match_device result
+        print(f"\n  🔍 设备匹配结果")
+        print(f"     设备类型: {data.get('device_type', '?')}")
+        print(f"     设备型号: {data.get('device_model', '?')}")
+        print(f"     匹配置信度: {data.get('match_confidence', '?')}")
+        print(f"     匹配来源: {data.get('match_source', '?')}")
+
+        plan = data.get("plan")
+        if plan:
+            print(f"\n  📡 采集方案")
+            print(f"     协议: {plan.get('protocol', '?')}")
+            print(f"     架构: {plan.get('architecture', '?')}")
+            steps = plan.get("steps", [])
+            if steps:
+                print(f"     步骤:")
+                for s in steps[:5]:
+                    print(f"       • {s}")
 
 
 def _print_regex_natural(result):
@@ -1052,7 +1054,6 @@ def _print_es_query_natural(result):
     print(f"     时间范围: {data.get('time_range', '?')}")
     print(f"     说明: {data.get('note', '?')}")
     print(f"\n  查询语句:")
-    import json
     query = data.get("query", {})
     print(json.dumps(query, ensure_ascii=False, indent=2))
 
@@ -1084,7 +1085,8 @@ def _print_baseline_natural(result):
 
     dist = summary.get("severity_distribution", {})
     if dist:
-        print(f"  📊 严重度分布: {dist}")
+        parts = [f"{k}: {v}" for k, v in dist.items()]
+        print(f"  📊 严重度分布: {' | '.join(parts)}")
 
 
 def _print_optimize_natural(result):
@@ -1116,30 +1118,108 @@ def _print_optimize_natural(result):
         print(f"     {optimized}")
 
 
-def _print_train_natural(result):
-    """实训场景自然语言输出"""
+def _print_collect_plan_natural(result):
+    """采集方案自然语言输出"""
     if result.get("code") != 0:
-        print(f"  ❌ {result.get('msg', '下发失败')}")
+        print(f"  ❌ {result.get('msg', '生成失败')}")
         return
 
     data = result.get("data", {})
-    scenarios = data.get("scenarios", [])
+    plan = data.get("plan", data)
+    print(f"\n  📡 采集方案")
+    print(f"     设备类型: {plan.get('device_type', data.get('device_type', '?'))}")
+    print(f"     设备型号: {plan.get('device_model', data.get('device_model', '?'))}")
+    print(f"     传输协议: {plan.get('protocol', '?')}")
+    print(f"     架构: {plan.get('architecture', '?')}")
 
-    print(f"\n  🎓 实训场景下发")
-    print(f"     共下发 {len(scenarios)} 个场景:\n")
+    steps = plan.get("steps", [])
+    if steps:
+        print(f"\n  采集步骤:")
+        for s in steps:
+            print(f"     • {s}")
 
-    for sc in scenarios:
-        print(f"  📌 {sc.get('name', '?')} (ID: {sc.get('scenario_id', '?')})")
-        print(f"     分类: {sc.get('category', '?')} | 难度: {sc.get('difficulty', '?')}")
-        print(f"     描述: {sc.get('description', '?')}")
-        print(f"\n     学习目标:")
-        for obj in sc.get("objectives", []):
-            print(f"       • {obj}")
-        print(f"\n     任务列表:")
-        for task in sc.get("tasks", []):
-            print(f"       [{task.get('task_id', '?')}] {task.get('title', '?')}")
-            print(f"         {task.get('description', '?')[:60]}...")
-        print()
+    config = plan.get("config_template", "")
+    if config:
+        print(f"\n  配置模板:")
+        print(f"     {config}")
+
+    notes = plan.get("notes", [])
+    if notes:
+        print(f"\n  注意事项:")
+        for n in notes:
+            print(f"     • {n}")
+
+
+def _print_collect_arch_natural(result):
+    """架构推荐自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '推荐失败')}")
+        return
+
+    data = result.get("data", {})
+    rec = data.get("recommendation", data)
+
+    print(f"\n  🏗️ 架构推荐")
+    print(f"     方案: {rec.get('name', rec.get('type', '?'))}")
+    params = data.get("input_parameters", {})
+    print(f"     设备数量: {params.get('device_count', rec.get('device_count', '?'))}")
+    print(f"     日志量级: {params.get('daily_log_volume_gb', rec.get('daily_log_volume_gb', '?'))} GB/天")
+    print(f"     预算: {params.get('budget', '?')}")
+    print(f"     团队水平: {params.get('team_skill', '?')}")
+
+    reasoning = rec.get("reasoning", [])
+    if reasoning:
+        print(f"\n  推荐理由:")
+        for r in reasoning:
+            print(f"     • {r}")
+
+    # Support both log_collect and script_gen recommend_platform formats
+    recs = data.get("recommendations", [])
+    if recs:
+        print(f"\n  推荐平台:")
+        for p in recs[:5]:
+            if isinstance(p, dict):
+                print(f"     • {p.get('name', '?')} (评分: {p.get('score', '?')})")
+                pros = p.get("pros", [])
+                if pros:
+                    print(f"       优势: {', '.join(pros[:3])}")
+
+    choice = data.get("choice", "")
+    if choice:
+        print(f"\n  最终推荐: {choice}")
+
+
+def _print_compliance_check_natural(result):
+    """合规自查自然语言输出"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '检查失败')}")
+        return
+
+    data = result.get("data", {})
+    print(f"\n  📋 合规自查结果")
+    overall = "✅ 合规" if data.get("overall_compliance") else "❌ 不合规"
+    print(f"     结论: {overall}")
+    print(f"     总检查项: {data.get('total', '?')}")
+    print(f"     通过: {data.get('passed', '?')} | 未通过: {data.get('failed', '?')}")
+    print(f"     合规率: {data.get('compliance_percentage', '?')}%")
+
+    high_fails = data.get("high_severity_fails", 0)
+    if high_fails:
+        print(f"     ⚠️ 高严重度未通过: {high_fails} 项")
+
+    items = data.get("items", [])
+    if items:
+        severity_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+        print(f"\n  检查详情:")
+        for item in items:
+            status = "✅" if item.get("status") == "pass" else "❌"
+            icon = severity_icon.get(item.get("severity", ""), "⚪")
+            print(f"     {status} {icon} {item.get('requirement', item.get('check_name', '?'))}")
+            if item.get("status") != "pass":
+                print(f"        建议: {item.get('suggestion', '')}")
+
+
+
 
 
 def _call_llm_fallback(question: str) -> str:
@@ -1410,7 +1490,7 @@ def main():
 
         # --ask 非交互式 AI 问答
         if args.ask:
-            if not (_AI_AVAILABLE and ai_settings.is_configured):
+            if not (_AI_AVAILABLE and getattr(ai_settings, 'is_configured', False)):
                 print("AI Core 未加载或 API Key 未配置")
                 return
             orchestrator = get_orchestrator()
