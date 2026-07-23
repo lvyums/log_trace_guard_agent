@@ -66,6 +66,20 @@ async def analyze_stream(req: SubmitAnswerReq):
     score = check_result.get("score", 0)
     grade = check_result.get("grade", "C")
 
+    # 记录本次提交到 TaskEngine（供 report 接口使用）
+    try:
+        TaskEngine.record_submission(
+            scenario_id=req.scenario_id,
+            task_id=req.task_id,
+            submit_type=req.submit_type,
+            content=req.content,
+            student_id=req.student_id or 'student_default',
+            check_result=check_result,
+            standard_answer=standard,
+        )
+    except Exception as e:
+        logger.warning(f"记录提交失败（不影响分析）: {e}")
+
     # 检查 LLM 配置
     from app.settings import settings
     if not settings.llm_api_key:

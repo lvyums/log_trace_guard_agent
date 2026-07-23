@@ -168,50 +168,92 @@ class ConclusionCheckStrategy(BaseCheckStrategy):
         matched_count = 0
         total_checked = 0
 
-        for field, expected_values in key_fields.items():
-            user_value = submission.get(field)
-            if user_value is None:
-                continue
+        # 支持自由文本格式 (user_answer): 用全文关键词匹配
+        user_answer = submission.get("user_answer")
+        is_free_text = user_answer is not None
 
-            total_checked += 1
-            user_str = str(user_value).lower().strip()
-            expected = correct_answer.get(field, "")
-            expected_str = str(expected).lower().strip() if expected else ""
+        if is_free_text:
+            user_answer_str = str(user_answer).lower().strip()
+            for field, expected_values in key_fields.items():
+                total_checked += 1
+                expected = correct_answer.get(field, "")
+                expected_str = str(expected).lower().strip() if expected else ""
 
-            # 规则匹配：检查用户值是否命中期望关键词
-            is_match = any(
-                kw.lower() in user_str for kw in expected_values
-            )
+                # 全文关键词匹配
+                hits = sum(1 for kw in expected_values if kw.lower() in user_answer_str)
+                match_rate = hits / max(len(expected_values), 1)
 
-            if is_match:
-                matched_count += 1
-                checks.append({
-                    "field": field,
-                    "status": "correct",
-                    "expected": str(expected_values[0]) if expected_values else "",
-                    "actual": user_str[:100],
-                    "detail": "字段匹配正确",
-                })
-            else:
-                # 语义相似度作为辅助
-                similarity = SequenceMatcher(None, user_str, expected_str).ratio()
-                if similarity >= SIMILARITY_PARTIAL:
+                if match_rate >= SIMILARITY_PASS:
+                    matched_count += 1
+                    checks.append({
+                        "field": field,
+                        "status": "correct",
+                        "expected": expected_str[:100],
+                        "actual": user_answer_str[:100],
+                        "detail": f"关键词 '{expected_values[0]}' 在答案中被识别",
+                    })
+                elif match_rate >= SIMILARITY_PARTIAL:
                     matched_count += 0.5
                     checks.append({
                         "field": field,
                         "status": "partial",
                         "expected": expected_str[:100],
-                        "actual": user_str[:100],
-                        "detail": f"部分匹配，语义相似度 {similarity:.0%}",
+                        "actual": user_answer_str[:100],
+                        "detail": f"部分匹配，命中 {hits}/{len(expected_values)} 个关键词",
                     })
                 else:
                     checks.append({
                         "field": field,
                         "status": "incorrect",
                         "expected": expected_str[:100],
-                        "actual": user_str[:100],
-                        "detail": f"字段不匹配，期望包含关键词: {expected_values}",
+                        "actual": user_answer_str[:80],
+                        "detail": f"未识别到关键词: {expected_values}",
                     })
+        else:
+            for field, expected_values in key_fields.items():
+                user_value = submission.get(field)
+                if user_value is None:
+                    continue
+
+                total_checked += 1
+                user_str = str(user_value).lower().strip()
+                expected = correct_answer.get(field, "")
+                expected_str = str(expected).lower().strip() if expected else ""
+
+                # 规则匹配：检查用户值是否命中期望关键词
+                is_match = any(
+                    kw.lower() in user_str for kw in expected_values
+                )
+
+                if is_match:
+                    matched_count += 1
+                    checks.append({
+                        "field": field,
+                        "status": "correct",
+                        "expected": str(expected_values[0]) if expected_values else "",
+                        "actual": user_str[:100],
+                        "detail": "字段匹配正确",
+                    })
+                else:
+                    # 语义相似度作为辅助
+                    similarity = SequenceMatcher(None, user_str, expected_str).ratio()
+                    if similarity >= SIMILARITY_PARTIAL:
+                        matched_count += 0.5
+                        checks.append({
+                            "field": field,
+                            "status": "partial",
+                            "expected": expected_str[:100],
+                            "actual": user_str[:100],
+                            "detail": f"部分匹配，语义相似度 {similarity:.0%}",
+                        })
+                    else:
+                        checks.append({
+                            "field": field,
+                            "status": "incorrect",
+                            "expected": expected_str[:100],
+                            "actual": user_str[:100],
+                            "detail": f"字段不匹配，期望包含关键词: {expected_values}",
+                        })
 
         # 计算得分
         match_rate = matched_count / max(total_checked, 1)
@@ -419,6 +461,76 @@ class RuleCheckStrategy(BaseCheckStrategy):
         lines.append("提示：编写规则时注意转义特殊字符，使用命名捕获组提高可读性。")
         return "\n".join(lines)
 
+    async def _build_analysis_ft(self, checks: list, match_rate: float) -> str:
+        """自由文本格式的分析说明"""
+        return self._build_analysis(checks, match_rate, [])
+
+
+# ── 公用辅助：自由文本转字段匹配 ──
+
+async def _free_text_check(submission: dict, key_fields: dict, correct_answer: dict, weight: float,
+                           scoring_rules: dict, check_fn: callable) -> dict:
+    """对自由文本格式 (user_answer) 执行全文关键词匹配，再委派给具体校验函数
+    
+    Returns: 已执行的各字段 checks，或 None 表示无需特殊处理（走原逻辑）
+    """
+    user_answer = submission.get("user_answer")
+    if user_answer is None:
+        return None  # 不是自由文本格式
+
+    user_str = str(user_answer).lower().strip()
+    checks = []
+    matched_count = 0
+    total_checked = 0
+    required = scoring_rules.get("required_fields", [])
+    min_match = scoring_rules.get("min_match_rate", 0.6)
+
+    for field, expected_values in key_fields.items():
+        total_checked += 1
+        expected_str = str(correct_answer.get(field, "")).lower().strip()
+        hits = sum(1 for kw in expected_values if kw.lower() in user_str)
+        match_rate = hits / max(len(expected_values), 1)
+
+        if match_rate >= SIMILARITY_PASS:
+            matched_count += 1
+            checks.append({
+                "field": field, "status": "correct",
+                "expected": expected_str[:100], "actual": user_str[:100],
+                "detail": f"关键词 '{expected_values[0]}' 在答案中被识别",
+            })
+        elif match_rate >= SIMILARITY_PARTIAL:
+            matched_count += 0.5
+            checks.append({
+                "field": field, "status": "partial",
+                "expected": expected_str[:100], "actual": user_str[:100],
+                "detail": f"部分匹配，命中 {hits}/{len(expected_values)} 个关键词",
+            })
+        else:
+            checks.append({
+                "field": field, "status": "incorrect",
+                "expected": expected_str[:100], "actual": user_str[:80],
+                "detail": f"未识别到关键词: {expected_values}",
+            })
+
+    match_rate = matched_count / max(total_checked, 1)
+    score = int(match_rate * 100 * weight)
+    score = min(100, max(0, score))
+    required_ok = all(any(c["field"] == f and c["status"] == "correct" for c in checks) for f in required) if required else True
+
+    grade = "A" if score >= SCORE_A else ("B" if score >= SCORE_B else "C")
+    status = "passed" if (score >= SCORE_A and required_ok) else ("optimize" if score >= SCORE_B else "retry")
+    analysis = await check_fn(checks, match_rate)
+
+    return {
+        "checks": checks,
+        "score": score,
+        "grade": grade,
+        "status": status,
+        "analysis": analysis,
+        "suggestion": f"建议补充 {'、'.join(required)} 等关键要素" if not required_ok and required else None,
+        "correct_answer": correct_answer if score < SCORE_B else None,
+    }
+
 
 # ── 脚本类校验策略（script） ──
 
@@ -433,6 +545,12 @@ class ScriptCheckStrategy(BaseCheckStrategy):
         scoring_rules = standard.get("scoring_rules", {})
         correct_answer = standard.get("correct_answer", {})
         weight = scoring_rules.get("weight", 1.0)
+
+        # 自由文本格式快速通道
+        ft_result = await _free_text_check(submission, key_fields, correct_answer, weight,
+                                           scoring_rules, self._build_analysis_ft)
+        if ft_result:
+            return ft_result
 
         checks = []
         matched_count = 0
@@ -563,6 +681,12 @@ class PlanCheckStrategy(BaseCheckStrategy):
         scoring_rules = standard.get("scoring_rules", {})
         correct_answer = standard.get("correct_answer", {})
         weight = scoring_rules.get("weight", 1.0)
+
+        # 自由文本格式快速通道
+        ft_result = await _free_text_check(submission, key_fields, correct_answer, weight,
+                                           scoring_rules, self._build_analysis)
+        if ft_result:
+            return ft_result
 
         checks = []
         matched_count = 0
