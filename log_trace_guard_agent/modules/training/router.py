@@ -69,13 +69,12 @@ async def analyze_stream(req: SubmitAnswerReq):
     # 记录本次提交到 TaskEngine（供 report 接口使用）
     try:
         TaskEngine.record_submission(
+            student_id=req.student_id or 'student_default',
             scenario_id=req.scenario_id,
             task_id=req.task_id,
-            submit_type=req.submit_type,
-            content=req.content,
-            student_id=req.student_id or 'student_default',
-            check_result=check_result,
-            standard_answer=standard,
+            score=score,
+            grade=grade,
+            status=check_result.get("status", "retry"),
         )
     except Exception as e:
         logger.warning(f"记录提交失败（不影响分析）: {e}")

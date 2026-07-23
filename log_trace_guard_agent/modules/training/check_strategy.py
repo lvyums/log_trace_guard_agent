@@ -519,7 +519,7 @@ async def _free_text_check(submission: dict, key_fields: dict, correct_answer: d
 
     grade = "A" if score >= SCORE_A else ("B" if score >= SCORE_B else "C")
     status = "passed" if (score >= SCORE_A and required_ok) else ("optimize" if score >= SCORE_B else "retry")
-    analysis = await check_fn(checks, match_rate)
+    analysis = check_fn(checks, match_rate)
 
     return {
         "checks": checks,
@@ -548,7 +548,7 @@ class ScriptCheckStrategy(BaseCheckStrategy):
 
         # 自由文本格式快速通道
         ft_result = await _free_text_check(submission, key_fields, correct_answer, weight,
-                                           scoring_rules, self._build_analysis_ft)
+                                           scoring_rules, self._build_analysis)
         if ft_result:
             return ft_result
 
