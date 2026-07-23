@@ -37,6 +37,7 @@ class BaselineGenStrategy(BaseComplianceStrategy):
         industry = params.get("industry")
 
         all_baselines = self._load_baselines()
+        logger.info(f"基线生成: 设备类型={device_types}, 监控场景={monitor_scenarios}, 总基线数={len(all_baselines)}")
         selected = []
 
         # 按设备类型筛选基线
@@ -50,13 +51,42 @@ class BaselineGenStrategy(BaseComplianceStrategy):
         else:
             selected = list(all_baselines)
 
-        # 按监控场景筛选
+        logger.info(f"设备类型筛选后: {len(selected)} 条基线")
+
+        # 按监控场景筛选（支持模糊匹配）
         if monitor_scenarios:
             scenario_keywords = [s.lower() for s in monitor_scenarios]
+            # 场景关键词映射：用户输入 -> 基线 monitor_scenario 子串
+            scenario_map = {
+                "入侵": ["异常登录", "端口扫描", "高危命令", "异常外联"],
+                "登录": ["异常登录", "异地ip"],
+                "扫描": ["端口扫描"],
+                "数据库": ["数据库批量"],
+                "数据泄露": ["数据库批量", "异常外联"],
+                "恶意软件": ["高危命令", "异常外联"],
+                "外联": ["异常外联"],
+                "日志": ["日志存储"],
+                "命令": ["高危命令"],
+            }
+            # 展开关键词
+            expanded_keywords = set()
+            for kw in scenario_keywords:
+                expanded_keywords.add(kw)
+                for map_key, map_values in scenario_map.items():
+                    if map_key in kw:
+                        expanded_keywords.update(map_values)
+
+            logger.info(f"监控场景关键词(展开后): {expanded_keywords}")
+            for bl in selected:
+                ms = bl.get("monitor_scenario", "").lower()
+                matches = [kw for kw in expanded_keywords if kw in ms]
+                logger.info(f"  基线 '{bl.get('name')}' monitor_scenario='{ms}' 匹配: {matches}")
             selected = [
                 bl for bl in selected
-                if any(kw in bl.get("monitor_scenario", "").lower() for kw in scenario_keywords)
+                if any(kw in bl.get("monitor_scenario", "").lower() for kw in expanded_keywords)
             ]
+
+        logger.info(f"监控场景筛选后: {len(selected)} 条基线")
 
         # 按资产规模调整基线参数
         adjusted = self._adjust_by_scale(selected, asset_count, business_type, industry)
@@ -244,6 +274,9 @@ class ComplianceCheckStrategy(BaseComplianceStrategy):
                 })
                 if gap:
                     gaps.append(gap)
+
+        # 去重：相同 requirement 的缺口只保留风险最高的
+        gaps = self._deduplicate_gaps(gaps)
 
         # 计算合规评分
         total = len(gaps)
@@ -442,6 +475,34 @@ class ComplianceCheckStrategy(BaseComplianceStrategy):
             "remediation_steps": remediation_steps,
             "priority": priority_map.get(risk_level, "P2-计划修复"),
         }
+
+    def _deduplicate_gaps(self, gaps: list) -> list:
+        """去重：相同 requirement 的缺口只保留风险最高的，并合并标准来源"""
+        if not gaps:
+            return gaps
+
+        risk_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        seen = {}  # requirement -> index in deduped list
+
+        deduped = []
+        for gap in gaps:
+            req = gap.get("requirement", "")
+            if req in seen:
+                # 合并标准来源
+                idx = seen[req]
+                existing_ref = deduped[idx].get("standard_ref", "")
+                new_ref = gap.get("standard_ref", "")
+                if new_ref not in existing_ref:
+                    deduped[idx]["standard_ref"] = f"{existing_ref} / {new_ref}"
+                # 保留风险更高的
+                if risk_order.get(gap.get("risk_level"), 9) < risk_order.get(deduped[idx].get("risk_level"), 9):
+                    deduped[idx]["risk_level"] = gap["risk_level"]
+                    deduped[idx]["priority"] = gap.get("priority", deduped[idx].get("priority"))
+            else:
+                seen[req] = len(deduped)
+                deduped.append(gap)
+
+        return deduped
 
     def _build_summary(self, gaps: list, critical: int, high: int,
                        medium: int, low: int, score: int) -> str:

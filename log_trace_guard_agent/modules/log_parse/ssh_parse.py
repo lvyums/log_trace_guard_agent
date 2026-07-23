@@ -56,6 +56,7 @@ class SSHParser(BaseParser):
             timestamp=parse_log_time(log_line),
             dst_port="22",
             device_type="ssh",
+            protocol="ssh",
             raw_log=log_line[:500],
         )
 
@@ -73,13 +74,17 @@ class SSHParser(BaseParser):
                     result.timestamp = parse_log_time(match.group(1)) or result.timestamp
                     result.user = groups[1]
                     result.src_ip = groups[2]
-                    result.src_port = groups[3]
+                    # groups[3] 是 SSH 目标端口，不是源端口，不设置 src_port
                 elif len(groups) == 3:
                     # 清洗后格式: user, ip, port
                     result.user = groups[0]
                     result.src_ip = groups[1]
-                    result.src_port = groups[2]
+                    # groups[2] 是 SSH 目标端口，不是源端口
                 result.status = "success" if "Accepted" in log_line else "failed"
+                # 设置攻击类型
+                if result.status == "failed":
+                    result.attack_type = "brute_force"
+                    result.is_dangerous = True
             elif "sudo" in log_line.lower():
                 if len(groups) == 3:
                     # 完整格式: timestamp, user, command
@@ -91,6 +96,11 @@ class SSHParser(BaseParser):
                     result.user = groups[0]
                     result.command = groups[1]
                 result.status = "command_executed"
+                # 检查是否为高危命令
+                cmd = (result.command or "").lower()
+                if any(kw in cmd for kw in ["rm", "chmod", "passwd", "useradd", "wget", "curl"]):
+                    result.is_dangerous = True
+                    result.attack_type = "high_risk_command"
 
             break
 

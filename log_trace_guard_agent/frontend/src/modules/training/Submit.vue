@@ -11,7 +11,7 @@
       </div>
     </div>
 
-    <div class="g-training-layout">
+    <div v-if="steps.length > 0" class="g-training-layout">
       <div class="g-training-task">
       <div class="g-card-title" style="margin-bottom:16px">
         <el-icon><Notebook /></el-icon> 实训任务
@@ -121,47 +121,10 @@ const grade = ref('C')
 const checks = ref<any[]>([])
 const streamingAnalysis = ref('')
 const scenarioName = ref('')
-const scenarioId = ref('1')
-
-// 根据场景动态生成步骤
-const scenarioSteps: Record<string, { title: string; question: string; sample: string; hint: string }[]> = {
-  '1': [
-    { title: '日志识别', question: '请识别以下日志的设备类型和格式', sample: '<22>Jan  5 12:34:56 sshd[12345]: Failed password for root from 192.168.1.100 port 22', hint: '提示：观察日志前缀和关键字，判断是哪种安全设备' },
-    { title: '字段提取', question: '提取日志中的关键字段（用户名、源IP、端口）', sample: '', hint: '提示：使用键值对格式，如 username: xxx' },
-    { title: '风险研判', question: '判断该日志的安全风险等级并说明理由', sample: '', hint: '提示：P0极高危/P1高危/P2中危/P3低危/正常' },
-  ],
-  '2': [
-    { title: '攻击类型识别', question: '请识别以下Web日志中的攻击类型', sample: '192.168.1.100 - - [15/Jan/2024:10:30:00 +0800] "GET /api/login?username=admin%27%20OR%20%271%27%3D%271 HTTP/1.1" 500 1234', hint: '提示：观察URL参数中的特殊字符' },
-    { title: '攻击参数提取', question: '提取攻击Payload中的关键参数', sample: '', hint: '提示：关注SQL注入、XSS等攻击的特征字符串' },
-    { title: '影响分析', question: '分析该攻击可能造成的影响范围', sample: '', hint: '提示：考虑数据泄露、权限提升等风险' },
-    { title: '处置建议', question: '给出针对该攻击的处置建议', sample: '', hint: '提示：从WAF规则、输入过滤、最小权限等角度' },
-    { title: '溯源分析', question: '尝试还原攻击者的攻击路径', sample: '', hint: '提示：关联攻击IP的历史行为' },
-  ],
-  '3': [
-    { title: '入口点识别', question: '识别攻击者的初始入侵入口', sample: 'Dec 15 08:12:34 web-server sshd[23456]: Accepted password for admin from 10.0.0.5 port 22', hint: '提示：关注远程登录成功的日志' },
-    { title: '横向移动追踪', question: '追踪攻击者在内网的横向移动路径', sample: 'Dec 15 08:15:34 db-server mysqld[34567]: SELECT * FROM users', hint: '提示：关注不同服务器间的连接' },
-    { title: '权限提升分析', question: '分析攻击者是否进行了权限提升', sample: '', hint: '提示：关注sudo、su等命令的使用' },
-    { title: '数据泄露评估', question: '评估可能的数据泄露范围', sample: '', hint: '提示：关注数据库查询、文件下载等操作' },
-    { title: '攻击链还原', question: '完整还原攻击链并给出处置方案', sample: '', hint: '提示：组合所有发现，形成完整攻击链' },
-    { title: '应急响应建议', question: '给出分级应急响应建议', sample: '', hint: '提示：从遏制、根除、恢复三个阶段' },
-    { title: '整改措施', question: '提出防止类似攻击的长效整改措施', sample: '', hint: '提示：从网络隔离、访问控制、监控告警等角度' },
-  ],
-  '4': [
-    { title: '需求分析', question: '分析企业的日志采集需求', sample: '某企业有200台服务器，需要满足等保2.0合规要求，日志留存≥180天', hint: '提示：考虑设备数量、日志类型、合规要求' },
-    { title: '架构设计', question: '设计日志采集架构', sample: '', hint: '提示：选择采集协议、传输方式、存储方案' },
-    { title: '容量规划', question: '计算存储容量和带宽需求', sample: '', hint: '提示：考虑日志量、压缩比、留存时间' },
-    { title: '成本估算', question: '估算硬件和运维成本', sample: '', hint: '提示：考虑服务器、存储、带宽、人力成本' },
-  ],
-  '5': [
-    { title: '身份鉴别检查', question: '检查服务器的身份鉴别配置是否合规', sample: '检查项：密码策略、登录失败锁定、远程管理', hint: '提示：等保2.0三级要求密码复杂度、登录失败锁定等' },
-    { title: '访问控制检查', question: '检查访问控制配置是否合规', sample: '', hint: '提示：检查默认账户、权限分离、最小权限原则' },
-    { title: '安全审计检查', question: '检查安全审计配置是否合规', sample: '', hint: '提示：检查日志记录范围、审计策略、日志保护' },
-  ],
-}
-
-const steps = computed(() => {
-  return scenarioSteps[scenarioId.value] || scenarioSteps['1']
-})
+const scenarioId = ref('')
+const steps = ref<{ title: string; question: string; sample: string; hint: string }[]>([
+  { title: '加载中...', question: '', sample: '', hint: '' },
+])
 const totalSteps = computed(() => steps.value.length)
 const gradeLevel = computed(() => {
   if (grade.value === 'A') return 'normal'
@@ -183,14 +146,29 @@ onMounted(() => {
     const saved = sessionStorage.getItem('current-training-scenario')
     if (saved) {
       const scenario = JSON.parse(saved)
-      const sid = scenario.scenario?.scenario_id || scenario.id || '1'
+      const sid = scenario.scenario?.scenario_id || scenario.id || ''
       scenarioId.value = String(sid)
       scenarioName.value = scenario.scenario?.name || scenario.name || '实训场景'
+
+      // 从后端返回的任务数据中构建步骤
+      const tasks = scenario.tasks || []
+      if (tasks.length > 0) {
+        steps.value = tasks.map((t: any) => ({
+          title: t.title || '',
+          question: t.description || '',
+          sample: Array.isArray(t.input_data) ? t.input_data.join('\n') : (t.input_data || ''),
+          hint: t.hint || '',
+        }))
+      } else {
+        steps.value = [{ title: '加载中', question: '暂无任务数据', sample: '', hint: '' }]
+      }
     } else {
-      scenarioName.value = 'SSH暴力破解检测'
+      scenarioName.value = '实训场景'
+      steps.value = [{ title: '未选择场景', question: '请先选择一个实训场景', sample: '', hint: '' }]
     }
   } catch {
-    scenarioName.value = 'SSH暴力破解检测'
+    scenarioName.value = '实训场景'
+    steps.value = [{ title: '加载失败', question: '场景数据加载异常', sample: '', hint: '' }]
   }
 })
 

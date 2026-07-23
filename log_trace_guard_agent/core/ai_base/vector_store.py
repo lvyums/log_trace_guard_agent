@@ -208,6 +208,10 @@ def get_embedding_function(model_name: Optional[str] = None) -> EmbeddingFunctio
 class VectorStore:
     """向量库管理，封装 ChromaDB 基本操作"""
 
+    # 类级别共享客户端 — 避免多个 PersistentClient 竞争 SQLite 锁
+    _shared_client: Optional[chromadb.PersistentClient] = None
+    _shared_client_dir: Optional[str] = None
+
     def __init__(self, collection_name: str, persist_dir: str,
                  embedding_model: Optional[str] = None):
         self.collection_name = collection_name
@@ -235,14 +239,15 @@ class VectorStore:
     def _init_client(self):
         """初始化 ChromaDB 客户端并加载集合
 
-        主路径被锁时自动切换到备用路径（如僵尸进程持有 SQLite 锁）。
+        使用类级别共享客户端避免多个 PersistentClient 竞争 SQLite 锁。
+        主路径被锁时自动切换到备用路径。
         """
-        self._client = self._create_client(self.persist_dir)
+        self._client = self._get_or_create_shared_client(self.persist_dir)
         if self._client is None:
             import tempfile
             fallback = os.path.join(tempfile.gettempdir(), "chroma_db_fallback")
             logger.warning(f"主路径 {self.persist_dir} 不可用，切换到备用路径: {fallback}")
-            self._client = self._create_client(fallback)
+            self._client = self._get_or_create_shared_client(fallback)
         if self._client is None:
             raise RuntimeError("ChromaDB 客户端初始化失败，主路径和备用路径均不可用")
 
@@ -272,7 +277,21 @@ class VectorStore:
             )
             logger.info(f"创建新集合: {self.collection_name}")
 
-    def _create_client(self, path: str) -> Optional[chromadb.PersistentClient]:
+    @classmethod
+    def _get_or_create_shared_client(cls, path: str) -> Optional[chromadb.PersistentClient]:
+        """获取或创建共享的 ChromaDB 客户端（单例模式）"""
+        if cls._shared_client is not None and cls._shared_client_dir == path:
+            logger.debug(f"复用共享 ChromaDB 客户端: {path}")
+            return cls._shared_client
+
+        client = cls._try_create_client(path)
+        if client is not None:
+            cls._shared_client = client
+            cls._shared_client_dir = path
+        return client
+
+    @staticmethod
+    def _try_create_client(path: str) -> Optional[chromadb.PersistentClient]:
         """创建 ChromaDB 客户端，检测并清理锁文件避免僵尸进程阻塞"""
         db_file = os.path.join(path, "chroma.sqlite3")
         journal = db_file + "-journal"

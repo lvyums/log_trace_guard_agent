@@ -96,6 +96,10 @@ class LogParseService:
     @staticmethod
     async def parse_log(log_line: str, context: ContextManager) -> Result:
         """全流程解析：预处理 → 识别 → 提取字段 → 结构校验（含 LLM 降级）"""
+        # 0. 在预处理前提取时间戳（syslog前缀会被清洗掉）
+        from common.time_util import parse_log_time
+        original_timestamp = parse_log_time(log_line)
+
         # 1. 预处理
         cleaned = LogParseService._preprocess(log_line)
         if not cleaned:
@@ -113,7 +117,7 @@ class LogParseService:
             else:
                 # 兜底2: 返回通用解析结果 + 人工复核提示
                 fallback = {
-                    "timestamp": None,
+                    "timestamp": original_timestamp,
                     "src_ip": None,
                     "dst_ip": None,
                     "user": None,
@@ -125,6 +129,10 @@ class LogParseService:
                 }
                 LogManager.log_parse_failure(log_line, "无法识别日志格式，使用兜底解析")
                 return Result.ok(fallback)
+
+        # 3. 使用预处理前提取的时间戳（如果解析器没有找到时间戳）
+        if not parsed.get("timestamp") and original_timestamp:
+            parsed["timestamp"] = original_timestamp
 
         # 3. 标记缺失字段
         missing = []

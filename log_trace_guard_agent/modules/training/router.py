@@ -66,22 +66,36 @@ async def analyze_stream(req: SubmitAnswerReq):
     score = check_result.get("score", 0)
     grade = check_result.get("grade", "C")
 
+    # 检查 LLM 配置
+    from app.settings import settings
+    if not settings.llm_api_key:
+        async def no_llm_stream():
+            yield f"data: {json.dumps({'type': 'result', 'score': score, 'grade': grade, 'checks': checks}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'text': '⚠️ LLM 未配置，无法生成详细分析。请在 .env 中设置 LLM_API_KEY。评分结果已生成。'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        return StreamingResponse(no_llm_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     async def event_stream():
         # 先发送评分结果（JSON 事件）
         yield f"data: {json.dumps({'type': 'result', 'score': score, 'grade': grade, 'checks': checks}, ensure_ascii=False)}\n\n"
 
         # 然后流式输出分析文本
-        async for token in ErrorAnalysis._llm_analyze_stream(
-            task_title=task_title,
-            task_description=task_description,
-            submission_content=req.content,
-            standard_answer=standard,
-            checks=checks,
-            score=score,
-            grade=grade,
-        ):
-            if token:
-                yield f"data: {json.dumps({'type': 'token', 'text': token}, ensure_ascii=False)}\n\n"
+        try:
+            async for token in ErrorAnalysis._llm_analyze_stream(
+                task_title=task_title,
+                task_description=task_description,
+                submission_content=req.content,
+                standard_answer=standard,
+                checks=checks,
+                score=score,
+                grade=grade,
+            ):
+                if token:
+                    yield f"data: {json.dumps({'type': 'token', 'text': token}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.error(f"流式分析异常: {e}")
+            error_msg = f"\n\n[分析生成出错: {str(e)}]"
+            yield f"data: {json.dumps({'type': 'token', 'text': error_msg}, ensure_ascii=False)}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
 
