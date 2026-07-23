@@ -28,6 +28,12 @@
             active-text="实训" inactive-text="运维"
             active-color="#FF7D00" inactive-color="#165DFF" />
         </el-tooltip>
+        <a href="https://github.com/lvyums/log_trace_guard_agent/releases/latest"
+           target="_blank" rel="noopener" class="header-cli-btn">
+          <el-tooltip content="下载 CLI 命令行版本" placement="bottom">
+            <el-button icon="Monitor" circle size="small" />
+          </el-tooltip>
+        </a>
         <el-tooltip :content="isDark ? '切换浅色主题' : '切换深色主题'" placement="bottom">
           <el-button :icon="isDark ? 'Sunny' : 'Moon'" @click="toggleTheme" circle size="small" />
         </el-tooltip>

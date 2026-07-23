@@ -204,3 +204,9 @@
   padding: var(--space-xl);
   background: var(--bg-base);
 }
+
+/* CLI download button in header */
+.header-cli-btn {
+  text-decoration: none;
+  display: inline-flex;
+}
