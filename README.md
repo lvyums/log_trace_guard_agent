@@ -4,13 +4,14 @@ AI 驱动的安全日志分析与网络安全实训平台，包含 **Web 智能�
 
 ## 核心功能
 
-| 模块 | 功能 | 三层架构 |
-|------|------|----------|
-| **日志解析** | 日志源识别、字段解析、风险评估、批量解析 | 规则 → RAG日志基础库 → LLM兜底 |
+
+| 模块         | 功能                                           | 三层架构                             |
+| ------------ | ---------------------------------------------- | ------------------------------------ |
+| **日志解析** | 日志源识别、字段解析、风险评估、批量解析       | 规则 → RAG日志基础库 → LLM兜底     |
 | **日志采集** | 设备协议匹配、采集方案生成、故障诊断、架构推荐 | 规则 → RAG采集架构库 → LLM故障诊断 |
-| **脚本生成** | 正则检测规则、ES 查询语句、攻击链追踪脚本 | 规则/模板 → RAG技术脚本库 |
-| **合规审计** | 等保2.0/网安法/数安法问答、合规基线、差距分析 | 规则 → RAG合规审计库 → LLM智能解读 |
-| **攻防实训** | 场景派发、答题评分、报告生成 | 规则评分 → LLM灰色区间增强 |
+| **脚本生成** | 正则检测规则、ES 查询语句、攻击链追踪脚本      | 规则/模板 → RAG技术脚本库           |
+| **合规审计** | 等保2.0/网安法/数安法问答、合规基线、差距分析  | 规则 → RAG合规审计库 → LLM智能解读 |
+| **攻防实训** | 场景派发、答题评分、报告生成                   | 规则评分 → LLM灰色区间增强          |
 
 ## 架构设计
 
@@ -40,13 +41,14 @@ AI 驱动的安全日志分析与网络安全实训平台，包含 **Web 智能�
 
 ### RAG 知识库（5 库 259 条文档）
 
-| 知识库 | 中文名 | 文档数 | 数据来源 |
-|--------|--------|--------|----------|
-| log_basics | 日志基础库 | 8 | log_features, risk_rules |
-| compliance | 合规审计库 | 10 | compliance_standards, baselines |
-| collection | 采集架构库 | 5 | collect_templates, device_protocol, arch_templates |
-| scripts | 技术脚本库 | 59 | 9 个 script_gen_*.json |
-| cases | 实训案例库 | 177 | training_scenarios, fault_kb, correlation_patterns |
+
+| 知识库     | 中文名     | 文档数 | 数据来源                                           |
+| ---------- | ---------- | ------ | -------------------------------------------------- |
+| log_basics | 日志基础库 | 8      | log_features, risk_rules                           |
+| compliance | 合规审计库 | 10     | compliance_standards, baselines                    |
+| collection | 采集架构库 | 5      | collect_templates, device_protocol, arch_templates |
+| scripts    | 技术脚本库 | 59     | 9 个 script_gen_*.json                             |
+| cases      | 实训案例库 | 177    | training_scenarios, fault_kb, correlation_patterns |
 
 ### 5 层分层架构
 
@@ -62,20 +64,22 @@ data/         ChromaDB 向量库 + 21 个规则 JSON 文件
 
 ### Web 智能体
 
-| 层级 | 技术 |
-|------|------|
-| 后端 | FastAPI 0.114 / Uvicorn / Pydantic 2.x |
-| AI | OpenAI SDK (DeepSeek V4 Flash) / ChromaDB 1.4.1 / 三级嵌入降级 |
-| 前端 | Vue 3.5 (Vite) / Element Plus 2.9 / TypeScript |
-| 数据 | 21 个 JSON 规则文件 → ChromaDB 向量库（259 条文档） |
+
+| 层级 | 技术                                                           |
+| ---- | -------------------------------------------------------------- |
+| 后端 | FastAPI 0.114 / Uvicorn / Pydantic 2.x                         |
+| AI   | OpenAI SDK (DeepSeek V4 Flash) / ChromaDB 1.4.1 / 三级嵌入降级 |
+| 前端 | Vue 3.5 (Vite) / Element Plus 2.9 / TypeScript                 |
+| 数据 | 21 个 JSON 规则文件 → ChromaDB 向量库（259 条文档）           |
 
 ### CLI 工具
 
-| 层级 | 技术 |
-|------|------|
-| 运行时 | Python 3.8+ |
-| LLM | requests (同步，无 openai 依赖) |
-| RAG | 轻量级向量检索（API embeddings + 本地 JSON 缓存） |
+
+| 层级   | 技术                                              |
+| ------ | ------------------------------------------------- |
+| 运行时 | Python 3.8+                                       |
+| LLM    | requests (同步，无 openai 依赖)                   |
+| RAG    | 轻量级向量检索（API embeddings + 本地 JSON 缓存） |
 
 ## 快速开始
 
@@ -95,6 +99,18 @@ cp .env.example .env
 python -m app.main
 # 访问 http://localhost:8000
 ```
+
+```bash
+cd log_trace_guard_agent/frontend
+
+# 安装依赖
+npm install
+
+# 开发模式（热更新，端口 5173）
+npm run dev
+```
+
+访问 `http://localhost:5173`，API 请求自动代理到后端。
 
 ### CLI 工具
 
@@ -157,14 +173,13 @@ log-guard -f auth.log -c --json                  # 关联分析（JSON 输出）
 支持三种配置方式（优先级从高到低）：
 
 1. **环境变量**
+
    ```bash
    export LLM_API_KEY=your_key
    export LLM_BASE_URL=https://raytoken.com.cn/v1
    export LLM_MODEL_NAME=deepseek-v4-flash
    ```
-
 2. **配置文件** `~/.log-guard/config.json`（CLI）或 `.env`（Agent）
-
 3. **默认值**（Agent 内置 `settings.py`，CLI 首次运行配置向导）
 
 所有路径配置基于项目根目录自动计算绝对路径，从任意目录运行均可正确解析。
@@ -187,6 +202,39 @@ python -m pytest log_trace_guard_agent/tests/
 - Agent: 133/133 (10.41s)
 - CLI:   236/236 (0.78s)
 ```
+
+### CLI 全功能自动测试
+
+`log_trace_guard_cli/tests/test_all_features_capture.py` 自动测试 CLI 全部功能模块并生成终端输出，覆盖 **6 种日志解析器** 和 **14 项功能**。
+
+```bash
+cd log_trace_guard_cli
+
+# 运行全功能测试（输出到终端）
+python tests/test_all_features_capture.py
+
+# 运行测试并生成 Markdown 展示文档
+python tests/test_all_features_capture.py > tests/sample_logs/cli_demo_output.txt
+python tests/generate_markdown.py
+# → 生成 tests/sample_logs/cli全功能展示.md
+```
+
+测试覆盖：
+
+| 模块 | 功能 | 解析器/服务 |
+|------|------|------------|
+| 日志解析 | SSH/Web/WAF/Firewall/DB 单条解析 | LogParseService |
+| 日志解析 | 批量解析 + 风险研判 | LogParseService |
+| 脚本生成 | 正则规则生成 | ScriptGenService |
+| 脚本生成 | ES 查询生成 | ScriptGenService |
+| 脚本生成 | 脚本优化评分 | ScriptGenService |
+| 合规审计 | 合规基线生成 | ComplianceService |
+| 合规审计 | 合规自查（8项检查） | ComplianceService |
+| 攻击溯源 | SSH 爆破溯源 | ScriptGenService |
+| 联合审查 | 跨源日志关联分析 | LogCorrelateService |
+| 日志加载 | 编码检测 + 格式识别 | LogReader |
+
+测试日志文件 `tests/sample_logs/test_all_features.log` 包含 122 行真实日志样本，覆盖 SSH/Web/WAF/Firewall/DB/Generic 六种格式和 P0-P3 四个风险等级。
 
 ## 开发指南
 
