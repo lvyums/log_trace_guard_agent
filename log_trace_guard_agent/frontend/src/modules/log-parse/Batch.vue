@@ -40,8 +40,10 @@
           <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px">#{{ i+1 }} {{ item.log_line?.slice(0,60) || '' }}</div>
           <div v-if="item.error" class="g-alert g-alert--danger" style="margin:0">{{ item.error }}</div>
           <div v-else style="font-size:12px">
-            <el-tag size="small">{{ item.device_type }}</el-tag>
-            <RiskBadge v-if="item.risk_level" :level="getLevelKey(item.risk_level)" :label="item.risk_level" size="small" />
+            <el-tag size="small">{{ item.parse_result?.device_type || '未知' }}</el-tag>
+            <RiskBadge v-if="item.risk_result?.risk_level" :level="getLevelKey(item.risk_result.risk_level)" :label="item.risk_result.risk_level" size="small" />
+            <span v-if="item.parse_result?.user" style="margin-left:8px;color:var(--text-secondary)">用户: {{ item.parse_result.user }}</span>
+            <span v-if="item.parse_result?.src_ip" style="margin-left:8px;color:var(--text-secondary)">源IP: {{ item.parse_result.src_ip }}</span>
           </div>
         </div>
       </div>

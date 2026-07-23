@@ -23,14 +23,14 @@ class SSHParser(BaseParser):
             r"sshd\[\d+\]:\s+Accepted\s+\w+\s+for\s+(\w+)\s+from\s+([\d.]+)\s+port\s+(\d+)",
             re.IGNORECASE,
         ),
-        # 完整格式 失败: "Mar 15 10:31:00 server sshd[1235]: Failed password for admin from 10.0.0.5 port 22"
+        # 完整格式 失败 (含 invalid user): "Jan 5 12:34:56 server sshd[12345]: Failed password for invalid user admin from 192.168.1.100 port 22"
         re.compile(
-            r"(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}).*sshd\[\d+\]:\s+Failed\s+\w+\s+for\s+(\w+)\s+from\s+([\d.]+)\s+port\s+(\d+)",
+            r"(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}).*sshd\[\d+\]:\s+Failed\s+\w+\s+for\s+(?:invalid\s+user\s+)?(\w+)\s+from\s+([\d.]+)\s+port\s+(\d+)",
             re.IGNORECASE,
         ),
-        # 清洗后格式 失败: "sshd[1235]: Failed password for admin from 10.0.0.5 port 22"
+        # 清洗后格式 失败 (含 invalid user): "sshd[12345]: Failed password for invalid user admin from 192.168.1.100 port 22"
         re.compile(
-            r"sshd\[\d+\]:\s+Failed\s+\w+\s+for\s+(\w+)\s+from\s+([\d.]+)\s+port\s+(\d+)",
+            r"sshd\[\d+\]:\s+Failed\s+\w+\s+for\s+(?:invalid\s+user\s+)?(\w+)\s+from\s+([\d.]+)\s+port\s+(\d+)",
             re.IGNORECASE,
         ),
         # sudo 完整: "Mar 15 10:32:00 server sudo: root : TTY=pts/0 ; PWD=/home ; USER=root ; COMMAND=/bin/rm -rf /tmp"

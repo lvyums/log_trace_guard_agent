@@ -19,9 +19,17 @@ class WebParser(BaseParser):
     COMMON_PATTERN = re.compile(
         r'([\d.]+)\s+-\s+(\S+)\s+\[([^\]]+)\]\s+"(\S+)\s+(\S+)\s+(\S+)"\s+(\d+)\s+(\d+)'
     )
+    # 简化格式: '2024-01-05T12:34:56Z "POST /api/login" 401 1234 "Mozilla/5.0" - -'
+    SIMPLE_PATTERN = re.compile(
+        r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\S*)\s+"(\w+)\s+(\S+)(?:\s+\S+)?"\s+(\d+)\s+(\d+)\s+"([^"]*)"'
+    )
 
     def can_parse(self, log_line: str) -> bool:
-        return bool(self.COMBINED_PATTERN.search(log_line) or self.COMMON_PATTERN.search(log_line))
+        return bool(
+            self.COMBINED_PATTERN.search(log_line)
+            or self.COMMON_PATTERN.search(log_line)
+            or self.SIMPLE_PATTERN.search(log_line)
+        )
 
     def parse_fields(self, log_line: str) -> ParsedLogFields:
         result = ParsedLogFields(
@@ -39,7 +47,6 @@ class WebParser(BaseParser):
             result.timestamp = parse_log_time(log_line) or match.group(3)
             result.method = match.group(4)
             result.url = match.group(5)
-            # Extra fields via model_config["extra"] = "allow"
             result.http_version = match.group(6)
             result.status = match.group(7)
             result.body_bytes = match.group(8)
@@ -57,6 +64,17 @@ class WebParser(BaseParser):
             result.http_version = match.group(6)
             result.status = match.group(7)
             result.body_bytes = match.group(8)
+            return self.validate(result)
+
+        # 尝试简化格式: "2024-01-05T12:34:56Z "POST /api/login" 401 1234 "Mozilla/5.0""
+        match = self.SIMPLE_PATTERN.search(log_line)
+        if match:
+            result.timestamp = match.group(1)
+            result.method = match.group(2)
+            result.url = match.group(3)
+            result.status = match.group(4)
+            result.body_bytes = match.group(5)
+            result.user_agent = match.group(6)
             return self.validate(result)
 
         return self.validate(result)

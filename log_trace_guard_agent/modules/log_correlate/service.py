@@ -25,11 +25,10 @@ from app.settings import settings
 
 logger = LogManager.get_logger()
 
-# 规则文件路径
-CORRELATION_PATTERNS_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "rule_data", "correlation_patterns.json"
-)
+# 规则文件路径（与其他模块统一使用 settings.rule_data_dir）
+from app.settings import settings as _settings
+
+CORRELATION_PATTERNS_PATH = os.path.join(_settings.rule_data_dir, "correlation_patterns.json")
 
 
 # ---------------------------------------------------------------------------

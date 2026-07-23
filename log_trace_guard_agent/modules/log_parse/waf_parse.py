@@ -22,9 +22,14 @@ class WAFParser(BaseParser):
             r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+\[WAF\]\s+\w+\s+([\d.]+)\s+(\w+)\s+(\S+)\s+(\w+)",
             re.IGNORECASE,
         ),
-        # JSON-like WAF: timestamp + src_ip + action + url + attack_type
+        # JSON WAF 格式 (字段顺序灵活): 任意 JSON 包含 action + src_ip
         re.compile(
-            r'"src_ip"\s*:\s*"([\d.]+)".*?"action"\s*:\s*"(block|deny|alert|log)".*?"url"\s*:\s*"([^"]*)"',
+            r'"action"\s*:\s*"(BLOCK|block|DENY|deny|ALERT|alert|LOG|log)".*?"src_ip"\s*:\s*"([\d.]+)"',
+            re.IGNORECASE,
+        ),
+        # JSON WAF 格式 (src_ip 在前): "src_ip" ... "action"
+        re.compile(
+            r'"src_ip"\s*:\s*"([\d.]+)".*?"action"\s*:\s*"(BLOCK|block|DENY|deny|ALERT|alert|LOG|log)"',
             re.IGNORECASE,
         ),
         # 商用 WAF Syslog: "Oct 11 14:32:23 waf01 WAF: Attack blocked src=192.168.1.100 dst=10.0.0.1 url=/login type=SQLi"
@@ -91,13 +96,17 @@ class WAFParser(BaseParser):
                 result.url = groups[3]
                 result.attack_type = self._classify_attack(groups[4])
 
-            # 模式3: JSON-like 格式
-            elif len(groups) == 3 and "src_ip" in log_line:
-                result.src_ip = groups[0]
-                result.attack_action = groups[1]
-                result.url = groups[2]
+            # 模式3/4: JSON WAF 格式 (action在前或src_ip在前)
+            elif len(groups) == 2 and '"action"' in pattern.pattern:
+                # groups 可能是 (action, src_ip) 或 (src_ip, action)
+                if groups[0].upper() in ("BLOCK", "DENY", "ALERT", "LOG"):
+                    result.attack_action = groups[0]
+                    result.src_ip = groups[1]
+                else:
+                    result.src_ip = groups[0]
+                    result.attack_action = groups[1]
 
-            # 模式4: 商用 WAF Syslog
+            # 模式5: 商用 WAF Syslog
             elif len(groups) == 4:
                 result.timestamp = parse_log_time(log_line) or groups[0]
                 result.src_ip = groups[1]
