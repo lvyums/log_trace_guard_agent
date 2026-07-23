@@ -62,10 +62,6 @@
         </el-descriptions-item>
         <el-descriptions-item label="识别依据">{{ result.identify_reason || '规则匹配' }}</el-descriptions-item>
       </el-descriptions>
-      <div v-if="result.fields && Object.keys(result.fields).length" style="margin-top:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">关键字段</div>
-        <CodeBlock :code="JSON.stringify(result.fields, null, 2)" lang="json" />
-      </div>
       <ResultGuide :content="APP_CONFIG.guidance.resultGuides.logParse" />
     </div>
 

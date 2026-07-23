@@ -20,7 +20,7 @@
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">发现的问题</div>
         <div v-for="(issue,i) in result.issues" :key="i" class="g-alert g-alert--warning" style="margin-bottom:8px">{{ issue }}</div>
       </div>
-      <CodeBlock :code="result.optimized||result.optimized_script" :lang="scriptType==='regex'?'python':'bash'" />
+      <CodeBlock :code="result.optimized" :lang="scriptType==='regex'?'python':'bash'" />
       <div v-if="result.explanation" style="margin-top:12px">
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">优化说明</div>
         <div class="g-alert g-alert--success">{{ result.explanation }}</div>

@@ -72,7 +72,7 @@ const activeTab = ref('fields')
 
 const fieldRows = computed(() => {
   if (!result.value) return []
-  const obj = result.value.parsed_fields || result.value.fields || result.value
+  const obj = result.value || {}
   if (typeof obj !== 'object') return []
   const excludeFields = ['missing_fields', 'raw_log', 'fallback_note', 'device_type']
   return Object.entries(obj)

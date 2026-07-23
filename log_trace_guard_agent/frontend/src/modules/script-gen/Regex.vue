@@ -25,7 +25,7 @@
           <div v-if="r.description" style="font-size:12px;color:var(--text-secondary);margin-top:4px">{{ r.description }}</div>
         </div>
       </div>
-      <div v-else><CodeBlock :code="result.pattern || '无匹配规则'" lang="regex" /></div>
+      <div v-else><CodeBlock :code="result.note || '无匹配规则'" lang="text" /></div>
     </div>
     <div v-if="!result && !loading" class="g-card">
       <EmptyGuide title="粘贴日志样本" desc="AI将分析日志结构并生成匹配正则表达式" action-text="填充测试日志" @action="fillSample" />

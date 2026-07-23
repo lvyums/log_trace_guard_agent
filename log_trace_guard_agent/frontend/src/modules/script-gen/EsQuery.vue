@@ -18,7 +18,7 @@
     </div>
     <div v-if="result" class="g-card slide">
       <div class="g-card-title" style="margin-bottom:12px"><el-icon><Monitor /></el-icon> ES 查询语句</div>
-      <CodeBlock :code="result.query || result.dsl" lang="json" />
+      <CodeBlock :code="result.query" lang="json" />
     </div>
     <div v-if="!result && !loading" class="g-card">
       <EmptyGuide title="描述查询需求" desc="用自然语言描述查询条件，AI生成ES查询DSL" action-text="填充示例" @action="fillSample" />
