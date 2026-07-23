@@ -111,9 +111,12 @@
                   style="margin:16px 0">
           <template #default>
             <div>总得分：{{ totalScore }} / {{ totalSteps * 100 }} | 平均分：{{ (totalScore / totalSteps).toFixed(1) }}</div>
-            <div style="margin-top:4px">查看完整报告请前往「实训报告」页面</div>
           </template>
         </el-alert>
+        <el-button type="primary" size="large" style="width:100%" @click="goToReport">
+          <el-icon style="margin-right:4px"><DataLine /></el-icon>
+          查看本次实训报告
+        </el-button>
       </div>
     </div>
   </div>
@@ -123,6 +126,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { DataLine } from '@element-plus/icons-vue'
 import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import RiskBadge from '../../components/RiskBadge.vue'
@@ -247,6 +251,13 @@ async function submit() {
   if (totalSteps.value > 0) {
     ElMessage.success(`全部 ${totalSteps.value} 个任务提交完成，平均分 ${(totalScore.value / totalSteps.value).toFixed(1)}`)
   }
+}
+
+function goToReport() {
+  // 保存当前场景到 sessionStorage，报告页读取
+  const scenario = { scenario_id: scenarioId.value, name: scenarioName.value }
+  sessionStorage.setItem('report-scenario', JSON.stringify(scenario))
+  window.location.hash = '#/training/report'
 }
 </script>
 

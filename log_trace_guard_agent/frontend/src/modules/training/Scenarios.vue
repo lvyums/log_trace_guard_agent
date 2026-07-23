@@ -86,11 +86,9 @@ async function loadScenarios() {
   }
   // Sample fallback when API fails
   scenarios.value = [
-    { scenario: { scenario_id: '1', name: 'SSH暴力破解检测', difficulty: '初级', category: '入侵检测', description: '分析SSH登录日志，识别暴力破解行为并溯源攻击IP' }, total_tasks: 3 },
-    { scenario: { scenario_id: '2', name: 'Web攻击日志分析', difficulty: '中级', category: 'Web安全', description: '分析WAF日志，识别SQL注入、XSS等Web攻击' }, total_tasks: 5 },
-    { scenario: { scenario_id: '3', name: '内网横向移动追踪', difficulty: '高级', category: '应急响应', description: '通过多源日志关联分析，追踪内网横向移动路径' }, total_tasks: 7 },
-    { scenario: { scenario_id: '4', name: '日志采集架构设计', difficulty: '中级', category: '架构设计', description: '根据企业需求设计完整的日志采集与存储架构' }, total_tasks: 4 },
-    { scenario: { scenario_id: '5', name: '合规基线检查', difficulty: '初级', category: '合规审计', description: '对服务器配置进行等保2.0三级合规自查' }, total_tasks: 3 },
+    { scenario: { scenario_id: 'S001', name: '日志基础认知', difficulty: '初级', category: '入侵检测', description: '学习识别不同类型日志，理解关键字段含义，区分正常与异常行为' }, total_tasks: 3 },
+    { scenario: { scenario_id: 'S002', name: '日志采集配置', difficulty: '初级', category: '采集配置', description: '配置各类设备的日志采集规则，实现日志统一收集' }, total_tasks: 2 },
+    { scenario: { scenario_id: 'S003', name: '日志清洗筛查', difficulty: '初级', category: '数据处理', description: '对原始日志进行清洗、过滤、规范化处理' }, total_tasks: 3 },
   ]
   loading.value = false
 }
