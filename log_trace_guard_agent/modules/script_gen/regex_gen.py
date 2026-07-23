@@ -40,8 +40,8 @@ class RegexGenStrategy(BaseScriptStrategy):
         log_sample = params.get("log_sample")
         device_type = params.get("device_type")
 
-        # 1. 识别攻击场景类型
-        scene_type = self._identify_scene(scenario)
+        # 1. 识别攻击场景类型（同时考虑 scenario 和 log_sample）
+        scene_type = self._identify_scene(scenario, log_sample)
 
         # 2. 从外部配置加载规则模板
         config_path = f"{settings.rule_data_dir}/script_gen_regex.json"
@@ -89,12 +89,16 @@ class RegexGenStrategy(BaseScriptStrategy):
             "note": self._get_note(regexes, scene_type, note_parts),
         }
 
-    def _identify_scene(self, scenario: str) -> str:
-        """识别攻击场景类型 — 配置驱动"""
-        scenario_lower = scenario.lower()
+    def _identify_scene(self, scenario: str, log_sample: str = None) -> str:
+        """识别攻击场景类型 — 配置驱动，同时考虑 scenario 和 log_sample"""
+        # 合并 scenario 和 log_sample 进行匹配
+        combined = scenario.lower()
+        if log_sample:
+            combined += " " + log_sample.lower()
+
         scores = {}
         for scene_type, keywords in self._scene_keywords.items():
-            score = sum(2 if kw in scenario_lower else 0 for kw in keywords)
+            score = sum(2 if kw in combined else 0 for kw in keywords)
             if score > 0:
                 scores[scene_type] = score
         if scores:
