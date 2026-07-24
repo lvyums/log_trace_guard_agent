@@ -250,6 +250,85 @@ class AttackChainMatcher:
 class LLMChainAnalyzer:
     """大模型驱动的攻击链分析。接受原始日志行列表，一次性调用 LLM。"""
 
+    @staticmethod
+    def _parse_llm_json(text: str) -> Optional[list]:
+        """
+        从 LLM 返回的文本中恢复/解析攻击链 JSON 数组。
+        处理截断、markdown 包裹、流式输出等异常情况。
+        """
+        if not text or not text.strip():
+            return None
+
+        text = text.strip()
+
+        # 1. 直接解析（完整 JSON）
+        try:
+            result = json.loads(text)
+            if isinstance(result, list):
+                return result
+        except json.JSONDecodeError:
+            pass
+
+        # 2. 尝试补全缺失的数组/对象结束符
+        clean = text.rstrip(",; \t\n\r")
+        for suffix in ["]", "}]", "\n]", "\n}\n]"]:
+            try:
+                result = json.loads(clean + suffix)
+                if isinstance(result, list):
+                    return result
+            except json.JSONDecodeError:
+                continue
+
+        # 3. 提取第一个完整的 JSON 对象（流式/截断输出）
+        try:
+            decoder = json.JSONDecoder()
+            idx = text.find("[")
+            if idx >= 0:
+                result, _ = decoder.raw_decode(text[idx:])
+                if isinstance(result, list):
+                    return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # 4. 尝试按 } 分割，拼凑已完成的各个对象
+        try:
+            # 找到第一个 [
+            start = text.find("[")
+            if start < 0:
+                return None
+            inner = text[start + 1:]
+            # 按 } 分割每个可能的对象块
+            objects_text = []
+            depth = 0
+            buf = ""
+            for ch in inner:
+                if ch == "{":
+                    depth += 1
+                    buf += ch
+                elif ch == "}":
+                    depth -= 1
+                    buf += ch
+                    if depth == 0 and buf.strip():
+                        objects_text.append(buf)
+                        buf = ""
+                elif depth > 0:
+                    buf += ch
+            if objects_text:
+                recovered = []
+                for obj_str in objects_text:
+                    try:
+                        obj = json.loads(obj_str)
+                        if isinstance(obj, dict):
+                            recovered.append(obj)
+                    except json.JSONDecodeError:
+                        continue
+                if recovered:
+                    return recovered
+        except Exception:
+            pass
+
+        return None
+
     @classmethod
     async def analyze(cls, log_lines: List[str]) -> dict:
         """调用 LLM 分析日志中的攻击链。"""
@@ -302,7 +381,8 @@ class LLMChainAnalyzer:
 - risk_level: P0=高危需立即处理, P1=中危, P2=低危
 - confidence: 证据越充分越高，0.3以上即可报告
 - matched_line_indices 引用日志行号 [N]
-- 输出必须是纯 JSON，不要用 markdown 包裹"""
+- 输出必须是纯 JSON，不要用 markdown 包裹
+- **务必确保 JSON 完整闭合**，不要中途截断输出"""
 
         user_input = f"以下日志共 {len(log_lines)} 行，请分析是否存在安全攻击链：\n\n{log_text}"
 
@@ -324,10 +404,10 @@ class LLMChainAnalyzer:
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0].strip()
 
-            chains = json.loads(content)
-            if not isinstance(chains, list):
-                logger.warning(f"LLM 返回非数组: {type(chains)}")
-                return {"chains": [], "summary": "LLM 分析返回格式异常", "method": "llm"}
+            chains = cls._parse_llm_json(content)
+            if chains is None:
+                logger.warning(f"LLM 返回无法恢复的 JSON: content={content[:300]}")
+                return {"chains": [], "summary": "LLM 分析结果解析失败", "method": "llm"}
 
             return {"chains": chains, "summary": f"LLM 分析发现 {len(chains)} 条攻击链", "method": "llm"}
 
