@@ -8,16 +8,39 @@ class CorrelateLogsReq(BaseModel):
     """日志关联分析请求"""
     log_lines: list[str] = Field(default_factory=list, min_length=1, description="日志行列表")
     time_window_minutes: int = Field(default=5, ge=1, le=1440, description="关联时间窗口（分钟）")
-    detailed: bool = Field(default=False, description="是否返回详细时间线")
+    use_llm: bool = Field(default=False, description="是否强制使用 LLM 分析（跳过关键词匹配）")
+    detailed: bool = Field(default=False, description="是否返回详细事件信息")
+
+
+class FileCrunchReq(BaseModel):
+    """日志文件分析请求"""
+    file_path: Optional[str] = Field(default=None, description="服务器上的文件路径")
+    file_content: Optional[str] = Field(default=None, description="直接传入文件内容（替代 file_path）")
+    time_window_minutes: int = Field(default=5, ge=1, le=1440, description="关联时间窗口（分钟）")
+    use_llm: bool = Field(default=False, description="是否强制使用 LLM 分析")
+
+
+class ToTraceReq(BaseModel):
+    """攻击链 → 攻击溯源脚本 请求"""
+    log_lines: list[str] = Field(..., min_length=1, description="攻击链相关的日志行")
+    chain_name: str = Field(default="", description="攻击链名称")
+    attack_type: str = Field(default="unknown", description="攻击类型")
+
+
+class ToScenarioReq(BaseModel):
+    """攻击链 → 实训场景 请求"""
+    log_lines: list[str] = Field(..., min_length=1, description="攻击链相关的日志行")
+    chain_name: str = Field(default="", description="攻击链名称")
+    chain_description: str = Field(default="", description="攻击链描述")
 
 
 class CorrelateResp(BaseModel):
     """日志关联分析响应"""
     total_events: int = Field(default=0, description="总事件数")
-    device_types: list[str] = Field(default_factory=list, description="设备类型列表")
-    entities: list[str] = Field(default_factory=list, description="实体列表")
-    chains: list[dict] = Field(default_factory=list, description="攻击链列表")
+    chains: list[dict] = Field(default_factory=list, description="检测到的攻击链")
     summary: str = Field(default="", description="分析摘要")
+    method: str = Field(default="keyword", description="分析方法：keyword / llm / hybrid")
+    matched_keywords: list[str] = Field(default_factory=list, description="命中的关键词（keyword 模式）")
 
 
 class PatternItem(BaseModel):

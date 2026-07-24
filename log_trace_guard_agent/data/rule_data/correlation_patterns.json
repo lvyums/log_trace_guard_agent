@@ -1,306 +1,215 @@
 {
   "rules": [
     {
-      "name": "database_connection_failure_chain",
-      "description": "检测数据库连接失败关联链：连接失败 → 重试 → 最终超时",
+      "name": "ssh_brute_to_privesc",
+      "description": "SSH暴力破解后提权攻击链：多次登录失败 → 登录成功 → sudo提权",
       "type": "sequence",
       "severity": "critical",
       "patterns": [
-        {"keyword": "connection refused", "source": "database|db|mysql|postgres|redis"},
-        {"keyword": "retry", "source": "database|db|mysql|postgres|redis"},
-        {"keyword": "timeout", "source": "database|db|mysql|postgres|redis"}
+        {"keyword": "Failed password|登录失败|密码错误|认证失败", "source": "ssh|auth|.*"},
+        {"keyword": "Accepted password|登录成功|登录认证成功", "source": "ssh|auth|.*"},
+        {"keyword": "sudo.*COMMAND=|sudo.*执行|SUDO.*|提权|root权限|sudo:", "source": "ssh|auth|.*"}
       ],
       "time_window": 300,
-      "required_matches": 2
+      "required_matches": 3
     },
     {
-      "name": "database_deadlock_chain",
-      "description": "检测数据库死锁链：死锁警告 → 事务回滚 → 连接池耗尽",
-      "type": "sequence",
-      "severity": "critical",
-      "patterns": [
-        {"keyword": "deadlock", "source": "database|db|mysql"},
-        {"keyword": "rollback|abort", "source": "database|db|mysql"},
-        {"keyword": "too many connections|connection pool exhausted", "source": "database|db|mysql"}
-      ],
-      "time_window": 120,
-      "required_matches": 2
-    },
-    {
-      "key": "database_slow_query_chain",
-      "name": "database_slow_query_chain",
-      "description": "检测数据库慢查询链：慢查询 → 锁等待 → 连接堆积",
-      "type": "sequence",
-      "severity": "major",
-      "patterns": [
-        {"keyword": "slow query|long query", "source": "database|db|mysql"},
-        {"keyword": "lock wait|lock timeout", "source": "database|db|mysql"},
-        {"keyword": "connection backlog|connection wait", "source": "database|db|mysql"}
-      ],
-      "time_window": 300,
-      "required_matches": 2
-    },
-    {
-      "name": "replication_lag_chain",
-      "description": "检测主从复制延迟链：复制延迟 → 数据不一致 → 读请求超时",
-      "type": "sequence",
-      "severity": "major",
-      "patterns": [
-        {"keyword": "replication lag|seconds behind master", "source": "database|mysql|mariadb"},
-        {"keyword": "data inconsistency|slave error", "source": "database|mysql|mariadb"},
-        {"keyword": "read query timeout|read failed", "source": "database|mysql|mariadb"}
-      ],
-      "time_window": 600,
-      "required_matches": 2
-    },
-    {
-      "name": "out_of_memory_chain",
-      "description": "检测OOM关联链：内存占用上升 → OOM Killer → 进程退出",
-      "type": "sequence",
-      "severity": "critical",
-      "patterns": [
-        {"keyword": "OutOfMemoryError|cannot allocate memory|OOM", "source": ".*"},
-        {"keyword": "killed process|oom_killer|oom-kill", "source": "kernel|system"},
-        {"keyword": "exit code 137|exit code 9|SIGKILL", "source": ".*"}
-      ],
-      "time_window": 120,
-      "required_matches": 2
-    },
-    {
-      "name": "memory_leak_early_warning",
-      "description": "检测内存泄漏前兆：持续增长 → 触发GC阈值 → GC耗时上升",
-      "type": "time_window",
-      "severity": "warning",
-      "patterns": [
-        {"keyword": "heap usage|memory usage|RSS", "source": "jvm|app|system", "trend": "increasing"},
-        {"keyword": "GC overhead|garbage collection", "source": "jvm|java"},
-        {"keyword": "GC time|pause time", "source": "jvm|java", "trend": "increasing"}
-      ],
-      "time_window": 600,
-      "required_matches": 2,
-      "min_freq": 5
-    },
-    {
-      "name": "network_timeout_chain",
-      "description": "检测网络超时关联链：重试 → 超时 → 服务降级/熔断",
-      "type": "sequence",
-      "severity": "major",
-      "patterns": [
-        {"keyword": "retry|attempt", "source": "network|http|client"},
-        {"keyword": "timeout|timed out|deadline exceeded", "source": "network|http|client"},
-        {"keyword": "circuit break|fallback|degrad", "source": ".*"}
-      ],
-      "time_window": 180,
-      "required_matches": 2
-    },
-    {
-      "name": "dns_resolution_failure_chain",
-      "description": "检测DNS解析失败链：DNS查询失败 → 域名解析失败 → 连接异常",
-      "type": "sequence",
-      "severity": "major",
-      "patterns": [
-        {"keyword": "dns|name resolution", "source": "network|system"},
-        {"keyword": "unknown host|could not resolve|NXDOMAIN", "source": "network|http|client"},
-        {"keyword": "connection failed|no route to host", "source": "network|http|client"}
-      ],
-      "time_window": 120,
-      "required_matches": 2
-    },
-    {
-      "name": "connection_refused_chain",
-      "description": "检测连接拒绝链：端口未监听 → ECONNREFUSED → 健康检查失败",
-      "type": "sequence",
-      "severity": "critical",
-      "patterns": [
-        {"keyword": "connection refused|ECONNREFUSED", "source": "network|.*"},
-        {"keyword": "health check|healthcheck|liveness|readiness", "source": "kubernetes|k8s|orchestration"},
-        {"keyword": "unhealthy|not ready|failed", "source": "kubernetes|k8s|orchestration"}
-      ],
-      "time_window": 60,
-      "required_matches": 2
-    },
-    {
-      "name": "auth_failure_chain",
-      "description": "检测认证失败关联链：多次认证失败 → 账户锁定 → 访问拒绝",
-      "type": "sequence",
-      "severity": "major",
-      "patterns": [
-        {"keyword": "authentication failed|login failed|invalid credential|Failed password", "source": "auth|security|ssh|.*"},
-        {"keyword": "account locked|too many attempts|rate limit|Invalid user", "source": "auth|security|ssh"},
-        {"keyword": "access denied|permission denied|forbidden|sudo", "source": "auth|security|ssh|.*"}
-      ],
-      "time_window": 300,
-      "required_matches": 2
-    },
-    {
-      "name": "brute_force_attempt_chain",
-      "description": "检测暴力破解攻击链：高频登录失败 → 异常IP → 账号爆破",
+      "name": "brute_force_attempt",
+      "description": "暴力破解攻击链：高频登录失败 → 异常IP → 账号爆破",
       "type": "time_window",
       "severity": "critical",
       "patterns": [
-        {"keyword": "login failed|invalid password|wrong credential|Failed password", "source": "auth|ssh|application|.*"},
-        {"keyword": "failed login from|invalid user|Invalid user", "source": "ssh|auth|.*"},
-        {"keyword": "brute force|intrusion|blocked ip|Accepted password", "source": "security|waf|ids|ssh|.*"}
+        {"keyword": "Failed password|登录失败|密码错误|invalid password|wrong credential|认证失败", "source": "auth|ssh|application|.*"},
+        {"keyword": "invalid user|Invalid user|不存在的用户|unknown user|非法用户", "source": "ssh|auth|.*"},
+        {"keyword": "brute force|暴力破解|爆破|blocked ip|入侵检测|blocked|多次尝试", "source": "security|waf|ids|ssh|.*"}
       ],
       "time_window": 300,
       "required_matches": 2,
       "min_freq": 3
     },
     {
-      "name": "ssh_brute_to_privesc",
-      "description": "检测SSH暴力破解后提权攻击链：多次登录失败 → 登录成功 → sudo提权",
+      "name": "sql_injection_chain",
+      "description": "SQL注入攻击链：异常SQL查询 → 数据泄露 → 表结构探测",
       "type": "sequence",
       "severity": "critical",
       "patterns": [
-        {"keyword": "Failed password", "source": "ssh|.*"},
-        {"keyword": "Accepted password", "source": "ssh|.*"},
-        {"keyword": "sudo.*COMMAND=", "source": "ssh|.*"}
-      ],
-      "time_window": 300,
-      "required_matches": 3
-    },
-    {
-      "name": "certificate_expiry_chain",
-      "description": "检测证书过期关联链：证书即将到期 → TLS握手失败 → 服务不可用",
-      "type": "sequence",
-      "severity": "major",
-      "patterns": [
-        {"keyword": "certificate expire|cert will expire|ssl cert", "source": "system|security"},
-        {"keyword": "TLS handshake failed|SSL error|certificate verify", "source": "network|http"},
-        {"keyword": "handshake failure|tls alert", "source": "network|http"}
-      ],
-      "time_window": 86400,
-      "required_matches": 2
-    },
-    {
-      "name": "pod_crashloop_chain",
-      "description": "检测Pod CrashLoop链：容器启动失败 → 不断重启 → CrashLoopBackOff",
-      "type": "sequence",
-      "severity": "critical",
-      "patterns": [
-        {"keyword": "container start|starting container", "source": "kube|kubernetes|docker"},
-        {"keyword": "back-off restart|crashloop|CrashLoopBackOff", "source": "kube|kubernetes"},
-        {"keyword": "unhealthy pod|pod failure|restart count", "source": "kube|kubernetes"}
+        {"keyword": "SELECT.*FROM|INSERT.*INTO|DROP.*TABLE|UPDATE.*SET|DELETE.*FROM|select.*from|insert.*into|drop.*table", "source": "db|mysql|waf|.*"},
+        {"keyword": "OR.*=.*1|UNION.*SELECT|--.*|'.*OR.*'|1=1|and.*=.*|union.*select|sql注入", "source": "db|mysql|waf|.*"},
+        {"keyword": "information_schema|table_schema|column_name|系统表|用户表|敏感表", "source": "db|mysql|.*"}
       ],
       "time_window": 300,
       "required_matches": 2
     },
     {
-      "name": "node_resource_exhaustion_chain",
-      "description": "检测节点资源耗尽链：磁盘/内存不足 → Pod驱逐 → 节点NotReady",
+      "name": "web_scan_to_exploit",
+      "description": "Web扫描到漏洞利用攻击链：大量4XX请求 → 漏洞利用尝试 → 成功入侵(200+payload)",
       "type": "sequence",
       "severity": "critical",
       "patterns": [
-        {"keyword": "node capacity|node condition|disk pressure|memory pressure", "source": "kube|kubernetes"},
-        {"keyword": "evict|pod evicted|node pressure", "source": "kube|kubernetes"},
-        {"keyword": "node not ready|NodeNotReady", "source": "kube|kubernetes"}
+        {"keyword": "404|403|400|301|扫描|probe|scan|dir busting|dirsearch|gobuster|admin|phpinfo|test|路径遍历|目录扫描|..\\/", "source": "web|nginx|http|waf|.*"},
+        {"keyword": "eval|exec|system|cmd|passthru|shell_exec|webshell|木马|后门|RCE|命令执行|远程代码", "source": "web|waf|.*"},
+        {"keyword": "200.*(eval|shell|cmd|exec|whoami|cat|flag|admin/login|success)|200.*(木马|后门|webshell)|200.*(phpinfo|phpmyadmin)", "source": "web|nginx|http|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "initial_access_to_lateral",
+      "description": "入口入侵到横向移动：Web漏洞利用 → SSH/internal跳转 → 内网扫描",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "webshell|shell|反弹|reverse|exec|whoami|RCE|命令执行|上传|upload|getshell", "source": "web|waf|.*"},
+        {"keyword": "ssh.*(192.168|10.|172.1[6-9]|172.2[0-9]|172.3[0-1])|SSH.*(内网|跳转|跳板)|ssh:.*Accepted|SSH登录", "source": "ssh|auth|.*"},
+        {"keyword": "nmap|扫描|scan|探测|port.*scan|端口扫描|主机发现|内网探测|横向", "source": "firewall|ids|network|.*"}
       ],
       "time_window": 600,
       "required_matches": 2
     },
     {
-      "name": "oomkilled_container_chain",
-      "description": "检测容器OOMKilled链：容器内存超限 → OOMKilled → 被驱逐",
+      "name": "privilege_escalation",
+      "description": "权限提升攻击链：低权限操作 → sudo提权 → 敏感文件访问",
       "type": "sequence",
       "severity": "critical",
       "patterns": [
-        {"keyword": "memory limit|memory usage exceeds|limit range", "source": "kube|kubernetes|docker"},
-        {"keyword": "OOMKilled|OOM kill|out of memory", "source": "kube|kubernetes|docker"},
-        {"keyword": "container restart|evicted pod", "source": "kube|kubernetes"}
+        {"keyword": "su.*|sudo.*|切换用户|su:.*|sudo:|提权", "source": "auth|system|ssh|.*"},
+        {"keyword": "sudo.*COMMAND=|sudo:.*COMMAND|sudo:.*command|提权成功|获取root", "source": "auth|system|ssh|.*"},
+        {"keyword": "/etc/shadow|/etc/passwd|/etc/sudoers|shadow|passwd|密钥|私钥|证书|秘钥|credential|凭据", "source": "auth|system|.*"}
       ],
       "time_window": 120,
       "required_matches": 2
     },
     {
-      "name": "disk_io_hang_chain",
-      "description": "检测磁盘IO hang链：IO等待上升 → 磁盘延迟 → IO错误",
+      "name": "data_exfiltration",
+      "description": "数据窃取攻击链：大量查询 → 大流量出站 → DNS/隐蔽通道",
       "type": "sequence",
-      "severity": "major",
+      "severity": "critical",
       "patterns": [
-        {"keyword": "iowait|disk wait|io latency", "source": "system|kernel|monitor"},
-        {"keyword": "disk slow|high latency|disk busy", "source": "system|storage"},
-        {"keyword": "IO error|disk error|fsync failed", "source": "system|storage|filesystem"}
-      ],
-      "time_window": 300,
-      "required_matches": 2
-    },
-    {
-      "name": "inode_exhaustion_chain",
-      "description": "检测inode耗尽链：磁盘使用率高 → inode耗尽 → 文件创建失败",
-      "type": "sequence",
-      "severity": "major",
-      "patterns": [
-        {"keyword": "disk usage|disk full|no space left", "source": "system|filesystem"},
-        {"keyword": "inode|no space", "source": "system|filesystem"},
-        {"keyword": "failed to create file|cannot write|read-only", "source": "system|application"}
+        {"keyword": "select|query|查询|export|dump|备份|下载|批量|大量|bulk|mass|select.*into|into outfile", "source": "db|application|.*"},
+        {"keyword": "outbound|出站|出口|egress|大流量|high.*traffic|大量数据|data.*transfer|upload|上传.*外部", "source": "network|firewall|.*"},
+        {"keyword": "dns.*tunnel|dns隧道|dns.*query.*(base64|hex|encoded)|DNS.*异常|encoded|编码传输|domain.*(base64|random)|异常DNS", "source": "dns|network|.*"}
       ],
       "time_window": 600,
       "required_matches": 2
     },
     {
-      "name": "config_error_chain",
-      "description": "检测配置错误关联链：配置加载失败 → 参数错误 → 启动失败",
-      "type": "sequence",
-      "severity": "major",
-      "patterns": [
-        {"keyword": "config|configuration", "source": "application|system"},
-        {"keyword": "invalid config|bad config|malformed|parse error", "source": "application|system"},
-        {"keyword": "failed to start|initialization failed|exit code", "source": "application|system"}
-      ],
-      "time_window": 60,
-      "required_matches": 2
-    },
-    {
-      "name": "api_rate_limiting_chain",
-      "description": "检测API限流关联链：请求量突增 → 限流触发 → 客户端退避",
+      "name": "c2_beacon",
+      "description": "C2通信检测链：周期性出站 → 心跳信号 → 数据回传",
       "type": "time_window",
-      "severity": "warning",
+      "severity": "critical",
       "patterns": [
-        {"keyword": "rate limit|too many requests|429", "source": "api|gateway|nginx"},
-        {"keyword": "throttl|quota exceeded|rate exceeded", "source": "api|gateway"},
-        {"keyword": "backoff|retry after|wait", "source": "client|application"}
+        {"keyword": "outbound|出站|connect.*(外部|external|公网|internet)|external.*connect|连接.*(外部|未知)", "source": "firewall|network|.*"},
+        {"keyword": "heartbeat|心跳|beacon|轮询|poll|periodic|定时|sleep.*(connect|请求)|sleep.*(10|30|60)|间隔.*请求", "source": "network|ids|.*"},
+        {"keyword": "callback|回连|回传|reverse.*(shell|connect)|beacon|C2|command.*control|受控|后门|木马|远控", "source": "ids|waf|security|.*"}
       ],
-      "time_window": 120,
+      "time_window": 600,
+      "required_matches": 2,
+      "min_freq": 3
+    },
+    {
+      "name": "ransomware_attack",
+      "description": "勒索软件攻击链：文件加密 → 扩展名变更 → 勒索通知/系统降级",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "encrypt|加密|lock|锁定|file.*modif|文件.*修改|文件.*操作|批量.*文件|rename|重命名", "source": "system|application|.*"},
+        {"keyword": ".(encrypted|locked|crypted|enc|locked|勒索|加密文件)|扩展名.*(加密|lock|被修改)|original.*rename", "source": "system|filesystem|.*"},
+        {"keyword": "ransom|勒索|decrypt|解密|READ_ME|README|如何解密|比特币|bitcoin|支付|赎金|系统.*(降级|崩溃|瘫痪)", "source": "security|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "internal_reconnaissance",
+      "description": "内网侦察攻击链：内网扫描 → 服务发现 → 漏洞探测",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "SYN.*(scan|扫描)|port.*scan|端口.*扫描|nmap|masscan|zmap|内网.*(扫描|探测)|internal.*scan", "source": "ids|firewall|network|.*"},
+        {"keyword": "22.*(open|开放)|443.*(open|开放)|3306.*(open|开放)|服务.*(发现|探测)|service.*(detect|discover)|端口.*(开|开放)", "source": "network|.*"},
+        {"keyword": "vuln|漏洞|CVE|exploit|exp|poc|payload|渗透|exploit.*attempt|漏洞利用|Exp.*尝试", "source": "waf|ids|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "web_attack_to_data_theft",
+      "description": "Web攻击到数据窃取：SQL注入/文件读取 → 数据库查询 → 凭据/数据回传",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "注入|injection|sql|select.*from|UNION|OR.*=.*|1=1|'.*OR|LFI|RFI|路径穿越|目录穿越|文件包含|file.*include|../", "source": "web|waf|.*"},
+        {"keyword": "database|db|mysql|select.*user|select.*password|select.*from.*admin|user.*table|用户表|密码表|凭据|credentials", "source": "db|mysql|.*"},
+        {"keyword": "token|session|cookie|jwt|api.*key|密钥|token|凭证|认证.*(信息|数据)|窃取|steal|exfil|泄露|outbound.*(data|数据)", "source": "web|application|network|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "dns_tunneling",
+      "description": "DNS隧道检测链：异常DNS查询 → 长编码域名 → 隐蔽数据传输",
+      "type": "time_window",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "dns.*query|dns.*request|DNS.*(查询|请求)|(查询|请求).*DNS|txt.*record|TXT.*(查询|记录)", "source": "dns|network|.*"},
+        {"keyword": "base64|hex|encode|encoded|long.*domain|长.*域名|异常.*域名|random.*domain|随机.*域名|subdomain.*(64|128|256)", "source": "dns|.*"},
+        {"keyword": "tunnel|隧道|covert|隐蔽|channel|隐蔽通道|data.*(exfil|exfiltration)|数据传输", "source": "dns|network|security|.*"}
+      ],
+      "time_window": 600,
       "required_matches": 2,
       "min_freq": 5
     },
     {
-      "name": "service_dependency_cascade",
-      "description": "检测服务依赖级联故障链：上游失败 → 下游依赖超时 → 级联失败",
+      "name": "supply_chain_attack",
+      "description": "供应链攻击链：可疑组件下载 → 恶意进程执行 → C2回连",
       "type": "sequence",
       "severity": "critical",
       "patterns": [
-        {"keyword": "dependency|upstream|downstream", "source": "service|api|gateway"},
-        {"keyword": "upstream timeout|connection to.*failed|service unavailable", "source": "gateway|proxy|nginx"},
-        {"keyword": "cascade|cascading failure|dependency failure", "source": "service|.*"}
+        {"keyword": "npm|pip|gem|maven|nuget|go.*get|docker.*pull|下载|package|install|wget.*(external|http)|curl.*(external|http)|第三方|外部.*包|依赖.*下载", "source": "system|application|.*"},
+        {"keyword": "suspicious.*(process|exec|binary)|可疑.*(进程|文件|程序)|unknown.*process|未知.*进程|异常.*(进程|行为)|新.*进程.*启动", "source": "system|security|.*"},
+        {"keyword": "callback|回连|beacon|heartbeat|C2|remote.*(connect|access)|远控|外连|出站.*(连接|请求)|external.*connection", "source": "network|firewall|security|.*"}
       ],
-      "time_window": 300,
+      "time_window": 600,
       "required_matches": 2
     },
     {
-      "name": "sql_injection_chain",
-      "description": "检测SQL注入攻击链：登录成功后执行异常SQL查询",
+      "name": "insider_threat",
+      "description": "内部威胁检测链：非工作时间访问 → 大量文件操作 → 外部存储转存",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "非工作|off.*hour|after.*hour|凌晨|深夜|2[2-3]:|0[0-5]:|周末|holiday|异常.*(时间|时段)|non.*business", "source": "auth|system|.*"},
+        {"keyword": "download|下载|export|导出|大量|大量.*(文件|数据)|批量|batch|bulk|copy|cp|scp.*(下载|到)|rsync", "source": "system|application|.*"},
+        {"keyword": "upload|上传|转存|external.*(storage|upload)|云端|云盘|网盘|USB|移动|介质|外设|transfer.*(外部|外网)|外发", "source": "network|system|.*"}
+      ],
+      "time_window": 1200,
+      "required_matches": 2
+    },
+    {
+      "name": "waf_alert_to_attack",
+      "description": "WAF告警到成功攻击链：WAF拦截 → 绕过尝试 → 攻击成功",
       "type": "sequence",
       "severity": "critical",
       "patterns": [
-        {"keyword": "Accepted password|sudo.*COMMAND=", "source": "ssh|.*"},
-        {"keyword": "SELECT.*FROM|INSERT.*INTO|DROP.*TABLE|UPDATE.*SET|DELETE.*FROM", "source": "db|mysql|.*"},
-        {"keyword": "OR.*=.*1|UNION.*SELECT|--.*|'.*OR.*'", "source": "db|mysql|.*"}
+        {"keyword": "WAF.*(block|拦截|禁止|denied)|waf.*(alert|告警)|Web.*(防火墙|阻断)|恶意.*请求|恶意请求|攻击.*(请求|行为)|SQL.*(注入|injection)|XSS|跨站", "source": "waf|security|.*"},
+        {"keyword": "bypass|绕过|绕过.*(waf|检测)|编码|encode|base64|unicode|变形|混淆|obfuscat|case.*(转换|change)|双写|双重", "source": "waf|web|.*"},
+        {"keyword": "200.*(login|admin|upload|shell|命令|执行)|status.*(200|成功)|access.*granted|登录.*成功|上传.*成功|攻击成功|入侵.*成功", "source": "web|nginx|http|.*"}
       ],
-      "time_window": 300,
+      "time_window": 600,
       "required_matches": 2
     },
     {
-      "name": "log_flood_detection",
-      "description": "检测日志洪水：短时间内大量同类ERROR日志",
-      "type": "time_window",
-      "severity": "warning",
+      "name": "auth_failure_chain",
+      "description": "认证失败关联链：多次认证失败 → 账户锁定 → 访问拒绝",
+      "type": "sequence",
+      "severity": "major",
       "patterns": [
-        {"keyword": "ERROR|FATAL|CRITICAL", "source": ".*"}
+        {"keyword": "authentication failed|login failed|invalid credential|Failed password|认证失败|登录失败|密码错误|验证失败", "source": "auth|security|ssh|.*"},
+        {"keyword": "account locked|too many attempts|rate limit|Invalid user|账户锁定|尝试过多|次数限制|锁定|禁用|冻结|locked", "source": "auth|security|ssh"},
+        {"keyword": "access denied|permission denied|forbidden|拒绝访问|权限不足|禁止访问|无权|authorization failed|授权失败", "source": "auth|security|ssh|.*"}
       ],
-      "time_window": 60,
-      "required_matches": 1,
-      "min_freq": 50
+      "time_window": 300,
+      "required_matches": 2
     }
   ]
 }

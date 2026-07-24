@@ -45,9 +45,9 @@ export const APP_CONFIG: AppConfig = {
     },
     {
       key: 'log-correlate', label: '日志联合审查', icon: 'Connection',
-      desc: '多源日志关联分析、攻击链检测、事件时间线推演',
+      desc: '安全威胁狩猎、攻击链检测、多源日志关联分析',
       children: [
-        { path: '/log-correlate/analyze', label: '关联分析', icon: 'Search', tip: '输入多源日志，自动检测攻击链和关联事件' },
+        { path: '/log-correlate/analyze', label: '关联分析', icon: 'Search', tip: '输入多源日志，检测安全攻击链（关键词+LLM双引擎）' },
         { path: '/log-correlate/patterns', label: '攻击链模式', icon: 'List', tip: '查看所有可检测的攻击链模式列表' },
       ],
     },
@@ -137,10 +137,10 @@ export const APP_CONFIG: AppConfig = {
         hint: '典型场景：收到IDS告警后，粘贴原始日志确认是否为误报。',
       },
       correlate: {
-        title: '日志联合审查 — 发现隐蔽攻击链',
-        desc: '输入多源日志（每行一条），系统自动构建时间线、进行实体关联、检测已知攻击链模式。',
+        title: '安全威胁狩猎 — 发现隐蔽攻击链',
+        desc: '输入多源日志（每行一条），系统自动检测安全攻击链。内置 16 种攻击链模型，覆盖 SSH 爆破提权、SQL 注入、横向移动、数据窃取、C2 通信、勒索软件等场景。支持中英文日志，关键词匹配不足时自动降级 LLM 智能分析。',
         action: '加载攻击链样例',
-        hint: '例如：防火墙检测到暴力破解 -> 服务器上SSH登录成功 -> 数据库出现异常查询，可能就是一条完整的攻击链。',
+        hint: '例如：SSH 暴力破解失败 → 登录成功 → sudo提权 → 敏感文件访问，就是一个完整的攻击链。',
       },
       collectPlan: {
         title: '日志采集是安全运营的基石',

@@ -80,6 +80,9 @@ export const Api = {
   logCorrelate: {
     correlate: (data: any) => request('POST', '/api/v1/log-correlate/correlate', data),
     patterns: () => request('GET', '/api/v1/log-correlate/patterns'),
+    fileCrunch: (data: any) => request('POST', '/api/v1/log-correlate/file-crunch', data),
+    toTrace: (data: any) => request('POST', '/api/v1/log-correlate/to-trace', data),
+    toScenario: (data: any) => request('POST', '/api/v1/log-correlate/to-scenario', data),
   },
   training: {
     scenarios: () => request('POST', '/api/v1/training/dispatch', { scenario_id: '', category: '' }),

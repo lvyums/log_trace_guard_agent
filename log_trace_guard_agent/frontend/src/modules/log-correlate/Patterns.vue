@@ -1,8 +1,8 @@
 <template>
   <div class="g-stack">
     <AlertGuide v-if="mode === 'training'" type="info" title="攻击链模式库">
-      系统内置 21 条攻击链检测规则，涵盖数据库、网络、认证、容器、API 等常见安全场景。
-      每条模式定义了攻击阶段序列和事件匹配条件。
+      系统内置 16 条安全攻击链检测规则，涵盖 SSH 爆破提权、SQL 注入、横向移动、数据窃取、C2 通信、勒索软件、DNS 隧道、供应链攻击等常见安全场景。
+      每条模式定义了攻击阶段序列和关键词匹配条件，支持中英文日志。
     </AlertGuide>
 
     <div class="g-card">
