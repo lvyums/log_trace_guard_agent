@@ -1,6 +1,7 @@
 """模块五：实训测评与报告生成 — 全程记录、自动分析薄弱项、生成标准化报告"""
 
 from typing import Optional
+import json
 
 from modules.training.task_engine import TaskEngine
 from common.logger import LogManager
@@ -75,14 +76,46 @@ class ReportGenerator:
         else:
             scenarios_data = records
 
-        for sid, tasks in scenarios_data.items():
+        for sid, tasks_inner in scenarios_data.items():
             scenario = TaskEngine.get_scenario(sid)
             scenario_name = scenario.get("name", sid) if scenario else sid
 
-            for tid, submissions in tasks.items():
+            for tid, submissions in tasks_inner.items():
                 best = max(submissions, key=lambda r: r["score"])
                 task = TaskEngine.get_task(sid, tid)
                 task_title = task.get("title", tid) if task else tid
+
+                # 获取标准答案（参考答案+指导）
+                standard = TaskEngine.get_standard_answer(sid, tid)
+                reference_answer = None
+                if standard:
+                    ca = standard.get("correct_answer", {})
+                    kf = standard.get("key_fields", {})
+                    sr = standard.get("scoring_rules", {})
+                    # 从 scenario 获取 hint
+                    hint = task.get("hint", "") if task else ""
+
+                    # 构建简洁的参考答案展示
+                    answer_parts = []
+                    for field_name, value in ca.items():
+                        if field_name == "reasoning":
+                            continue
+                        if isinstance(value, list):
+                            answer_parts.append(f"• {field_name}: {', '.join(str(v) for v in value)}")
+                        elif isinstance(value, dict):
+                            answer_parts.append(f"• {field_name}: {json.dumps(value, ensure_ascii=False, indent=2)}")
+                        else:
+                            answer_parts.append(f"• {field_name}: {value}")
+
+                    reference_answer = {
+                        "correct_answer": ca,
+                        "key_fields": kf,
+                        "scoring_rules": sr,
+                        "reasoning": ca.get("reasoning", ""),
+                        "hint": hint,
+                        "required_fields": sr.get("required_fields", []),
+                        "answer_summary": "\n".join(answer_parts),
+                    }
 
                 task_records.append({
                     "task_id": tid,
@@ -91,6 +124,7 @@ class ReportGenerator:
                     "grade": best["grade"],
                     "attempts": len(submissions),
                     "status": best["status"],
+                    "reference_answer": reference_answer,
                 })
 
         if not task_records:

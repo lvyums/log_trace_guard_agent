@@ -34,12 +34,38 @@
       </el-descriptions>
       <div v-if="report.task_records?.length">
         <div style="font-weight:600;margin-bottom:8px;font-size:13px">详细得分</div>
-        <div v-for="(item,i) in report.task_records" :key="i" style="margin-bottom:8px;padding:8px;border:1px solid var(--border-color);border-radius:4px">
+        <div v-for="(item,i) in report.task_records" :key="i" style="margin-bottom:12px;padding:8px;border:1px solid var(--border-color);border-radius:4px">
           <div style="display:flex;justify-content:space-between;font-size:13px">
             <span>{{ item.title }}</span>
             <RiskBadge :level="item.score>=80?'normal':item.score>=60?'P2':'P0'" :label="item.score+'分'" />
           </div>
           <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px">尝试次数: {{ item.attempts }} | 等级: {{ item.grade }}</div>
+
+          <!-- 参考答案（仅C级/低分时展示） -->
+          <div v-if="item.reference_answer && item.score < 70" style="margin-top:8px;">
+            <el-divider style="margin:4px 0" />
+            <div @click="toggleRef(i)" style="cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;color:var(--el-color-primary);user-select:none">
+              <el-icon :size="12"><ArrowRight v-if="!showRef[i]" /><ArrowDown v-else /></el-icon>
+              查看参考答案与解析
+            </div>
+            <div v-if="showRef[i]" style="margin-top:6px;padding:8px;background:var(--bg-secondary);border-radius:4px;font-size:12px;color:var(--text-secondary);line-height:1.7;white-space:pre-wrap">
+              <!-- 标准答案 -->
+              <div v-if="item.reference_answer.answer_summary" style="margin-bottom:6px">
+                <div style="font-weight:600;margin-bottom:2px;color:var(--text-primary)">📝 标准答案</div>
+                <div>{{ item.reference_answer.answer_summary }}</div>
+              </div>
+              <!-- 解析说明 -->
+              <div v-if="item.reference_answer.reasoning" style="margin-bottom:6px">
+                <div style="font-weight:600;margin-bottom:2px;color:var(--text-primary)">💡 解析说明</div>
+                <div>{{ item.reference_answer.reasoning }}</div>
+              </div>
+              <!-- 答题提示 -->
+              <div v-if="item.reference_answer.hint">
+                <div style="font-weight:600;margin-bottom:2px;color:var(--text-primary)">🔍 答题提示</div>
+                <div>{{ item.reference_answer.hint }}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div v-if="report.summary" style="margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:4px;font-size:13px;color:var(--text-secondary);line-height:1.8;white-space:pre-wrap">{{ report.summary }}</div>
@@ -58,6 +84,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { ArrowRight, ArrowDown } from '@element-plus/icons-vue'
 import { Api } from '../../api'
 import RiskBadge from '../../components/RiskBadge.vue'
 
@@ -69,6 +96,11 @@ const studentId = ref('student_default')
 const loading = ref(false)
 const report = ref<any>(null)
 const loadingScenarios = ref(false)
+const showRef = ref<Record<number, boolean>>({})
+
+function toggleRef(i: number) {
+  showRef.value = { ...showRef.value, [i]: !showRef.value[i] }
+}
 
 const scenarioOptions = computed(() => {
   // 优先显示已有记录的场景，且尽量在下拉框中看到
