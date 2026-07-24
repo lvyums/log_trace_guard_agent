@@ -57,6 +57,7 @@ export const Api = {
     parse: (data: any) => request('POST', '/api/v1/log-parse/parse', data),
     assess: (data: any) => request('POST', '/api/v1/log-parse/assess', data),
     batch: (data: any) => request('POST', '/api/v1/log-parse/parse/batch', data),
+    explain: (data: any) => request('POST', '/api/v1/log-parse/explain', data),
   },
   logCollect: {
     match: (data: any) => request('POST', '/api/v1/log-collect/match', data),

@@ -1,7 +1,7 @@
 <template>
   <div class="g-stack">
     <AlertGuide type="info" title="日志识别是分析的起点">
-      粘贴一行完整原始日志，系统会自动识别设备类型、日志格式、关键字段。
+      粘贴一行完整原始日志，系统自动识别设备类型。识别后可直接跳转解析/研判，形成完整分析链路。
     </AlertGuide>
 
     <div class="g-card">
@@ -49,7 +49,7 @@
       </div>
     </div>
 
-    <!-- 多条结果（items 数组） -->
+    <!-- 多条结果 -->
     <div v-if="results.length > 1" class="g-card slide">
       <div class="g-card-header">
         <div class="g-card-title"><el-icon><Document /></el-icon> 识别结果（{{ results.length }}条日志）</div>
@@ -80,11 +80,19 @@
             <span style="font-size:12px">{{ item.identify_reason || '规则匹配' }}</span>
           </el-descriptions-item>
         </el-descriptions>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <el-button size="small" type="primary" plain @click="sendToParse(item.raw_log || input)">
+            <el-icon><Document /></el-icon> 解析该日志
+          </el-button>
+          <el-button size="small" type="danger" plain @click="sendToAssess(item.raw_log || input)">
+            <el-icon><Warning /></el-icon> 研判风险
+          </el-button>
+        </div>
       </div>
       <ResultGuide :content="APP_CONFIG.guidance.resultGuides.logParse" />
     </div>
 
-    <!-- 单条结果（向后兼容） -->
+    <!-- 单条结果 -->
     <div v-else-if="results.length === 1" class="g-card slide">
       <div class="g-card-header">
         <div class="g-card-title"><el-icon><Document /></el-icon> 识别结果</div>
@@ -101,13 +109,33 @@
           <span style="font-size:12px">{{ results[0].identify_reason || '规则匹配' }}</span>
         </el-descriptions-item>
       </el-descriptions>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <el-button type="primary" @click="sendToParse(input)">
+          <el-icon><Document /></el-icon> 去结构化解析
+        </el-button>
+        <el-button type="danger" @click="sendToAssess(input)">
+          <el-icon><Warning /></el-icon> 去风险研判
+        </el-button>
+      </div>
+      <div style="margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:6px;font-size:13px;line-height:1.8">
+        <div style="font-weight:600;margin-bottom:6px">
+          <el-icon><Tips /></el-icon> 下一步建议
+        </div>
+        <div v-if="results[0].device_type && results[0].device_type !== 'unknown'" style="color:var(--text-secondary)">
+          已识别为 <strong>{{ results[0].device_type }}</strong> 设备日志。建议继续「结构化解析」提取关键字段（源IP、用户、状态等），
+          再通过「风险研判」评估是否存在安全威胁。
+        </div>
+        <div v-else style="color:var(--el-color-warning)">
+          未能识别设备类型，建议尝试「风险研判」直接分析异常行为，或检查日志格式是否正确。
+        </div>
+      </div>
       <ResultGuide :content="APP_CONFIG.guidance.resultGuides.logParse" />
     </div>
 
     <div v-if="results.length === 0 && !loading" class="g-card">
       <EmptyGuide
         title="等待日志输入"
-        desc="在上方输入框粘贴日志内容，点击识别分析"
+        desc="在上方输入框粘贴日志内容，点击识别分析。识别后可跳转解析和研判。"
         action-text="填充测试日志"
         @action="fillSample"
       />
@@ -154,10 +182,8 @@ async function submit() {
     const res = await Api.logParse.identify({ log_line: input.value })
     if (res.success && res.data) {
       if (res.data.items) {
-        // 多条日志
         results.value = res.data.items
       } else {
-        // 单条日志（向后兼容）
         results.value = [res.data]
       }
     } else {
@@ -173,5 +199,15 @@ async function submit() {
 function clear() {
   input.value = ''
   results.value = []
+}
+
+function sendToParse(logText: string) {
+  sessionStorage.setItem('log-parse-input', logText)
+  window.location.hash = '#/log-parse/parse'
+}
+
+function sendToAssess(logText: string) {
+  sessionStorage.setItem('log-assess-input', logText)
+  window.location.hash = '#/log-parse/assess'
 }
 </script>
