@@ -19,11 +19,10 @@ router = APIRouter(prefix="/api/v1/log-correlate", tags=["日志联合审查"])
 
 
 @router.post("/correlate")
-async def correlate_logs(req: CorrelateLogsReq, ctx: ContextManager = Depends(get_context)):
+async def correlate_logs(req: CorrelateLogsReq):
     """多源日志关联分析 — 检测攻击链（关键词 + LLM 双引擎）"""
     result = await LogCorrelateService.correlate_logs(
         log_lines=req.log_lines,
-        context=ctx,
         time_window_minutes=req.time_window_minutes,
         use_llm=req.use_llm,
         detailed=req.detailed,
@@ -32,10 +31,11 @@ async def correlate_logs(req: CorrelateLogsReq, ctx: ContextManager = Depends(ge
 
 
 @router.post("/file-crunch")
-async def crunch_file(req: FileCrunchReq, ctx: ContextManager = Depends(get_context)):
-    """上传日志文件进行关联分析"""
+async def crunch_file(req: FileCrunchReq):
+    """上传日志文件进行关联分析（支持单文件或多文件）"""
     result = await LogCorrelateService.crunch_file(
         file_path=req.file_path,
+        file_paths=req.file_paths if req.file_paths else None,
         file_content=req.file_content,
         time_window_minutes=req.time_window_minutes,
         use_llm=req.use_llm,

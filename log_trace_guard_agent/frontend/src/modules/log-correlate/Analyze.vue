@@ -52,11 +52,15 @@
               type="file"
               accept=".log,.txt,.csv,.json"
               style="display:none"
+              multiple
               @change="onFileSelected"
             />
             <el-button size="small" :disabled="loading" @click="triggerFilePicker">
               <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件
             </el-button>
+            <span v-if="loadedFiles.length" class="g-param-desc" style="margin-left:8px;color:var(--el-color-primary)">
+              已加载 {{ loadedFiles.length }} 个文件
+            </span>
           </div>
         </div>
 
@@ -123,19 +127,23 @@
             <input
               ref="fileInputRef"
               type="file"
-              accept=".log,.txt,.csv"
+              accept=".log,.txt,.csv,.json"
               style="display:none"
+              multiple
               @change="onFileSelected"
             />
             <el-button size="small" :disabled="loading" @click="triggerFilePicker">
               <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件
             </el-button>
+            <span v-if="loadedFiles.length" class="g-param-desc" style="margin-left:8px;color:var(--el-color-primary)">
+              已加载 {{ loadedFiles.length }} 个文件
+            </span>
           </div>
         </div>
 
         <div class="g-input-guide">
           <el-icon><InfoFilled /></el-icon>
-          <span>支持粘贴多条日志，Ctrl+Enter 快速提交。支持上传 .log/.txt 文件。</span>
+          <span>支持粘贴多条日志，Ctrl+Enter 快速提交。支持上传 .log/.txt/.csv/.json 文件（支持多选）。</span>
         </div>
 
         <div class="g-actions" style="margin-top:12px">
@@ -302,6 +310,7 @@ const showSample = ref(false)
 const timeWindow = ref(5)
 const useLlm = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const loadedFiles = ref<string[]>([])
 
 // 联动弹窗
 const linkDialogVisible = ref(false)
@@ -325,24 +334,48 @@ function triggerFilePicker() {
   fileInputRef.value?.click()
 }
 
-function onFileSelected(event: Event) {
+async function onFileSelected(event: Event) {
   const el = event.target as HTMLInputElement
-  const file = el.files?.[0]
-  if (!file) return
+  const files = el.files
+  if (!files || files.length === 0) return
 
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const text = e.target?.result as string
-    if (text) {
-      input.value = text
-      ElMessage.success(`已读取文件：${file.name}（${file.size} 字节，${text.split('\n').length} 行）`)
+  loadedFiles.value = []
+  const parts: string[] = []
+  let totalLines = 0
+
+  for (const file of Array.from(files)) {
+    try {
+      const text = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (e) => resolve((e.target?.result as string) || '')
+        reader.onerror = () => reject(new Error(`读取失败: ${file.name}`))
+        reader.readAsText(file)
+      })
+      const lines = text.split('\n').filter(l => l.trim())
+      totalLines += lines.length
+      loadedFiles.value.push(file.name)
+      if (files.length > 1 && parts.length > 0) {
+        // 多文件时标注来源
+        parts.push(`\n# ── 来源: ${file.name} ──\n${text}`)
+      } else {
+        parts.push(text)
+      }
+    } catch (err: any) {
+      ElMessage.error(err.message || `读取 ${file.name} 失败`)
     }
-    el.value = '' // 重置 input，允许重复选择
   }
-  reader.onerror = () => {
-    ElMessage.error('文件读取失败')
+
+  if (parts.length === 0) return
+
+  input.value = parts.join('\n')
+  el.value = '' // 重置，允许重复选择
+
+  const fileNames = Array.from(files).map(f => f.name).join('、')
+  if (files.length === 1) {
+    ElMessage.success(`已加载: ${fileNames}（${totalLines} 行）`)
+  } else {
+    ElMessage.success(`已加载 ${files.length} 个文件（${totalLines} 行）: ${fileNames}`)
   }
-  reader.readAsText(file)
 }
 
 function clear() {

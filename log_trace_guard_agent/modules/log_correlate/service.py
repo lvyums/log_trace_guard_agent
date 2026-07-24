@@ -261,13 +261,31 @@ class LLMChainAnalyzer:
         # 构建日志行列表（带行号，方便 LLM 引用）
         log_text = "\n".join(f"[{i}] {line}" for i, line in enumerate(log_lines))
 
-        system_prompt = """你是一个网络安全威胁狩猎专家。分析以下日志行，检测是否存在安全攻击链。
+        system_prompt = """你是一个网络安全威胁狩猎专家。你的任务是从日志中**主动发现**攻击链证据，而不是保守地只报告"明确"的攻击。
 
-对于每条检测到的攻击链，输出 JSON 数组格式：
+已知攻击链候选（名称映射参考）：
+1. ssh_brute_to_privesc — SSH 爆破 → 登录成功 → sudo 提权
+2. ssh_brute_to_sudo_privesc — SSH 爆破 → sudo 执行敏感命令
+3. sql_injection_to_data_exfil — SQL注入探测 → 数据提取 → 外传
+4. web_scan_to_sql_injection — Web扫描 → SQL注入尝试
+5. sql_injection_chain — SQL注入完整链（探测+利用+数据泄露）
+6. waf_bypass_to_sql_injection — WAF绕过 → SQL注入
+7. lateral_movement_via_ssh — SSH横向移动（内部IP互连）
+8. c2_beacon_detected — C2通信特征（外连非常见端口）
+9. data_exfil_via_dns — DNS隧道数据外传
+10. ransomware_staging — 勒索软件准备阶段（加密+改名+外连）
+11. supply_chain_attack — 供应链攻击（异常出站+可疑进程+第三方服务）
+12. insider_threat — 内部威胁（非工作时间+大量下载+删除）
+13. recon_to_exploit — 信息收集 → 漏洞利用链
+14. multi_stage_web_attack — 多阶段Web攻击（扫描+注入+提权+外传）
+15. dns_tunnel_to_c2 — DNS隧道 → C2通信
+16. auth_failure_to_brute — 认证失败 → 暴力破解确认
+
+输出 JSON 数组：
 [
   {
-    "chain_name": "攻击链名称（英文标识，如 ssh_brute_to_privesc）",
-    "description": "简要描述该攻击链",
+    "chain_name": "攻击链名称（从上面选最匹配的，不限于上述列表）",
+    "description": "简要描述攻击链",
     "risk_level": "P0_高危/P1_中危/P2_低危",
     "confidence": 0.0-1.0,
     "matched_line_indices": [行号数组],
@@ -277,10 +295,12 @@ class LLMChainAnalyzer:
   }
 ]
 
-注意事项：
-- 只有检测到明确的攻击链时才输出，没有则输出空数组 []
-- risk_level: P0=高危需立即处理, P1=中危需尽快处理, P2=低危
-- confidence: 证据越充分越高，0.3以下视为"疑似"
+要求：
+- **宽松判断**：只要日志中存在攻击链的至少2个阶段证据就应报告，不要等所有阶段都齐全
+- 单条日志如果同时体现多个阶段特征（如SQL注入尝试中已有数据泄露迹象），也应报告
+- 没有检测到任何攻击链时输出空数组 []
+- risk_level: P0=高危需立即处理, P1=中危, P2=低危
+- confidence: 证据越充分越高，0.3以上即可报告
 - matched_line_indices 引用日志行号 [N]
 - 输出必须是纯 JSON，不要用 markdown 包裹"""
 
@@ -338,17 +358,15 @@ class LogCorrelateService:
     async def correlate_logs(
         cls,
         log_lines: List[str],
-        context: Optional[ContextManager] = None,
         time_window_minutes: int = 5,
         use_llm: bool = False,
         detailed: bool = False,
     ) -> dict:
         """
-        两级引擎：关键词预筛 → LLM 降级。
+        两级引擎：关键词预筛 + 可选 LLM 增强（合并模式）。
 
-        - use_llm=True: 跳过关键词匹配，直接 LLM 分析
-        - 关键词匹配到结果 → 返回 keyword 结果
-        - 关键词无结果 → 自动降级 LLM
+        - use_llm=False: 关键词匹配优先 → 匹配到即返回 → 无匹配降级 LLM
+        - use_llm=True: 关键词 + LLM 合并分析（双向保障，不再一个为空全空）
         """
         if not log_lines:
             return Result.ok({
@@ -362,13 +380,14 @@ class LogCorrelateService:
         # 过滤空行
         lines = [l.strip() for l in log_lines if l.strip()]
 
-        # Stage 1: 关键词快速匹配（use_llm=False 时执行）
-        if not use_llm:
-            matcher = cls._get_matcher()
-            keyword_chains = matcher.match(lines)
+        # Stage 1: 关键词快速匹配（总是执行，无API成本）
+        matcher = cls._get_matcher()
+        keyword_chains = matcher.match(lines)
 
+        # Stage 2: 合并策略
+        if not use_llm:
+            # ── 纯关键词模式（原有行为） ──
             if keyword_chains:
-                # 关键词匹配到了 → fast path
                 high_risk = [c for c in keyword_chains if c.risk_level == "P0_高危"]
                 chain_summary = f"关键词匹配到 {len(keyword_chains)} 条攻击链"
                 if high_risk:
@@ -390,43 +409,121 @@ class LogCorrelateService:
             # 关键词无匹配 → 自动降级 LLM
             logger.info("关键词未匹配到攻击链，降级到 LLM 分析")
             llm_result = await LLMChainAnalyzer.analyze(lines)
+            return cls._normalize_llm_result(llm_result, len(lines))
         else:
-            # 用户强制 LLM
+            # ── LLM 增强模式（关键词 + LLM 合并） ──
             llm_result = await LLMChainAnalyzer.analyze(lines)
+            llm_chains = llm_result.get("chains", [])
 
+            if keyword_chains and not llm_chains:
+                # LLM 没找到，但关键词找到了 → 返回关键词结果
+                return Result.ok({
+                    "total_events": len(lines),
+                    "chains": [c.to_dict() for c in keyword_chains],
+                    "summary": f"共分析 {len(lines)} 条日志。关键词匹配到 {len(keyword_chains)} 条攻击链（LLM 未检出）。",
+                    "method": "keyword",
+                    "matched_keywords": sorted(set(
+                        kw.split("|")[0][:50] for c in keyword_chains for kw in c.matched_keywords
+                    ))[:20],
+                })
+
+            if llm_chains and not keyword_chains:
+                # 关键词没找到，LLM 找到了
+                return cls._normalize_llm_result(llm_result, len(lines))
+
+            if keyword_chains and llm_chains:
+                # 两者都有 → 按 chain_name 去重合并
+                chain_map: Dict[str, dict] = {}
+                for kc in keyword_chains:
+                    d = kc.to_dict()
+                    d["_source"] = "keyword"
+                    chain_map[d["chain_name"]] = d
+
+                for lc in llm_chains:
+                    name = lc.get("chain_name", "unknown")
+                    if name in chain_map:
+                        # 关键词已有的链 → LLM 补充信息但不覆盖
+                        existing = chain_map[name]
+                        existing["confidence"] = max(
+                            float(existing.get("confidence", 0.5)),
+                            float(lc.get("confidence", 0.5)),
+                        )
+                        if lc.get("description"):
+                            existing["description"] = lc["description"]
+                        if lc.get("indicators"):
+                            existing_indicators = set(existing.get("indicators", []))
+                            existing["indicators"] = list(existing_indicators | set(lc.get("indicators", [])))
+                        if lc.get("suggestion"):
+                            existing["suggestion"] = lc["suggestion"]
+                    else:
+                        # LLM 新发现的链
+                        lc["_source"] = "llm"
+                        lc.setdefault("matched_keywords", ["LLM 语义分析发现"])
+                        lc.setdefault("matched_line_indices", [])
+                        lc.setdefault("event_count", 0)
+                        chain_map[name] = lc
+
+                merged = list(chain_map.values())
+                kw_count = sum(1 for c in merged if c.get("_source") == "keyword")
+                llm_count = sum(1 for c in merged if c.get("_source") == "llm")
+
+                # 移除内部标记
+                for c in merged:
+                    c.pop("_source", None)
+
+                return Result.ok({
+                    "total_events": len(lines),
+                    "chains": merged,
+                    "summary": f"共分析 {len(lines)} 条日志。关键词+LLM 联合检出 {len(merged)} 条攻击链（关键词 {kw_count} 条 + LLM 补充 {llm_count} 条）。",
+                    "method": "hybrid",
+                    "matched_keywords": sorted(set(
+                        kw.split("|")[0][:50] for c in keyword_chains for kw in c.matched_keywords
+                    ))[:20],
+                })
+
+            # 两者都没有
+            return Result.ok({
+                "total_events": len(lines),
+                "chains": [],
+                "summary": f"共分析 {len(lines)} 条日志。关键词与 LLM 均未检测到攻击链。",
+                "method": "hybrid",
+                "matched_keywords": [],
+            })
+
+    @classmethod
+    def _normalize_llm_result(cls, llm_result: dict, total_lines: int) -> dict:
+        """标准化 LLM 返回结果为统一格式。"""
         llm_chains = llm_result.get("chains", [])
         method = llm_result.get("method", "llm")
 
-        if llm_chains:
-            # 标准化 LLM 返回的 chain 格式
-            normalized = []
-            for c in llm_chains:
-                normalized.append({
-                    "chain_name": c.get("chain_name", "unknown"),
-                    "description": c.get("description", ""),
-                    "risk_level": c.get("risk_level", "P3_低风险"),
-                    "confidence": float(c.get("confidence", 0.5)),
-                    "matched_keywords": c.get("matched_keywords", []),
-                    "matched_line_indices": c.get("matched_line_indices", []),
-                    "event_count": len(c.get("matched_line_indices", [])),
-                    "indicators": c.get("indicators", []),
-                    "suggestion": c.get("suggestion", ""),
-                })
-
+        if not llm_chains:
             return Result.ok({
-                "total_events": len(lines),
-                "chains": normalized,
-                "summary": f"共分析 {len(lines)} 条日志。LLM 分析发现 {len(normalized)} 条攻击链。",
+                "total_events": total_lines,
+                "chains": [],
+                "summary": f"共分析 {total_lines} 条日志。未检测到已知攻击链模式。",
                 "method": method,
                 "matched_keywords": [],
             })
 
-        # 都没有结果
+        normalized = []
+        for c in llm_chains:
+            normalized.append({
+                "chain_name": c.get("chain_name", "unknown"),
+                "description": c.get("description", ""),
+                "risk_level": c.get("risk_level", "P3_低风险"),
+                "confidence": float(c.get("confidence", 0.5)),
+                "matched_keywords": c.get("matched_keywords", []),
+                "matched_line_indices": c.get("matched_line_indices", []),
+                "event_count": len(c.get("matched_line_indices", [])),
+                "indicators": c.get("indicators", []),
+                "suggestion": c.get("suggestion", ""),
+            })
+
         return Result.ok({
-            "total_events": len(lines),
-            "chains": [],
-            "summary": f"共分析 {len(lines)} 条日志。未检测到已知攻击链模式。",
-            "method": method if use_llm else "hybrid",
+            "total_events": total_lines,
+            "chains": normalized,
+            "summary": f"共分析 {total_lines} 条日志。LLM 分析发现 {len(normalized)} 条攻击链。",
+            "method": method,
             "matched_keywords": [],
         })
 
@@ -434,12 +531,34 @@ class LogCorrelateService:
     async def crunch_file(
         cls,
         file_path: Optional[str] = None,
+        file_paths: Optional[list[str]] = None,
         file_content: Optional[str] = None,
         time_window_minutes: int = 5,
         use_llm: bool = False,
     ) -> dict:
-        """从文件读取日志并执行联合审查。"""
+        """从文件读取日志并执行联合审查。支持单文件（file_path）或多文件（file_paths）。"""
         content = file_content
+
+        # 多文件路径 → 合并读取
+        if file_paths and not content:
+            parts: list[str] = []
+            for fp in file_paths:
+                try:
+                    with open(fp, "r", encoding="utf-8", errors="replace") as f:
+                        fc = f.read()
+                    if len(file_paths) > 1:
+                        parts.append(f"\n# ── 来源: {fp} ──\n{fc}")
+                    else:
+                        parts.append(fc)
+                except FileNotFoundError:
+                    logger.warning(f"文件不存在: {fp}，跳过")
+                except Exception as e:
+                    logger.warning(f"读取文件失败 {fp}: {e}，跳过")
+            if parts:
+                content = "\n".join(parts)
+                logger.info(f"已合并 {len(parts)} 个日志文件，共 {len(content.splitlines())} 行")
+
+        # 单文件路径
         if file_path and not content:
             try:
                 with open(file_path, "r", encoding="utf-8", errors="replace") as f:

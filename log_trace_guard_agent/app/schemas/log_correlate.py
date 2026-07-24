@@ -14,7 +14,8 @@ class CorrelateLogsReq(BaseModel):
 
 class FileCrunchReq(BaseModel):
     """日志文件分析请求"""
-    file_path: Optional[str] = Field(default=None, description="服务器上的文件路径")
+    file_path: Optional[str] = Field(default=None, description="服务器上的文件路径（仅单个文件）")
+    file_paths: list[str] = Field(default_factory=list, description="服务器上的多文件路径（多源日志联合分析）")
     file_content: Optional[str] = Field(default=None, description="直接传入文件内容（替代 file_path）")
     time_window_minutes: int = Field(default=5, ge=1, le=1440, description="关联时间窗口（分钟）")
     use_llm: bool = Field(default=False, description="是否强制使用 LLM 分析")
