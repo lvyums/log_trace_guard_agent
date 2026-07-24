@@ -89,7 +89,7 @@ class LLMCheckHelper:
                 {"role": "system",
                  "content": "你是一个公正的安全实训评分助理。只返回JSON，不要包含其他文字。"},
                 {"role": "user", "content": prompt},
-            ], timeout=15)
+            ], timeout=10)
 
             if not result.get("success"):
                 return None
