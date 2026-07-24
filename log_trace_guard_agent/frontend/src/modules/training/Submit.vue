@@ -57,12 +57,20 @@
           <span v-if="step.submitType" style="margin-left:8px;font-size:11px;color:var(--el-color-info)">
             ({{ step.submitTypeLabel }})
           </span>
+          <span v-if="!answers[i]?.trim()" style="margin-left:8px;font-size:11px;color:var(--el-color-warning)">[待填写]</span>
+          <span v-else style="margin-left:8px;font-size:11px;color:var(--el-color-success)">[已填写]</span>
         </div>
         <el-input v-model="answers[i]" type="textarea" :rows="2"
-                  :placeholder="'请输入步骤' + (i+1) + '的答案...'" />
+                  :placeholder="'请输入步骤' + (i+1) + '的答案...'"
+                  :class="{ 'is-empty': !answers[i]?.trim() && showEmptyWarn }" />
       </div>
 
-      <el-button type="primary" :loading="loading" style="width:100%;margin-top:8px" @click="submit">
+      <div v-if="!allFilled" style="font-size:12px;color:var(--el-color-warning);margin:4px 0 8px;display:flex;align-items:center;gap:4px">
+        <el-icon :size="12"><WarningFilled /></el-icon>
+        请填写所有步骤的答案后再提交（{{ filledCount }}/{{ totalSteps }}）
+      </div>
+
+      <el-button type="primary" :loading="loading" :disabled="!allFilled" style="width:100%;margin-top:8px" @click="submit">
         <el-icon style="margin-right:4px"><Promotion /></el-icon>
         {{ loading ? '提交中 (' + submittedCount + '/' + totalSteps + ')...' : '提交全部答案' }}
       </el-button>
@@ -146,6 +154,24 @@ const scenarioId = ref('')
 const steps = ref<{ title: string; question: string; sample: string; hint: string; taskId: string; submitType: string; submitTypeLabel: string }[]>([])
 const totalSteps = computed(() => steps.value.length)
 
+// 校验：所有大题框都必须填写
+const allFilled = computed(() => {
+  if (steps.value.length === 0) return false
+  for (let i = 0; i < steps.value.length; i++) {
+    const val = answers.value[i]
+    if (!val || !val.trim()) return false
+  }
+  return true
+})
+const filledCount = computed(() => {
+  let count = 0
+  for (let i = 0; i < steps.value.length; i++) {
+    if (answers.value[i]?.trim()) count++
+  }
+  return count
+})
+const showEmptyWarn = ref(false)
+
 function gradeLevel(g: string) {
   if (g === 'A') return 'normal'
   if (g === 'B') return 'P2'
@@ -200,6 +226,13 @@ onMounted(() => {
 })
 
 async function submit() {
+  // 安全校验：确保所有题目已填写
+  if (!allFilled.value) {
+    showEmptyWarn.value = true
+    ElMessage.warning('请先填写所有步骤的答案再提交')
+    return
+  }
+
   loading.value = true
   submittedCount.value = 0
   totalScore.value = 0
@@ -268,5 +301,9 @@ function goToReport() {
 }
 @keyframes blink {
   50% { opacity: 0; }
+}
+.is-empty :deep(.el-textarea__inner) {
+  border-color: var(--el-color-warning);
+  box-shadow: 0 0 0 1px var(--el-color-warning);
 }
 </style>
