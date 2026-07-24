@@ -196,12 +196,13 @@ class ErrorAnalysis:
             submission_content: 学员提交内容（可选，用于LLM生成）
             standard_answer: 标准答案（可选，用于LLM生成）
         """
-        # 优先尝试 LLM 生成
+        # 优先尝试 LLM 生成（仅低分/有错误的任务需要，A级直接跳过硬编码）
+        if grade == "A":
+            # A级不需要 LLM 分析，用简洁的硬编码结果
+            return "✅ 作答优秀！答案完全正确，所有字段均匹配标准答案。"
+
         llm_analysis = await cls._llm_analyze(
             task_title=task_title,
-            task_description=task_description,
-            submission_content=submission_content,
-            standard_answer=standard_answer,
             checks=checks,
             score=score,
             grade=grade,
@@ -222,15 +223,12 @@ class ErrorAnalysis:
     # ── LLM 生成模式 ──
 
     @classmethod
-    async def _llm_analyze(cls, task_title: str, task_description: str,
-                           submission_content: dict,
-                           standard_answer: dict,
+    async def _llm_analyze(cls, task_title: str,
                            checks: list, score: int,
                            grade: str) -> Optional[str]:
-        """调用 LLM 生成个性化答案解析"""
+        """调用 LLM 生成个性化答案解析（轻量版，简化 prompt 减少耗时）"""
         try:
             from core.ai_base.llm_factory import LLMFactory
-            from core.ai_base.prompt_manager import PromptManager
             from app.settings import settings
 
             if not settings.llm_api_key:
@@ -240,47 +238,35 @@ class ErrorAnalysis:
             incorrect = [c for c in checks if c["status"] == "incorrect"]
             partial = [c for c in checks if c["status"] == "partial"]
 
-            # 格式化提交内容
-            sub_text = cls._dict_to_text(submission_content or {}, "学员答案")
-            std_text = cls._dict_to_text(standard_answer or {}, "标准答案")
+            # 简化 prompt — 只用 checks 信息，不用完整 submission/standard
+            checks_text = "\n".join(
+                f"- {c['field']}: {c['status']} — {c['detail']}"
+                for c in checks[:8]  # 最多8项
+            )
 
-            # 构建 LLM 提示词
-            prompt = f"""你是一个安全实训导师。请根据以下信息，为学员生成个性化的答案解析。
+            prompt = f"""你是一个安全实训导师。根据学员的作答情况生成简洁的答案解析。
 
-## 任务信息
-- 任务标题：{task_title}
-- 任务描述：{task_description or '无'}
+## 任务
+{task_title}
 
 ## 学员表现
-- 得分：{score}/100
-- 等级：{grade}
-- 答对字段：{len([c for c in checks if c['status'] == 'correct'])} 个
-- 部分正确字段：{len(partial)} 个
-- 错误字段：{len(incorrect)} 个
+得分：{score}/100 | 等级：{grade}
+答错：{len(incorrect)} 处 | 部分正确：{len(partial)} 处
 
-## 详细检查结果
-{chr(10).join(f"- {c['field']}: {c['status']} — {c['detail']}" for c in checks[:10])}
+## 检查结果
+{checks_text}
 
-## 学员答案
-{sub_text}
+请用3-5句中文给出：
+1. 一句话总体评价
+2. 错误原因简析
+3. 改进建议
 
-## 标准答案
-{std_text}
-
-请生成以下内容（用自然的中文，分点清晰）：
-
-1. 【总体评价】一句话总结学员表现（用"✅ 作答优秀"、"⚠️ 基本正确"、"❌ 需要改进"开头）
-2. 【错误定位】列出每个错误字段，说明为什么错、正确的应该是什么
-3. 【知识点讲解】结合这个任务涉及的攻防原理，做简明讲解（如果有攻击原理，请说明攻击者手法、检测特征、防御措施）
-4. 【实操建议】给出这个场景下安全运维人员在实际工作中的操作要点
-5. 【提升方向】针对学员的薄弱点，给出具体的学习建议
-
-注意：语气要鼓励、有建设性，不要只说"你错了"，要说明"为什么错、怎么改"。"""
-            llm = await LLMFactory.get_main_llm()
+语气鼓励、简洁。"""
+            llm = await LLMFactory.get_light_llm()
             result = await llm.chat([
-                {"role": "system", "content": "你是一个经验丰富的安全实训导师，擅长用通俗易懂的语言讲解安全攻防原理。"},
+                {"role": "system", "content": "你是一个安全实训导师。用简洁中文回应，不超过200字。"},
                 {"role": "user", "content": prompt},
-            ], timeout=30)
+            ], timeout=15)
 
             if result.get("success") and result["content"]:
                 return result["content"].strip()
