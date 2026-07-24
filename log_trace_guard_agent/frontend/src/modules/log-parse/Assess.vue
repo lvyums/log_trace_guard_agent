@@ -58,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { APP_CONFIG } from '../../config'
 import { Api } from '../../api'
@@ -72,6 +72,15 @@ const deviceType = ref('')
 const loading = ref(false)
 const result = ref<any>(null)
 const deviceOptions = APP_CONFIG.sampleData.deviceTypes
+
+function checkPrefill() {
+  const saved = sessionStorage.getItem('log-assess-input')
+  if (saved && saved !== input.value) {
+    input.value = saved
+    sessionStorage.removeItem('log-assess-input')
+    submit()
+  }
+}
 
 function fillSample() {
   input.value = APP_CONFIG.sampleData.logs[0]
@@ -108,13 +117,12 @@ function goParse() {
 }
 
 // 从 Identify 或 Parse 页面跳转过来时自动填入
+// 同时监听 hashchange 以支持同一页面重新激活
 onMounted(() => {
-  const saved = sessionStorage.getItem('log-assess-input')
-  if (saved) {
-    input.value = saved
-    sessionStorage.removeItem('log-assess-input')
-    // 自动提交研判
-    submit()
-  }
+  checkPrefill()
+  window.addEventListener('hashchange', checkPrefill)
+})
+onUnmounted(() => {
+  window.removeEventListener('hashchange', checkPrefill)
 })
 </script>

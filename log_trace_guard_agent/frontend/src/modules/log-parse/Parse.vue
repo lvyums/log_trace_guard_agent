@@ -133,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { APP_CONFIG } from '../../config'
 import { Api } from '../../api'
@@ -152,6 +152,15 @@ const showExplain = ref(false)
 const explainLoading = ref(false)
 const explainFieldName = ref('')
 const explainResult = ref('')
+
+function checkPrefill() {
+  const saved = sessionStorage.getItem('log-parse-input')
+  if (saved && saved !== input.value) {
+    input.value = saved
+    sessionStorage.removeItem('log-parse-input')
+    submit()
+  }
+}
 
 // 设备类型 → 日志解读模板
 const INTERPRETATIONS: Record<string, (f: any) => string> = {
@@ -288,13 +297,12 @@ function goAssess() {
 }
 
 // 从 Identify 页面跳转过来时自动填入
+// 同时监听 hashchange 以支持同一页面重新激活
 onMounted(() => {
-  const saved = sessionStorage.getItem('log-parse-input')
-  if (saved) {
-    input.value = saved
-    sessionStorage.removeItem('log-parse-input')
-    // 自动提交
-    submit()
-  }
+  checkPrefill()
+  window.addEventListener('hashchange', checkPrefill)
+})
+onUnmounted(() => {
+  window.removeEventListener('hashchange', checkPrefill)
 })
 </script>
