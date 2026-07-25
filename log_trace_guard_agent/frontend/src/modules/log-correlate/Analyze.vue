@@ -47,28 +47,19 @@
             <span class="g-param-desc">{{ useLlm ? 'LLM 语义分析（慢但更准）' : '关键词匹配优先' }}</span>
           </div>
           <div style="flex-grow:1;text-align:right">
-            <input
-              ref="fileInputRef"
-              type="file"
-              accept=".log,.txt,.csv,.json"
-              style="display:none"
-              multiple
-              @change="onFileSelected"
+            <FileUpload
+              ref="fileUploadRef"
+              :disabled="loading"
+              :upload-api="(formData) => Api.logCorrelate.upload(formData)"
+              :cleanup-api="(data) => Api.logCorrelate.cleanup(data)"
+              @update:files="onFilesUpdate"
+              @upload-success="onUploadSuccess"
             />
-            <el-button size="small" :disabled="loading" @click="triggerFilePicker">
-              <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件（可多选）
-            </el-button>
           </div>
         </div>
 
-        <div v-if="loadedFiles.length" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
-          <el-tag v-for="(name, i) in loadedFiles" :key="i" size="small" closable @close="removeFile(i)">
-            {{ name }}
-          </el-tag>
-        </div>
-
         <div class="g-actions" style="margin-top:12px">
-          <el-button type="primary" :loading="loading" :disabled="!input.trim() && !loadedFiles.length" @click="submit">
+          <el-button type="primary" :loading="loading" :disabled="!input.trim() && !uploadedFilePaths.length" @click="submit">
             <el-icon style="margin-right:4px"><Search /></el-icon> 关联分析
           </el-button>
           <el-button :disabled="loading" @click="clear">清空</el-button>
@@ -127,24 +118,15 @@
             <span class="g-param-desc">{{ useLlm ? '语义分析（更准）' : '关键词优先（更快）' }}</span>
           </div>
           <div style="flex-grow:1;text-align:right">
-            <input
-              ref="fileInputRef"
-              type="file"
-              accept=".log,.txt,.csv,.json"
-              style="display:none"
-              multiple
-              @change="onFileSelected"
+            <FileUpload
+              ref="fileUploadRef"
+              :disabled="loading"
+              :upload-api="(formData) => Api.logCorrelate.upload(formData)"
+              :cleanup-api="(data) => Api.logCorrelate.cleanup(data)"
+              @update:files="onFilesUpdate"
+              @upload-success="onUploadSuccess"
             />
-            <el-button size="small" :disabled="loading" @click="triggerFilePicker">
-              <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件（可多选）
-            </el-button>
           </div>
-        </div>
-
-        <div v-if="loadedFiles.length" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
-          <el-tag v-for="(name, i) in loadedFiles" :key="i" size="small" closable @close="removeFile(i)">
-            {{ name }}
-          </el-tag>
         </div>
 
         <div class="g-input-guide">
@@ -153,7 +135,7 @@
         </div>
 
         <div class="g-actions" style="margin-top:12px">
-          <el-button type="primary" :loading="loading" :disabled="!input.trim() && !loadedFiles.length" @click="submit">
+          <el-button type="primary" :loading="loading" :disabled="!input.trim() && !uploadedFilePaths.length" @click="submit">
             <el-icon style="margin-right:4px"><Search /></el-icon> 关联分析
           </el-button>
           <el-button :disabled="loading" @click="clear">清空</el-button>
@@ -313,6 +295,7 @@ import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import RiskBadge from '../../components/RiskBadge.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
+import FileUpload from '../../components/FileUpload.vue'
 
 defineProps<{ mode?: string }>()
 
@@ -322,8 +305,7 @@ const result = ref<any>(null)
 const showSample = ref(false)
 const timeWindow = ref(5)
 const useLlm = ref(false)
-const fileInputRef = ref<HTMLInputElement | null>(null)
-const loadedFiles = ref<string[]>([])
+const fileUploadRef = ref<InstanceType<typeof FileUpload> | null>(null)
 const uploadedFilePaths = ref<string[]>([])
 
 // 联动弹窗
@@ -344,80 +326,41 @@ function fillSample() {
   showSample.value = true
 }
 
-function triggerFilePicker() {
-  fileInputRef.value?.click()
+// FileUpload 组件回调
+function onFilesUpdate(files: any[]) {
+  uploadedFilePaths.value = files.map(f => f.path)
 }
 
-async function onFileSelected(event: Event) {
-  const el = event.target as HTMLInputElement
-  const files = el.files
-  if (!files || files.length === 0) return
-
-  loading.value = true
-  result.value = null
-  const fileCount = files.length
-
-  try {
-    // 1. 上传新文件到服务端
-    const formData = new FormData()
-    for (const file of Array.from(files)) {
-      formData.append('files', file)
+async function onUploadSuccess(_newFiles: any[]) {
+  // 文件上传成功后自动触发分析
+  if (uploadedFilePaths.value.length > 0) {
+    loading.value = true
+    result.value = null
+    try {
+      const crunchRes = await Api.logCorrelate.fileCrunch({
+        file_paths: uploadedFilePaths.value,
+        time_window_minutes: timeWindow.value,
+        use_llm: useLlm.value,
+      })
+      if (crunchRes.success) {
+        result.value = crunchRes.data
+        ElMessage.success(`已分析 ${uploadedFilePaths.value.length} 个文件`)
+      } else {
+        ElMessage.error(crunchRes.msg || '分析失败')
+      }
+    } catch (err: any) {
+      ElMessage.error('分析失败: ' + (err.message || '未知错误'))
+    } finally {
+      loading.value = false
     }
-
-    const uploadRes = await Api.logCorrelate.upload(formData)
-    if (!uploadRes.success || !uploadRes.data?.file_paths?.length) {
-      ElMessage.error(uploadRes.msg || '文件上传失败')
-      return
-    }
-
-    // 2. 累积文件路径和文件名（不覆盖之前的）
-    const newPaths: string[] = uploadRes.data.file_paths
-    const newNames = Array.from(files).map(f => f.name)
-    uploadedFilePaths.value = [...uploadedFilePaths.value, ...newPaths]
-    loadedFiles.value = [...loadedFiles.value, ...newNames]
-
-    // 3. 用所有累积的文件进行联合分析（不删除文件，支持重新分析）
-    const crunchPayload: any = {
-      file_paths: uploadedFilePaths.value,
-      time_window_minutes: timeWindow.value,
-      use_llm: useLlm.value,
-    }
-
-    const crunchRes = await Api.logCorrelate.fileCrunch(crunchPayload)
-    if (crunchRes.success) {
-      result.value = crunchRes.data
-      ElMessage.success(`已上传并分析 ${loadedFiles.value.length} 个文件（本次新增 ${fileCount} 个）`)
-    } else {
-      ElMessage.error(crunchRes.msg || '分析失败')
-    }
-  } catch (err: any) {
-    ElMessage.error('上传失败: ' + (err.message || '未知错误'))
-  } finally {
-    loading.value = false
-    el.value = '' // 重置，允许重复选择
   }
 }
 
 function clear() {
-  // 清理服务端临时文件
-  if (uploadedFilePaths.value.length) {
-    Api.logCorrelate.cleanup({ file_paths: uploadedFilePaths.value }).catch(() => {})
-  }
+  fileUploadRef.value?.clearAll()
   input.value = ''
   result.value = null
-  loadedFiles.value = []
   uploadedFilePaths.value = []
-}
-
-function removeFile(index: number) {
-  // 清理服务端单个临时文件
-  const path = uploadedFilePaths.value[index]
-  if (path) {
-    Api.logCorrelate.cleanup({ file_paths: [path] }).catch(() => {})
-  }
-  loadedFiles.value.splice(index, 1)
-  uploadedFilePaths.value.splice(index, 1)
-  result.value = null
 }
 
 function getRiskKey(level: string): string {

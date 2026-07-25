@@ -16,57 +16,102 @@
           <el-checkbox v-model="doAssess">同时进行风险研判</el-checkbox>
         </div>
         <div style="flex-grow:1;text-align:right">
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept=".log,.txt,.csv,.json"
-            style="display:none"
-            multiple
-            @change="onFileSelected"
+          <FileUpload
+            ref="fileUploadRef"
+            :disabled="loading"
+            @update:files="onFilesUpdate"
+            @upload-success="onUploadSuccess"
+            @upload-error="onUploadError"
           />
-          <el-button size="small" :disabled="loading" @click="triggerFilePicker">
-            <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件（可多选）
-          </el-button>
         </div>
       </div>
 
-      <div v-if="loadedFiles.length" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
-        <el-tag v-for="(name, i) in loadedFiles" :key="i" size="small" closable @close="removeFile(i)">
-          {{ name }}
-        </el-tag>
-      </div>
-
       <div class="g-actions" style="margin-top:12px">
-        <el-button type="primary" :loading="loading" :disabled="!input.trim() && !loadedFiles.length" @click="submit">
+        <el-button type="primary" :loading="loading" :disabled="!input.trim() && !hasFiles" @click="submit">
           <el-icon><Search /></el-icon> 批量解析
         </el-button>
         <el-button :disabled="loading" @click="clear">清空</el-button>
+        <el-button v-if="result" :disabled="loading" @click="exportResults">
+          <el-icon style="margin-right:4px"><Download /></el-icon> 导出结果
+        </el-button>
       </div>
     </div>
+
+    <!-- 结果展示 -->
     <div v-if="result" class="g-card slide">
-      <div class="g-card-header"><div class="g-card-title"><el-icon><Document /></el-icon> 解析结果</div></div>
-      <el-descriptions :column="3" border size="small" style="margin-bottom:16px">
-        <el-descriptions-item label="总条数">{{ result.total || result.items?.length || 0 }}</el-descriptions-item>
-        <el-descriptions-item label="成功">{{ result.success_count || result.items?.filter((i: any)=>!i.error).length || 0 }}</el-descriptions-item>
-        <el-descriptions-item label="失败">{{ result.fail_count || result.items?.filter((i: any)=>i.error).length || 0 }}</el-descriptions-item>
+      <div class="g-card-header">
+        <div class="g-card-title"><el-icon><Document /></el-icon> 解析结果</div>
+        <div class="g-actions">
+          <el-select v-model="filterDevice" placeholder="设备类型" clearable size="small" style="width:120px;margin-right:8px">
+            <el-option v-for="(count, type) in result.summary?.device_distribution" :key="type" :label="`${type} (${count})`" :value="type" />
+          </el-select>
+          <el-select v-model="filterRisk" placeholder="风险等级" clearable size="small" style="width:120px">
+            <el-option v-for="(count, level) in result.summary?.risk_summary" :key="level" :label="`${level} (${count})`" :value="level" />
+          </el-select>
+        </div>
+      </div>
+
+      <!-- 基础统计 -->
+      <el-descriptions :column="4" border size="small" style="margin-bottom:16px">
+        <el-descriptions-item label="总条数">{{ result.total }}</el-descriptions-item>
+        <el-descriptions-item label="成功">
+          <el-tag type="success" size="small">{{ result.success_count }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="失败">
+          <el-tag v-if="result.fail_count > 0" type="danger" size="small">{{ result.fail_count }}</el-tag>
+          <span v-else>0</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="成功率">{{ ((result.success_count / result.total) * 100).toFixed(1) }}%</el-descriptions-item>
       </el-descriptions>
-      <div v-if="result.risk_summary" style="margin-bottom:12px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">风险统计</div>
-        <div v-for="(count, level) in result.risk_summary" :key="String(level)" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+
+      <!-- 设备类型分布 -->
+      <div v-if="result.summary?.device_distribution && Object.keys(result.summary.device_distribution).length > 0" style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px"><el-icon style="margin-right:4px"><DataBoard /></el-icon> 设备类型分布</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <el-tag v-for="(count, type) in result.summary.device_distribution" :key="type" :type="getDeviceTagType(type)" size="small">
+            {{ type }}: {{ count }}
+          </el-tag>
+        </div>
+      </div>
+
+      <!-- Top 源 IP -->
+      <div v-if="result.summary?.top_src_ips && Object.keys(result.summary.top_src_ips).length > 0" style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px"><el-icon style="margin-right:4px"><Position /></el-icon> Top 源 IP</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <el-tag v-for="(count, ip) in result.summary.top_src_ips" :key="ip" size="small">
+            {{ ip }}: {{ count }}
+          </el-tag>
+        </div>
+      </div>
+
+      <!-- 风险统计 -->
+      <div v-if="result.summary?.risk_summary && Object.keys(result.summary.risk_summary).length > 0" style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px"><el-icon style="margin-right:4px"><Warning /></el-icon> 风险统计</div>
+        <div v-for="(count, level) in result.summary.risk_summary" :key="level" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
           <RiskBadge :level="getLevelKey(String(level))" :label="String(level)" size="small" />
           <span style="font-size:13px">{{ count }} 条</span>
         </div>
       </div>
-      <div v-if="result.items?.length">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">逐条结果</div>
-        <div v-for="(item, i) in result.items" :key="i" style="margin-bottom:8px;padding:8px;border:1px solid var(--border-color);border-radius:4px">
-          <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px">#{{ i+1 }} {{ item.log_line?.slice(0,60) || '' }}</div>
+
+      <!-- 逐条结果 -->
+      <div v-if="filteredItems.length > 0">
+        <div style="font-weight:600;margin-bottom:8px;font-size:13px">
+          <el-icon style="margin-right:4px"><List /></el-icon> 逐条结果 ({{ filteredItems.length }}/{{ result.items.length }})
+        </div>
+        <div v-for="(item, i) in filteredItems" :key="i" style="margin-bottom:8px;padding:8px;border:1px solid var(--border-color);border-radius:4px">
+          <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;display:flex;justify-content:space-between">
+            <span>#{{ item.index + 1 }} {{ item.log_line?.slice(0,60) || '' }}</span>
+            <el-button size="small" text @click="copyLogLine(item.log_line)">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </div>
           <div v-if="item.error" class="g-alert g-alert--danger" style="margin:0">{{ item.error }}</div>
           <div v-else style="font-size:12px">
             <el-tag size="small">{{ item.parse_result?.device_type || '未知' }}</el-tag>
             <RiskBadge v-if="item.risk_result?.risk_level" :level="getLevelKey(item.risk_result.risk_level)" :label="item.risk_result.risk_level" size="small" />
             <span v-if="item.parse_result?.user" style="margin-left:8px;color:var(--text-secondary)">用户: {{ item.parse_result.user }}</span>
             <span v-if="item.parse_result?.src_ip" style="margin-left:8px;color:var(--text-secondary)">源IP: {{ item.parse_result.src_ip }}</span>
+            <span v-if="item.parse_result?.status" style="margin-left:8px;color:var(--text-secondary)">状态: {{ item.parse_result.status }}</span>
             <div v-if="item.risk_result" style="margin-top:4px;padding:6px 8px;background:var(--bg-secondary);border-radius:4px;line-height:1.6">
               <div v-if="item.risk_result.risk_desc" style="color:var(--text-secondary)">
                 <el-icon style="margin-right:4px;vertical-align:middle"><Warning /></el-icon>
@@ -85,94 +130,138 @@
         </div>
       </div>
     </div>
+
     <div v-if="!result && !loading" class="g-card">
       <EmptyGuide title="批量解析" desc="粘贴多条日志或上传 .log/.txt/.csv/.json 文件进行批量解析" action-text="填充测试日志" @action="fillSample" />
     </div>
   </div>
 </template>
+
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { APP_CONFIG } from '../../config'
 import { Api } from '../../api'
+import { Utils } from '../../utils'
 import RiskBadge from '../../components/RiskBadge.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
+import FileUpload from '../../components/FileUpload.vue'
+
 defineProps<{ mode?: string }>()
-const input=ref(''); const doAssess=ref(true); const loading=ref(false); const result=ref<any>(null)
-const fileInputRef = ref<HTMLInputElement | null>(null)
-const loadedFiles = ref<string[]>([])
+
+const input = ref('')
+const doAssess = ref(true)
+const loading = ref(false)
+const result = ref<any>(null)
+const fileUploadRef = ref<InstanceType<typeof FileUpload> | null>(null)
+
+// 文件状态
 const uploadedFilePaths = ref<string[]>([])
-const totalCount=computed(()=>input.value.trim()?input.value.split('\n').filter(l=>l.trim()).length:0)
-const hasUploadedFiles = computed(() => uploadedFilePaths.value.length > 0)
-const sampleLogs=APP_CONFIG?.sampleData?.logs?.join('\n')||''
-function fillSample(){input.value=sampleLogs}
-function getLevelKey(l: string): string {const m: Record<string, string>={'P0_高危':'P0','P1_中危':'P1','P2_低危':'P2','P3_噪音':'P3','P0':'P0','P1':'P1','P2':'P2','P3':'P3'};return m[l]||'normal'}
+const hasFiles = computed(() => uploadedFilePaths.value.length > 0)
 
-function triggerFilePicker() {
-  fileInputRef.value?.click()
+// 筛选条件
+const filterDevice = ref('')
+const filterRisk = ref('')
+
+const sampleLogs = APP_CONFIG?.sampleData?.logs?.join('\n') || ''
+
+// 筛选后的结果
+const filteredItems = computed(() => {
+  if (!result.value?.items) return []
+  return result.value.items.filter((item: any) => {
+    if (filterDevice.value && item.parse_result?.device_type !== filterDevice.value) return false
+    if (filterRisk.value && item.risk_result?.risk_level !== filterRisk.value) return false
+    return true
+  })
+})
+
+function fillSample() { input.value = sampleLogs }
+
+function getLevelKey(l: string): string {
+  const m: Record<string, string> = {
+    'P0_高危': 'P0', 'P1_中危': 'P1', 'P2_低危': 'P2', 'P3_噪音': 'P3',
+    'P0': 'P0', 'P1': 'P1', 'P2': 'P2', 'P3': 'P3',
+    'high': 'P0', 'medium': 'P1', 'low': 'P2', 'noise': 'P3',
+  }
+  return m[l] || 'normal'
 }
 
-async function onFileSelected(event: Event) {
-  const el = event.target as HTMLInputElement
-  const files = el.files
-  if (!files || files.length === 0) return
-
-  loading.value = true
-  result.value = null
-  try {
-    const formData = new FormData()
-    for (const file of Array.from(files)) {
-      formData.append('files', file)
-    }
-    const uploadRes = await Api.logParse.upload(formData)
-    if (!uploadRes.success || !uploadRes.data?.file_paths?.length) {
-      ElMessage.error(uploadRes.msg || '文件上传失败')
-      return
-    }
-    const newPaths: string[] = uploadRes.data.file_paths
-    const newNames = Array.from(files).map(f => f.name)
-    uploadedFilePaths.value = [...uploadedFilePaths.value, ...newPaths]
-    loadedFiles.value = [...loadedFiles.value, ...newNames]
-    ElMessage.success(`已上传 ${newNames.length} 个文件`)
-  } catch {
-    ElMessage.error('文件上传失败')
-  } finally {
-    loading.value = false
-    el.value = ''
+function getDeviceTagType(type: string): string {
+  const map: Record<string, string> = {
+    ssh: 'danger', web: 'success', waf: 'warning', firewall: 'danger', db: 'primary', traffic: 'info',
   }
+  return map[type] || 'info'
 }
 
-function removeFile(index: number) {
-  const path = uploadedFilePaths.value[index]
-  if (path) {
-    Api.logParse.cleanup({ file_paths: [path] }).catch(() => {})
-  }
-  loadedFiles.value.splice(index, 1)
-  uploadedFilePaths.value.splice(index, 1)
+// FileUpload 组件回调
+function onFilesUpdate(files: any[]) {
+  uploadedFilePaths.value = files.map(f => f.path)
+}
+
+function onUploadSuccess(_files: any[]) {
+  // 上传成功
+}
+
+function onUploadError(msg: string) {
+  ElMessage.error(msg)
 }
 
 function clear() {
-  if (uploadedFilePaths.value.length) {
-    Api.logParse.cleanup({ file_paths: uploadedFilePaths.value }).catch(() => {})
-  }
+  fileUploadRef.value?.clearAll()
   input.value = ''
   result.value = null
-  loadedFiles.value = []
   uploadedFilePaths.value = []
+  filterDevice.value = ''
+  filterRisk.value = ''
+}
+
+function copyLogLine(logLine: string) {
+  Utils.copyText(logLine || '')
+  ElMessage.success('已复制')
+}
+
+function exportResults() {
+  if (!result.value) return
+
+  const exportData = {
+    summary: result.value.summary,
+    items: result.value.items.map((item: any) => ({
+      index: item.index,
+      log_line: item.log_line,
+      device_type: item.parse_result?.device_type,
+      src_ip: item.parse_result?.src_ip,
+      dst_ip: item.parse_result?.dst_ip,
+      user: item.parse_result?.user,
+      status: item.parse_result?.status,
+      risk_level: item.risk_result?.risk_level,
+      attack_type: item.risk_result?.attack_type,
+      risk_desc: item.risk_result?.risk_desc,
+      suggestion: item.risk_result?.suggestion,
+      error: item.error,
+    })),
+  }
+
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `batch-parse-result-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('结果已导出')
 }
 
 async function submit() {
   const hasText = input.value.trim()
-  const hasFiles = hasUploadedFiles.value
-  if (!hasText && !hasFiles) { ElMessage.warning('请输入日志内容或上传文件'); return }
+  if (!hasText && !hasFiles.value) { ElMessage.warning('请输入日志内容或上传文件'); return }
   loading.value = true; result.value = null
+  filterDevice.value = ''
+  filterRisk.value = ''
   try {
     let r: any
-    if (hasFiles) {
-      // 文件模式：服务端读取文件并批量解析
+    if (hasFiles.value) {
       r = await Api.logParse.batchFile({ file_paths: uploadedFilePaths.value, assess: doAssess.value })
     } else {
-      // 文本模式：按行分割
       const lines = input.value.split('\n').filter(l => l.trim())
       r = await Api.logParse.batch({ logs: lines, assess: doAssess.value })
     }

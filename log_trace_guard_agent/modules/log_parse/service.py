@@ -17,6 +17,7 @@ from common.json_util import JsonConfigLoader
 from common.logger import LogManager
 from common.result_util import Result
 from common.str_util import clean_syslog_prefix, is_gibberish, normalize_whitespace
+from common.batch_util import BatchProcessor, BatchStats, merge_batch_results
 
 logger = LogManager.get_logger()
 
@@ -228,60 +229,43 @@ class LogParseService:
     @staticmethod
     async def batch_parse(logs: list[str], do_assess: bool = False,
                           context: Optional[ContextManager] = None) -> Result:
-        """批量解析：多条日志一次性识别、解析、可选风险研判"""
-        items = []
-        risk_counts = {RiskLevel.P0_HIGH: 0, RiskLevel.P1_MEDIUM: 0,
-                       RiskLevel.P2_LOW: 0, RiskLevel.P3_NOISE: 0}
+        """批量解析：并发处理多条日志，返回结构化结果 + 汇总统计"""
+        if not logs:
+            return Result.fail("日志列表为空")
 
-        for i, log_line in enumerate(logs):
-            item = {
-                "index": i, "log_line": log_line[:100],
-                "parse_result": None, "risk_result": None, "error": None,
-            }
+        # 限制最大条数
+        if len(logs) > 500:
+            logs = logs[:500]
+            logger.warning(f"日志数量超过500，已截断")
 
+        ctx = context or ContextManager.create("")
+
+        async def _process_one(log_line: str, assess: bool):
+            """处理单条日志，返回 (parse_result, risk_result)"""
             # 解析
-            parse_result = await LogParseService.parse_log(
-                log_line, context or ContextManager.create("")
-            )
-            if not parse_result["code"] == 0:
-                item["error"] = parse_result["msg"]
-                items.append(item)
-                continue
+            parse_result = await LogParseService.parse_log(log_line, ctx)
+            if parse_result["code"] != 0:
+                return None, None
 
-            item["parse_result"] = parse_result["data"]
+            parse_data = parse_result["data"]
 
             # 可选风险研判
-            if do_assess:
-                risk = await LogParseService.assess_risk(
-                    parse_result["data"],
-                    context or ContextManager.create(""),
-                )
+            risk_data = None
+            if assess:
+                risk = await LogParseService.assess_risk(parse_data, ctx)
                 if risk["code"] == 0:
-                    item["risk_result"] = risk["data"]
-                    risk_level_val = risk["data"].get("risk_level", "")
-                    for level in RiskLevel:
-                        if level.value == risk_level_val:
-                            risk_counts[level] += 1
-                            break
-                else:
-                    item["risk_result"] = None
+                    risk_data = risk["data"]
 
-            items.append(item)
+            return parse_data, risk_data
 
-        success_count = sum(1 for i in items if i["error"] is None)
-        fail_count = len(items) - success_count
+        # 使用 BatchProcessor 并发处理
+        processor = BatchProcessor(max_concurrency=10)
+        items, stats = await processor.process_batch(logs, _process_one, do_assess)
 
-        risk_summary = None
-        if do_assess:
-            risk_summary = {level.value: count for level, count in risk_counts.items()}
+        # 合并结果
+        result = merge_batch_results(items, stats, do_assess)
 
-        return Result.ok({
-            "total": len(logs),
-            "success_count": success_count,
-            "fail_count": fail_count,
-            "items": items,
-            "risk_summary": risk_summary,
-        })
+        return Result.ok(result)
 
     @staticmethod
     async def explain_field(field_name: str,
