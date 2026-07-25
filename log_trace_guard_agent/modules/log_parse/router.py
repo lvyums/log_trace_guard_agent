@@ -97,12 +97,19 @@ async def upload_files(files: List[UploadFile] = File(..., description="日志�
 async def batch_file_parse(req: BatchFileParseReq, ctx: ContextManager = Depends(get_context)):
     """从上传的文件批量解析日志"""
     all_lines: list[str] = []
+    missing_files: list[str] = []
+
     for fp in req.file_paths:
         lines = parse_upload_file(fp)
+        if not lines and not os.path.exists(fp):
+            missing_files.append(fp)
         all_lines.extend(lines)
 
+    if missing_files:
+        logger.warning(f"以下文件不存在或已删除: {missing_files}")
+
     if not all_lines:
-        return {"code": 1, "msg": "未从文件中解析到有效日志行", "data": None}
+        return {"code": 1, "msg": "未从文件中解析到有效日志行（文件可能已删除）", "data": None}
 
     # 限制最大条数，避免超时
     if len(all_lines) > 500:
@@ -110,15 +117,6 @@ async def batch_file_parse(req: BatchFileParseReq, ctx: ContextManager = Depends
         logger.warning(f"文件日志行数超过500，已截断")
 
     result = await LogParseService.batch_parse(all_lines, do_assess=req.assess, context=ctx)
-
-    # 清理临时文件
-    for fp in req.file_paths:
-        try:
-            if fp.startswith(settings.upload_temp_dir) and os.path.exists(fp):
-                os.remove(fp)
-        except OSError as e:
-            logger.warning(f"清理临时文件失败 {fp}: {e}")
-
     return result
 
 

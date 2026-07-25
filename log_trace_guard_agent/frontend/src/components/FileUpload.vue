@@ -107,7 +107,7 @@ async function onFileSelected(event: Event) {
     }))
 
     loadedFiles.value = [...loadedFiles.value, ...newFiles]
-    emit('update:files', loadedFiles.value)
+    emit('update:files', [...loadedFiles.value])
     emit('upload-success', newFiles)
     ElMessage.success(`已上传 ${newFiles.length} 个文件`)
   } catch (err: any) {
@@ -120,23 +120,33 @@ async function onFileSelected(event: Event) {
   }
 }
 
-function removeFile(index: number) {
+async function removeFile(index: number) {
   const file = loadedFiles.value[index]
-  if (file) {
-    props.cleanupApi({ file_paths: [file.path] }).catch(() => {})
-    emit('remove', file)
-  }
+  if (!file) return
+  // 先从列表移除，再异步清理服务端文件
   loadedFiles.value.splice(index, 1)
-  emit('update:files', loadedFiles.value)
+  emit('update:files', [...loadedFiles.value])
+  emit('remove', file)
+  // 异步清理，不阻塞 UI
+  try {
+    await props.cleanupApi({ file_paths: [file.path] })
+  } catch {
+    // 清理失败忽略，文件会自动过期
+  }
 }
 
-function clearAll() {
-  if (loadedFiles.value.length) {
-    const paths = loadedFiles.value.map(f => f.path)
-    props.cleanupApi({ file_paths: paths }).catch(() => {})
-  }
+async function clearAll() {
+  const paths = loadedFiles.value.map(f => f.path)
   loadedFiles.value = []
   emit('update:files', [])
+  // 异步清理服务端文件
+  if (paths.length) {
+    try {
+      await props.cleanupApi({ file_paths: paths })
+    } catch {
+      // 清理失败忽略
+    }
+  }
 }
 
 function getFilePaths(): string[] {
