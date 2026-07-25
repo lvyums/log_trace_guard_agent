@@ -12,7 +12,6 @@ if project_root not in sys.path:
 
 from modules.script_gen.regex_gen import RegexGenStrategy
 from modules.script_gen.es_sql_gen import ESQueryGenStrategy
-from modules.script_gen.platform_choose import PlatformChooseStrategy
 from modules.script_gen.trace_link import TraceLinkStrategy
 from modules.script_gen.service import ScriptGenService
 
@@ -157,84 +156,6 @@ class TestESQueryGenStrategy:
         """场景识别：无匹配时返回 unknown"""
         scene = self.strategy._identify_scene("随机文本")
         assert scene == "unknown"
-
-
-# ══════════════════════════════════════════════════════════════
-# PlatformChooseStrategy 测试
-# ══════════════════════════════════════════════════════════════
-
-class TestPlatformChooseStrategy:
-    """平台选型推荐策略测试"""
-
-    def setup_method(self):
-        self.strategy = PlatformChooseStrategy()
-
-    def test_can_handle_valid(self):
-        """正常场景：有 device_count 时返回 True"""
-        assert self.strategy.can_handle({"device_count": 100}) is True
-
-    def test_can_handle_empty(self):
-        """边界场景：无参数时返回 False"""
-        assert self.strategy.can_handle({}) is False
-
-    def test_generate_small_enterprise(self):
-        """正常场景：小微企业推荐"""
-        result = self.strategy.generate({
-            "device_count": 10,
-            "daily_log_volume": "small",
-            "budget": "low",
-            "team_skill": "basic",
-        })
-        assert "recommendation" in result
-        assert result["recommendation"]["name"]
-        assert "summary" in result
-
-    def test_generate_large_enterprise(self):
-        """正常场景：大型企业推荐"""
-        result = self.strategy.generate({
-            "device_count": 5000,
-            "daily_log_volume": "large",
-            "budget": "high",
-            "team_skill": "advanced",
-            "requirements": ["安全分析", "合规报告"],
-        })
-        assert "recommendation" in result
-        assert "alternatives" in result
-        assert len(result["alternatives"]) >= 0
-
-    def test_generate_with_requirements(self):
-        """正常场景：带附加需求"""
-        result = self.strategy.generate({
-            "device_count": 100,
-            "daily_log_volume": "medium",
-            "budget": "medium",
-            "team_skill": "intermediate",
-            "requirements": ["全文检索", "可视化"],
-        })
-        assert result["recommendation"]["name"]
-
-    def test_fallback_empty_platforms(self):
-        """边界场景：无匹配平台时使用兜底"""
-        # 使用极端参数确保无匹配
-        result = self.strategy.generate({
-            "device_count": 999999,
-            "daily_log_volume": "unknown",
-            "budget": "unknown",
-            "team_skill": "unknown",
-        })
-        assert result["recommendation"]["name"]  # 应有兜底推荐
-
-    def test_score_platform(self):
-        """评分计算验证"""
-        platform = {
-            "device_range": {"min": 10, "max": 5000},
-            "supported_volumes": ["medium", "large"],
-            "budget_level": ["medium", "high"],
-            "required_skill": ["intermediate", "advanced"],
-            "features": ["全文检索", "可视化", "水平扩展"],
-        }
-        score = self.strategy._score_platform(platform, 100, "medium", "medium", "intermediate", ["全文检索"])
-        assert score > 0
 
 
 # ══════════════════════════════════════════════════════════════

@@ -67,8 +67,9 @@ class BaselineGenStrategy(BaseComplianceStrategy):
                 "外联": ["异常外联"],
                 "日志": ["日志存储"],
                 "命令": ["高危命令"],
+                "监控": ["监控"],
             }
-            # 展开关键词
+            # 展开关键词：用户输入的每个词都展开为匹配的 monitor_scenario 子串
             expanded_keywords = set()
             for kw in scenario_keywords:
                 expanded_keywords.add(kw)
@@ -78,8 +79,9 @@ class BaselineGenStrategy(BaseComplianceStrategy):
 
             logger.info(f"监控场景关键词(展开后): {expanded_keywords}")
             for bl in selected:
-                ms = bl.get("monitor_scenario", "").lower()
-                matches = [kw for kw in expanded_keywords if kw in ms]
+                ms = bl.get("monitor_scenario", "")
+                ms_lower = ms.lower()
+                matches = [kw for kw in expanded_keywords if kw in ms_lower or kw in ms]
                 logger.info(f"  基线 '{bl.get('name')}' monitor_scenario='{ms}' 匹配: {matches}")
             selected = [
                 bl for bl in selected

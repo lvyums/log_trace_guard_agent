@@ -1,4 +1,4 @@
-"""日志采集架构指导模块 — API 路由"""
+"""日志采集模块 — API 路由"""
 
 from fastapi import APIRouter, Depends
 
@@ -7,13 +7,13 @@ from core.context_manager import ContextManager
 from app.dependencies import get_context
 from app.schemas.log_collect import (
     DeviceMatchReq, CollectPlanReq, BatchPlanReq,
-    FaultDiagnoseReq, ArchitectureRecommendReq,
+    FaultDiagnoseReq,
 )
 from common.logger import LogManager
 
 logger = LogManager.get_logger()
 
-router = APIRouter(prefix="/api/v1/log-collect", tags=["日志采集架构"])
+router = APIRouter(prefix="/api/v1/log-collect", tags=["日志采集"])
 
 
 @router.post("/match")
@@ -66,17 +66,4 @@ async def diagnose_fault(req: FaultDiagnoseReq, ctx: ContextManager = Depends(ge
 async def get_fault_list(ctx: ContextManager = Depends(get_context)):
     """获取所有故障类型列表"""
     result = await LogCollectService.get_fault_list(context=ctx)
-    return result
-
-
-@router.post("/architecture/recommend")
-async def recommend_architecture(req: ArchitectureRecommendReq, ctx: ContextManager = Depends(get_context)):
-    """架构推荐"""
-    result = await LogCollectService.recommend_architecture(
-        device_count=req.device_count,
-        daily_log_volume=req.daily_log_volume,
-        budget=req.budget,
-        team_skill=req.team_skill,
-        context=ctx,
-    )
     return result

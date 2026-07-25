@@ -31,6 +31,7 @@ from modules.script_gen.router import router as script_gen_router
 from modules.compliance.router import router as compliance_router
 from modules.training.router import router as training_router
 from modules.log_correlate.router import router as log_correlate_router
+from modules.advisory.router import router as advisory_router
 from app.exceptions import AppException, global_exception_handler, make_response
 from app.settings import settings
 
@@ -73,7 +74,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日志溯源卫士智能体",
     description="AI驱动的日志分析与安全实训平台",
-    version="2.0.0",
+    version="3.1.0",
     lifespan=lifespan,
 )
 
@@ -131,6 +132,7 @@ app.include_router(script_gen_router)
 app.include_router(compliance_router)
 app.include_router(training_router)
 app.include_router(log_correlate_router)
+app.include_router(advisory_router)
 
 
 @app.get("/")
@@ -141,7 +143,7 @@ async def root():
         return FileResponse(frontend_index)
     return make_response(data={
         "service": "日志溯源卫士智能体",
-        "version": "2.0.0",
+        "version": "3.1.0",
         "status": "running",
     })
 

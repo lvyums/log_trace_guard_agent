@@ -71,6 +71,7 @@ export const Api = {
     optimize: (data: any) => request('POST', '/api/v1/script-gen/optimize', data),
     splunkSearch: (data: any) => request('POST', '/api/v1/script-gen/splunk/search', data),
     splunkOpenUrl: (data: any) => request('POST', '/api/v1/script-gen/splunk/open-url', data),
+    splunkTest: (data: any) => request('POST', '/api/v1/script-gen/splunk/test', data),
   },
   advisory: {
     arch: (data: any) => request('POST', '/api/v1/advisory/architecture/recommend', data),

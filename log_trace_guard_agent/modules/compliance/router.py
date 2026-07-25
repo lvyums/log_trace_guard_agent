@@ -29,9 +29,12 @@ async def compliance_qa(req: ComplianceQAReq, ctx: ContextManager = Depends(get_
     return result
 
 
-@router.post("/baseline", response_model=dict)
+import json as _json
+
+@router.post("/baseline")
 async def generate_baseline(req: BaselineGenReq, ctx: ContextManager = Depends(get_context)):
     """个性化合规基线自动生成"""
+    logger.info(f"ROUTER DEBUG: asset_count={req.asset_count}, device_types={req.device_types}, monitor_scenarios={req.monitor_scenarios}, industry={req.industry}, type(monitor_scenarios)={type(req.monitor_scenarios)}")
     result = await ComplianceService.generate_baseline(
         asset_count=req.asset_count,
         business_type=req.business_type,

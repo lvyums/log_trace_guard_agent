@@ -23,6 +23,9 @@
       </nav>
 
       <div class="header-right">
+        <el-tooltip content="系统设置" placement="bottom">
+          <el-button icon="Setting" @click="showSplunkSettings = true" circle size="small" />
+        </el-tooltip>
         <el-tooltip :content="currentMode === 'ops' ? '切换至实训模式' : '切换至运维模式'" placement="bottom">
           <el-switch v-model="isTrainingMode" @change="toggleMode"
             active-text="实训" inactive-text="运维"
@@ -62,6 +65,7 @@
         <component :is="currentComponent" :mode="currentMode" />
       </main>
     </div>
+    <SplunkSettings v-model:visible="showSplunkSettings" />
   </div>
 </template>
 
@@ -70,19 +74,20 @@ import { ref, computed, shallowRef, markRaw, onMounted } from 'vue'
 import { APP_CONFIG } from './config'
 import GlobalTour from './components/GlobalTour.vue'
 import CliDownloadBanner from './components/CliDownloadBanner.vue'
+import SplunkSettings from './components/SplunkSettings.vue'
 
 // Import all page components
 import LogParseIdentify from './modules/log-parse/Identify.vue'
 import LogParseParse from './modules/log-parse/Parse.vue'
 import LogParseAssess from './modules/log-parse/Assess.vue'
 import LogParseBatch from './modules/log-parse/Batch.vue'
-import LogCollectMatch from './modules/log-collect/Match.vue'
 import LogCollectPlan from './modules/log-collect/Plan.vue'
 import LogCollectFault from './modules/log-collect/Fault.vue'
-import LogCollectArch from './modules/log-collect/Arch.vue'
+import AdvisoryArch from './modules/log-collect/Arch.vue'
+import AdvisoryPlatform from './modules/script-gen/Platform.vue'
+import AdvisoryGuide from './modules/advisory/Guide.vue'
 import ScriptGenRegex from './modules/script-gen/Regex.vue'
 import ScriptGenEsquery from './modules/script-gen/EsQuery.vue'
-import ScriptGenPlatform from './modules/script-gen/Platform.vue'
 import ScriptGenTrace from './modules/script-gen/Trace.vue'
 import ScriptGenOptimize from './modules/script-gen/Optimize.vue'
 import ComplianceQa from './modules/compliance/Qa.vue'
@@ -99,13 +104,13 @@ const ROUTE_MAP: Record<string, any> = {
   '/log-parse/parse': markRaw(LogParseParse),
   '/log-parse/assess': markRaw(LogParseAssess),
   '/log-parse/batch': markRaw(LogParseBatch),
-  '/log-collect/match': markRaw(LogCollectMatch),
-  '/log-collect/plan': markRaw(LogCollectPlan),
-  '/log-collect/fault': markRaw(LogCollectFault),
-  '/log-collect/arch': markRaw(LogCollectArch),
+  '/advisory/plan': markRaw(LogCollectPlan),
+  '/fault/diagnose': markRaw(LogCollectFault),
+  '/advisory/arch': markRaw(AdvisoryArch),
+  '/advisory/platform': markRaw(AdvisoryPlatform),
+  '/advisory/guide': markRaw(AdvisoryGuide),
   '/script-gen/regex': markRaw(ScriptGenRegex),
   '/script-gen/es-query': markRaw(ScriptGenEsquery),
-  '/script-gen/platform': markRaw(ScriptGenPlatform),
   '/script-gen/trace': markRaw(ScriptGenTrace),
   '/script-gen/optimize': markRaw(ScriptGenOptimize),
   '/compliance/qa': markRaw(ComplianceQa),
@@ -125,6 +130,7 @@ const sidebarCollapsed = ref(false)
 const isDark = ref(true)
 const isTrainingMode = ref(false)
 const showTour = ref(false)
+const showSplunkSettings = ref<boolean>(false)
 const modules = APP_CONFIG.modules
 
 const currentMode = computed(() => isTrainingMode.value ? 'training' : 'ops')

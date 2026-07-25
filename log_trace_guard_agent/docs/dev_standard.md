@@ -16,7 +16,7 @@ app/ → modules/ → core/ → common/ → data/
 | 层 | 目录 | 职责 | 禁止 |
 |----|------|------|------|
 | 应用层 | `app/` | FastAPI 入口、路由挂载、全局异常、依赖注入、Pydantic Schema | 写业务逻辑 |
-| 业务模块层 | `modules/` | 五大业务模块，互相零耦合 | 模块间互相 import |
+| 业务模块层 | `modules/` | 六大业务模块，互相零耦合 | 模块间互相 import |
 | 核心底座层 | `core/` | AI工厂、规则引擎、上下文管理器、数据预处理 | 依赖业务模块 |
 | 公共工具层 | `common/` | 日志、文件、字符串、JSON、返回封装工具 | 依赖业务/core |
 | 数据层 | `data/` | 向量库、规则库、案例库、临时文件 | 写业务逻辑 |
@@ -177,8 +177,9 @@ keywords = JsonConfigLoader.load(config_path) or {}
 | `logs` | 日志基础库 | 模块一 |
 | `compliance` | 合规审计库 | 模块二 |
 | `collect` | 采集架构库 | 模块三 |
-| `scripts` | 技术脚本库 | **模块四** |
+| `scripts` | 技术脚本库 | 模块四 |
 | `cases` | 实训案例库 | 模块五 |
+| `advisory` | 规划咨询库 | 模块六 |
 
 ### 7.3 RAG 调用规范
 

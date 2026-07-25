@@ -54,7 +54,7 @@ function fillSample(){requirements.value='需要支持syslog采集、全文检�
 async function submit(){
   if(!requirements.value.trim()){ElMessage.warning('请描述需求');return}
   loading.value=true;result.value=null
-  try{const r=await Api.scriptGen.platform({device_count:deviceCount.value,daily_log_volume:dailyLogVolume.value,budget:budget.value,team_skill:teamSkill.value,requirements:[requirements.value]});if(r.success)result.value=r.data;else ElMessage.error(r.msg)}catch{ElMessage.error('请求失败')}
+  try{const r=await Api.advisory.platform({device_count:deviceCount.value,daily_log_volume:dailyLogVolume.value,budget:budget.value,team_skill:teamSkill.value,requirements:[requirements.value]});if(r.success)result.value=r.data;else ElMessage.error(r.msg)}catch{ElMessage.error('请求失败')}
   finally{loading.value=false}
 }
 </script>

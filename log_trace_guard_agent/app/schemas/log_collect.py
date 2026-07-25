@@ -79,22 +79,3 @@ class FaultDiagnoseResp(BaseModel):
     fix_steps: list[str] = Field(default_factory=list)
     prevention: list[str] = Field(default_factory=list)
     severity: str = "medium"
-
-
-class ArchitectureRecommendReq(BaseModel):
-    """架构推荐请求"""
-    device_count: int = Field(..., ge=1, description="设备数量")
-    daily_log_volume: str = Field(default="small", pattern="^(small|medium|large)$", description="日志量级")
-    budget: str = Field(default="low", pattern="^(low|medium|high)$", description="预算水平")
-    team_skill: str = Field(default="basic", pattern="^(basic|intermediate|advanced)$", description="运维能力")
-
-
-class ArchitectureRecommendResp(BaseModel):
-    """架构推荐响应"""
-    recommended_arch: str = Field(default="", description="推荐架构")
-    architecture_desc: str = Field(default="", description="架构描述")
-    components: list[str] = Field(default_factory=list, description="核心组件")
-    data_flow: list[str] = Field(default_factory=list, description="数据流向")
-    estimated_cost: str = Field(default="", description="估算成本")
-    pros: list[str] = Field(default_factory=list, description="优势")
-    cons: list[str] = Field(default_factory=list, description="劣势")

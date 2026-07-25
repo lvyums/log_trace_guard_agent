@@ -99,10 +99,20 @@ class OptimizeResp(BaseModel):
 
 # ── Splunk 查询 ──
 
+class SplunkConfigParam(BaseModel):
+    """前端传入的 Splunk 连接配置"""
+    base_url: str = Field(..., description="Splunk 服务器地址")
+    auth_token: Optional[str] = Field(default=None, description="Bearer Token")
+    username: Optional[str] = Field(default=None, description="用户名")
+    password: Optional[str] = Field(default=None, description="密码")
+    verify_ssl: bool = Field(default=True, description="验证 SSL 证书")
+
+
 class SplunkSearchReq(BaseModel):
     """Splunk 查询请求"""
     spl_query: str = Field(..., max_length=5000, description="Splunk SPL 查询语句")
     max_results: Optional[int] = Field(default=None, ge=1, le=1000, description="最大返回条数")
+    splunk_config: Optional[SplunkConfigParam] = Field(default=None, description="Splunk 连接配置（有值时覆盖后端默认配置）")
 
 
 class SplunkSearchResp(BaseModel):

@@ -241,27 +241,6 @@ class LogCollectService:
         faults = FaultFixer.get_all_faults()
         return Result.ok({"faults": faults, "total": len(faults)})
 
-    @staticmethod
-    async def recommend_architecture(device_count: int, daily_log_volume: str = "small", budget: str = "low", team_skill: str = "basic", context: Optional[ContextManager] = None) -> Result:
-        """架构推荐 — 阈值从 settings.py 配置化读取"""
-        if device_count < 1:
-            raise ParamInvalidException("设备数量必须大于0")
-        if daily_log_volume not in ("small", "medium", "large"):
-            raise ParamInvalidException(f"无效的日志量级: {daily_log_volume}")
-
-        arch = _recommend_arch_by_threshold(device_count, daily_log_volume, settings)
-
-        # 更新上下文
-        if context:
-            ctx = ModuleContext(
-                module_id="log_collect",
-                status=ModuleStatus.SUCCESS,
-                input={"device_count": device_count, "daily_log_volume": daily_log_volume},
-                output={"architecture": arch},
-            )
-            context.set_module_result("log_collect", ctx)
-
-        return Result.ok(arch)
 
 
 # ── 私有辅助函数 ──
@@ -296,18 +275,3 @@ def _get_rag_supplements(device_type: str, device_model: str) -> list[str]:
     except Exception as e:
         logger.debug(f"RAG 采集知识库检索跳过: {e}")
     return []
-
-
-def _recommend_arch_by_threshold(device_count: int, daily_log_volume: str, settings) -> dict:
-    """根据配置化阈值推荐架构（模板从外部 JSON 加载）"""
-    config_path = f"{settings.rule_data_dir}/arch_templates.json"
-    templates = JsonConfigLoader.load(config_path)
-    if not templates:
-        return {"recommended_arch": "未知", "architecture_desc": "配置加载失败，请联系管理员"}
-
-    if device_count <= settings.arch_small_device_count and daily_log_volume == settings.arch_small_log_volume:
-        return templates.get("lightweight", {})
-    elif device_count <= settings.arch_medium_device_count and daily_log_volume in ("small", "medium"):
-        return templates.get("elk_cluster", {})
-    else:
-        return templates.get("enterprise_siem", {})

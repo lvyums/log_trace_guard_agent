@@ -35,15 +35,12 @@
       <div v-if="result.recommended_arch" style="font-weight:600;font-size:15px;margin-bottom:12px">{{ result.recommended_arch }}</div>
       <div v-if="result.architecture_desc" style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">{{ result.architecture_desc }}</div>
       <div v-if="result.components?.length" style="margin-bottom:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">组件清单</div>
+        <SectionTitle>组件清单</SectionTitle>
         <ul style="font-size:13px;color:var(--text-secondary);padding-left:20px"><li v-for="(c,i) in result.components" :key="i">{{ c }}</li></ul>
       </div>
       <div v-if="result.data_flow?.length" style="margin-bottom:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">数据流向</div>
-        <div v-for="(step,i) in result.data_flow" :key="i" style="display:flex;align-items:flex-start;gap:12px;margin-bottom:8px">
-          <div style="width:24px;height:24px;border-radius:50%;background:var(--el-color-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">{{ i+1 }}</div>
-          <div style="flex:1;font-size:13px;color:var(--text-secondary)">{{ step }}</div>
-        </div>
+        <SectionTitle>数据流向</SectionTitle>
+        <NumberedList :items="result.data_flow" />
       </div>
       <div v-if="result.estimated_cost"><span style="font-weight:600;font-size:13px">估算成本：</span><span style="font-size:13px;color:var(--text-secondary)">{{ result.estimated_cost }}</span></div>
     </div>
@@ -58,6 +55,8 @@ import { ElMessage } from 'element-plus'
 import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
+import SectionTitle from '../../components/SectionTitle.vue'
+import NumberedList from '../../components/NumberedList.vue'
 defineProps<{ mode?: string }>()
 const scale=ref('small'); const deviceCount=ref(10); const dailyLogVolume=ref('small'); const budget=ref('low'); const teamSkill=ref('basic')
 const loading=ref(false); const result=ref<any>(null)
@@ -68,7 +67,7 @@ const skillOptions=[{label:'基础运维',value:'basic'},{label:'中级运维',v
 function fillExample(){scale.value='medium';deviceCount.value=50;dailyLogVolume.value='medium';budget.value='medium';teamSkill.value='intermediate'}
 async function submit(){
   loading.value=true;result.value=null
-  try{const r=await Api.logCollect.arch({device_count:deviceCount.value,daily_log_volume:dailyLogVolume.value,budget:budget.value,team_skill:teamSkill.value});if(r.success)result.value=r.data;else ElMessage.error(r.msg)}catch{ElMessage.error('请求失败')}
+  try{const r=await Api.advisory.arch({device_count:deviceCount.value,daily_log_volume:dailyLogVolume.value,budget:budget.value,team_skill:teamSkill.value});if(r.success)result.value=r.data;else ElMessage.error(r.msg)}catch{ElMessage.error('请求失败')}
   finally{loading.value=false}
 }
 </script>

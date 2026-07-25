@@ -164,8 +164,16 @@ class ScriptGenService:
         return Result.ok(result)
 
     @staticmethod
-    def _get_splunk_client() -> SplunkClient:
-        """获取 Splunk 客户端实例"""
+    def _get_splunk_client(config: Optional[dict] = None) -> SplunkClient:
+        """获取 Splunk 客户端实例，优先使用前端传入的配置"""
+        if config and config.get("base_url"):
+            return SplunkClient(
+                base_url=config["base_url"],
+                auth_token=config.get("auth_token", ""),
+                username=config.get("username", ""),
+                password=config.get("password", ""),
+                verify_ssl=config.get("verify_ssl", True),
+            )
         return SplunkClient(
             base_url=settings.splunk_base_url,
             username=settings.splunk_username,
@@ -175,12 +183,19 @@ class ScriptGenService:
         )
 
     @staticmethod
-    async def splunk_search(spl_query: str, max_results: Optional[int] = None, context: Optional[ContextManager] = None) -> Result:
-        """执行 Splunk 搜索"""
-        if not settings.splunk_base_url:
-            return Result.fail("Splunk 未配置，请在 .env 中设置 SPLUNK_BASE_URL")
+    def _has_splunk_config(config: Optional[dict] = None) -> bool:
+        """检查是否有可用的 Splunk 配置"""
+        if config and config.get("base_url"):
+            return True
+        return bool(settings.splunk_base_url)
 
-        client = ScriptGenService._get_splunk_client()
+    @staticmethod
+    async def splunk_search(spl_query: str, max_results: Optional[int] = None, splunk_config: Optional[dict] = None, context: Optional[ContextManager] = None) -> Result:
+        """执行 Splunk 搜索"""
+        if not ScriptGenService._has_splunk_config(splunk_config):
+            return Result.fail("Splunk 未配置，请在导航栏设置中配置 Splunk 连接信息")
+
+        client = ScriptGenService._get_splunk_client(splunk_config)
         results = client.execute_search(
             spl_query=spl_query,
             max_results=max_results or settings.splunk_max_results,
@@ -211,14 +226,31 @@ class ScriptGenService:
         return Result.ok(data)
 
     @staticmethod
-    async def splunk_open_url(spl_query: str) -> Result:
+    async def splunk_open_url(spl_query: str, splunk_config: Optional[dict] = None) -> Result:
         """生成 Splunk Web UI 跳转链接"""
-        if not settings.splunk_base_url:
-            return Result.fail("Splunk 未配置，请在 .env 中设置 SPLUNK_BASE_URL")
+        if not ScriptGenService._has_splunk_config(splunk_config):
+            return Result.fail("Splunk 未配置，请在导航栏设置中配置 Splunk 连接信息")
 
-        client = ScriptGenService._get_splunk_client()
+        client = ScriptGenService._get_splunk_client(splunk_config)
         url = client.build_open_url(spl_query)
         return Result.ok({"open_url": url})
+
+    @staticmethod
+    async def splunk_test(spl_query: str, splunk_config: Optional[dict] = None) -> Result:
+        """测试 Splunk 连接"""
+        if not splunk_config or not splunk_config.get("base_url"):
+            return Result.fail("请提供 Splunk 连接配置")
+
+        client = ScriptGenService._get_splunk_client(splunk_config)
+        results = client.execute_search(
+            spl_query=spl_query or "search index=_internal | head 1",
+            max_results=1,
+            timeout=10,
+        )
+
+        if results.get("error"):
+            return Result.fail(results["error"])
+        return Result.ok({"message": "Splunk 连接成功", "event_count": results.get("event_count", 0)})
 
     @staticmethod
     async def optimize_script(script: str, script_type: str = "regex", scenario: Optional[str] = None, context: Optional[ContextManager] = None) -> Result:

@@ -92,6 +92,7 @@ async def splunk_search(req: SplunkSearchReq, ctx: ContextManager = Depends(get_
     result = await ScriptGenService.splunk_search(
         spl_query=req.spl_query,
         max_results=req.max_results,
+        splunk_config=req.splunk_config.model_dump() if req.splunk_config else None,
         context=ctx,
     )
     return result
@@ -100,5 +101,18 @@ async def splunk_search(req: SplunkSearchReq, ctx: ContextManager = Depends(get_
 @router.post("/splunk/open-url")
 async def splunk_open_url(req: SplunkSearchReq):
     """生成 Splunk Web UI 跳转链接"""
-    result = await ScriptGenService.splunk_open_url(spl_query=req.spl_query)
+    result = await ScriptGenService.splunk_open_url(
+        spl_query=req.spl_query,
+        splunk_config=req.splunk_config.model_dump() if req.splunk_config else None,
+    )
+    return result
+
+
+@router.post("/splunk/test")
+async def splunk_test(req: SplunkSearchReq):
+    """测试 Splunk 连接"""
+    result = await ScriptGenService.splunk_test(
+        spl_query=req.spl_query,
+        splunk_config=req.splunk_config.model_dump() if req.splunk_config else None,
+    )
     return result

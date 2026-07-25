@@ -24,7 +24,12 @@
         <el-button type="primary" @click="submit" :loading="loading" style="width:100%">生成基线报告</el-button>
       </div>
       <div class="g-card">
-        <div class="g-card-title" style="margin-bottom:12px"><el-icon><View /></el-icon> 基线报告预览</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="g-card-title"><el-icon><View /></el-icon> 基线报告预览</div>
+          <el-button v-if="result" type="success" size="small" plain @click="downloadReport">
+            <el-icon><Download /></el-icon> 下载报告
+          </el-button>
+        </div>
         <div v-if="result" class="compliance-preview">
           <div v-if="result.summary" style="margin-bottom:16px;padding:12px;background:var(--bg-secondary);border-radius:6px;font-size:13px;line-height:1.8" v-html="renderMarkdown(result.summary)"></div>
           <div v-if="result.note" style="margin-bottom:12px;font-size:12px;color:var(--text-secondary);font-style:italic">{{ result.note }}</div>
@@ -49,7 +54,9 @@
                 <span><strong>{{ th.name }}</strong>: {{ th.description }}</span>
               </div>
             </div>
-            <div v-if="bl.remediation" style="font-size:12px;color:var(--text-secondary);margin-top:8px;padding:8px;background:var(--bg-tertiary);border-radius:4px"><strong>整改措施：</strong>{{ bl.remediation }}</div>
+            <div v-if="bl.remediation" style="margin-top:8px">
+              <SuggestionBox title="整改措施">{{ bl.remediation }}</SuggestionBox>
+            </div>
           </div>
         </div>
         <div v-else style="text-align:center;padding:40px;color:var(--text-secondary)"><el-icon :size="48"><Document /></el-icon><div style="margin-top:8px">填写左侧表单生成报告</div></div>
@@ -62,12 +69,90 @@ import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
+import SuggestionBox from '../../components/SuggestionBox.vue'
 defineProps<{ mode?: string }>()
 const form=reactive({asset_count:10,business_type:'互联网',device_types:'web,db,firewall',monitor_scenarios:'入侵检测,异常登录,数据泄露',industry:'互联网'})
 const loading=ref(false); const result=ref<any>(null)
 const industryOptions=['互联网','金融','政府','教育','医疗','能源','制造业','其他']
-function renderMarkdown(text){if(!text)return '';return text.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/\n/g,'<br>')}
+function renderMarkdown(text: string): string {if(!text)return '';return text.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/\n/g,'<br>')}
 function fillExample(){Object.assign(form,{asset_count:50,business_type:'互联网金融',device_types:'web,db,firewall,waf,server',monitor_scenarios:'入侵检测,异常登录,数据泄露,恶意软件',industry:'金融'})}
+
+function generateMarkdownReport(): string {
+  if (!result.value) return ''
+  const r = result.value
+  let md = `# 合规基线检查报告\n\n`
+  md += `**生成时间**: ${new Date().toLocaleString('zh-CN')}\n\n`
+
+  // 基本信息
+  md += `## 基本信息\n\n`
+  md += `| 项目 | 值 |\n|------|----|\n`
+  md += `| 资产数量 | ${form.asset_count} 台 |\n`
+  md += `| 业务类型 | ${form.business_type} |\n`
+  md += `| 设备类型 | ${form.device_types || '全部'} |\n`
+  md += `| 监控场景 | ${form.monitor_scenarios || '全部'} |\n`
+  md += `| 所属行业 | ${form.industry} |\n\n`
+
+  // 报告摘要
+  if (r.summary) {
+    md += `## 报告摘要\n\n`
+    md += r.summary.replace(/\n/g, '\n') + '\n\n'
+  }
+
+  // 补充说明
+  if (r.note) {
+    md += `## 补充说明\n\n`
+    md += r.note + '\n\n'
+  }
+
+  // 基线详情
+  if (r.baselines?.length) {
+    md += `## 基线详情\n\n`
+    md += `共 ${r.baselines.length} 条监控基线\n\n`
+
+    r.baselines.forEach((bl: any, i: number) => {
+      const severityLabel = bl.severity === 'high' ? '高' : bl.severity === 'medium' ? '中' : '低'
+      md += `### ${i + 1}. ${bl.name}\n\n`
+      md += `- **基线编号**: ${bl.baseline_id}\n`
+      md += `- **风险等级**: ${severityLabel}\n`
+      md += `- **分类**: ${bl.category}\n`
+      md += `- **描述**: ${bl.description}\n`
+      md += `- **监控场景**: ${bl.monitor_scenario}\n`
+      md += `- **告警标准**: ${bl.alert_standard}\n`
+      md += `- **检查频率**: ${bl.check_frequency}\n`
+      md += `- **适用设备**: ${bl.applicable_devices?.join(', ') || '全部'}\n`
+
+      if (bl.thresholds?.length) {
+        md += `- **监控阈值**:\n`
+        bl.thresholds.forEach((th: any) => {
+          md += `  - [${th.severity}] ${th.name}: ${th.description}\n`
+        })
+      }
+
+      if (bl.remediation) {
+        md += `- **整改措施**: ${bl.remediation}\n`
+      }
+      md += '\n'
+    })
+  }
+
+  md += `---\n\n*本报告由日志溯源卫士智能体自动生成，仅供参考。*\n`
+  return md
+}
+
+function downloadReport() {
+  const markdown = generateMarkdownReport()
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `基线报告_${form.business_type}_${form.asset_count}台_${new Date().toISOString().slice(0,10)}.md`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+  ElMessage.success('报告下载成功')
+}
+
 async function submit(){
   if(!form.asset_count||!form.business_type){ElMessage.warning('请填写资产数量和组织类型');return}
   loading.value=true;result.value=null

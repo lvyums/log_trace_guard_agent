@@ -4,6 +4,66 @@
 
 ---
 
+## [v3.1.0] - 2026-07-25
+
+### 新增功能
+
+- **规划咨询模块** — 新增独立 advisory 模块，分离架构推荐与平台选型功能
+- **基线报告下载** — 合规基线报告支持 Markdown 格式下载
+
+### 重构
+
+- **模块职责分离** — 架构推荐、平台选型从 log_collect/script_gen 提取到 advisory 模块
+- **前端路由更新** — 新增 `/advisory/arch` 和 `/advisory/platform` 路由
+- **API 路径迁移** — 架构推荐 → `/api/v1/advisory/architecture/recommend`，平台选型 → `/api/v1/advisory/platform/choose`
+
+### 变更文件
+
+- `modules/advisory/` — 新增规划咨询模块（arch_strategy, platform_strategy, service, router, schemas）
+- `app/main.py` — 注册 advisory 路由，版本号更新至 3.1.0
+- `modules/log_collect/router.py` — 移除架构推荐路由
+- `modules/log_collect/service.py` — 移除架构推荐方法
+- `modules/script_gen/router.py` — 移除平台选型路由
+- `modules/script_gen/service.py` — 移除平台选型方法
+- `modules/script_gen/schemas.py` — 移除 PlatformChooseReq
+- `app/schemas/log_collect.py` — 移除 ArchitectureRecommendReq
+- `frontend/src/api.ts` — 新增 advisory API 组
+- `frontend/src/App.vue` — 更新路由映射
+- `frontend/src/config.ts` — 新增 advisory 模块配置
+- `frontend/src/modules/compliance/Baseline.vue` — 新增基线报告下载功能
+- `tests/test_rules/test_advisory.py` — 新增规划咨询模块测试
+- `docs/dev_standard.md` — 更新模块描述
+
+---
+
+## [v3.0.0] - 2026-07-24
+
+### 新增功能
+
+- **安全威胁狩猎模块** — 日志联合审查升级为安全威胁狩猎，关键词 + LLM 双引擎驱动
+- **多文件上传** — 支持同时上传多个日志文件进行关联分析
+- **前端联动** — 威胁狩猎结果与前端实时联动展示
+
+### 优化
+
+- **LLM prompt 优化** — 精简关联分析 prompt，提升响应速度与准确性
+- **攻击链检测规则** — 重写 correlation_patterns.json，覆盖更多攻击场景
+- **Schema 扩展** — log_correlate schemas 新增多文件上传与威胁狩猎字段
+
+### 修复
+
+- **LLM JSON 截断恢复** — 4 层容错解析机制，确保不完整 JSON 不会崩溃
+- **关联分析合并模式** — LLM + 关键词结果智能合并，避免重复告警
+
+### 变更文件
+
+- `modules/log_correlate/service.py` — 核心逻辑重构（+1028 行）
+- `frontend/src/modules/log-correlate/Analyze.vue` — 前端联动改造
+- `data/rule_data/correlation_patterns.json` — 攻击链规则重写
+- `app/schemas/log_correlate.py` — Schema 扩展
+
+---
+
 ## [v2.1.0] - 2026-07-24
 
 ### 优化
@@ -102,6 +162,8 @@
 
 | 版本 | 发布日期 | 主要变更 |
 |------|----------|----------|
+| v3.1.0 | 2026-07-25 | 规划咨询模块、基线报告下载、模块职责分离 |
+| v3.0.0 | 2026-07-24 | 安全威胁狩猎模块、多文件关联分析、LLM 容错 |
 | v2.1.0 | 2026-07-24 | 性能优化、交互完善、bug 修复 |
 | v2.0.0 | 2026-07-22 | Vue3 前端 + RAG 知识库 + CLI 工具 |
 | v1.0.0 | 2026-07-18 | 五大核心模块基础架构 |
