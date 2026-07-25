@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日志溯源卫士智能体",
     description="AI驱动的日志分析与安全实训平台",
-    version="3.1.0",
+    version="3.2.0",
     lifespan=lifespan,
 )
 

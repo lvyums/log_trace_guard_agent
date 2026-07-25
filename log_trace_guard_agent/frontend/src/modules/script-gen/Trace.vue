@@ -61,12 +61,16 @@
           <CodeBlock :code="script.code" :lang="script.lang" />
           <!-- Splunk SPL 脚本的交互按钮 -->
           <div v-if="script.lang === 'spl'" style="display:flex;gap:8px;margin-top:8px">
-            <el-button size="small" type="primary" :loading="splunkLoading" @click="executeSplunk(script.code)">
-              <el-icon><VideoPlay /></el-icon> 执行查询
-            </el-button>
-            <el-button size="small" plain @click="openSplunk(script.code)">
-              <el-icon><Link /></el-icon> 在 Splunk 中打开
-            </el-button>
+            <el-tooltip :disabled="hasSplunkConfig" content="请先在导航栏设置中配置 Splunk" placement="top">
+              <el-button size="small" type="primary" :loading="splunkLoading" :disabled="!hasSplunkConfig" @click="executeSplunk(script.code)">
+                <el-icon><VideoPlay /></el-icon> 执行查询
+              </el-button>
+            </el-tooltip>
+            <el-tooltip :disabled="hasSplunkConfig" content="请先在导航栏设置中配置 Splunk" placement="top">
+              <el-button size="small" plain :disabled="!hasSplunkConfig" @click="openSplunk(script.code)">
+                <el-icon><Link /></el-icon> 在 Splunk 中打开
+              </el-button>
+            </el-tooltip>
           </div>
         </div>
       </div>
@@ -91,9 +95,10 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Api } from '../../api'
+import { getSplunkConfig } from '../../utils/splunk'
 import AlertGuide from '../../components/AlertGuide.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
 import CodeBlock from '../../components/CodeBlock.vue'
@@ -101,6 +106,7 @@ import RiskBadge from '../../components/RiskBadge.vue'
 defineProps<{ mode?: string }>()
 const attackType=ref(''); const targetIp=ref(''); const timeRange=ref(''); const logs=ref(''); const loading=ref(false); const result=ref<any>(null)
 const splunkLoading=ref(false); const splunkResult=ref<any>(null)
+const hasSplunkConfig = computed(() => !!getSplunkConfig())
 function fillSample(){attackType.value='SSH暴力破解';targetIp.value='192.168.1.50';timeRange.value='2024-01-05 10:00 ~ 2024-01-05 14:00';logs.value='<22>Jan  5 12:34:56 sshd[12345]: Failed password for root from 192.168.1.100 port 22'}
 async function submit(){
   if(!attackType.value.trim()){ElMessage.warning('请描述攻击类型');return}
@@ -110,11 +116,13 @@ async function submit(){
   finally{loading.value=false}
 }
 async function executeSplunk(spl: string){
+  const cfg=getSplunkConfig();if(!cfg){ElMessage.warning('请先在导航栏设置中配置 Splunk');return}
   splunkLoading.value=true;splunkResult.value=null
-  try{const r=await Api.scriptGen.splunkSearch({spl_query:spl});if(r.success)splunkResult.value=r.data;else ElMessage.error(r.msg||'Splunk 查询失败')}catch{ElMessage.error('Splunk 请求失败')}
+  try{const r=await Api.scriptGen.splunkSearch({spl_query:spl,splunk_config:cfg});if(r.success)splunkResult.value=r.data;else ElMessage.error(r.msg||'Splunk 查询失败')}catch{ElMessage.error('Splunk 请求失败')}
   finally{splunkLoading.value=false}
 }
 async function openSplunk(spl: string){
-  try{const r=await Api.scriptGen.splunkOpenUrl({spl_query:spl});if(r.success&&r.data?.open_url)window.open(r.data.open_url,'_blank');else ElMessage.error(r.msg||'无法生成 Splunk 链接')}catch{ElMessage.error('请求失败')}
+  const cfg=getSplunkConfig();if(!cfg){ElMessage.warning('请先在导航栏设置中配置 Splunk');return}
+  try{const r=await Api.scriptGen.splunkOpenUrl({spl_query:spl,splunk_config:cfg});if(r.success&&r.data?.open_url)window.open(r.data.open_url,'_blank');else ElMessage.error(r.msg||'无法生成 Splunk 链接')}catch{ElMessage.error('请求失败')}
 }
 </script>
