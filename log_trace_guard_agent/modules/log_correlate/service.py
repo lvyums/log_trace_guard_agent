@@ -1,5 +1,5 @@
 """
-模块六：日志联合审查 — 安全威胁狩猎引擎
+模块六：日志联合审查 — 日志联合审查引擎
 
 从 JSON 规则（security attack chains）加载攻击链检测规则。
 两级分析引擎：
@@ -618,6 +618,7 @@ class LogCorrelateService:
     ) -> dict:
         """从文件读取日志并执行联合审查。支持单文件（file_path）或多文件（file_paths）。"""
         content = file_content
+        source_files: list[str] = []
 
         # 多文件路径 → 合并读取
         if file_paths and not content:
@@ -626,6 +627,7 @@ class LogCorrelateService:
                 try:
                     with open(fp, "r", encoding="utf-8", errors="replace") as f:
                         fc = f.read()
+                    source_files.append(os.path.basename(fp))
                     if len(file_paths) > 1:
                         parts.append(f"\n# ── 来源: {fp} ──\n{fc}")
                     else:
@@ -643,6 +645,7 @@ class LogCorrelateService:
             try:
                 with open(file_path, "r", encoding="utf-8", errors="replace") as f:
                     content = f.read()
+                source_files.append(os.path.basename(file_path))
             except FileNotFoundError:
                 return Result.fail(msg=f"文件不存在: {file_path}")
             except PermissionError:
@@ -657,6 +660,7 @@ class LogCorrelateService:
                 "summary": "文件内容为空",
                 "method": "none",
                 "matched_keywords": [],
+                "source_files": source_files,
             })
 
         lines = content.split("\n")
@@ -665,12 +669,16 @@ class LogCorrelateService:
             logger.warning(f"文件行数过多 ({len(lines)})，截断至 2000 行")
             lines = lines[-2000:]  # 保留最近 2000 行
 
-        return await cls.correlate_logs(
+        result = await cls.correlate_logs(
             log_lines=lines,
             time_window_minutes=time_window_minutes,
             use_llm=use_llm,
             detailed=False,
         )
+        # 添加文件来源信息
+        if isinstance(result, dict) and result.get("code") == 0:
+            result["data"]["source_files"] = source_files
+        return result
 
     @classmethod
     async def to_trace_script(

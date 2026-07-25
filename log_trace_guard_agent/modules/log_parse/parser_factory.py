@@ -8,6 +8,7 @@ from modules.log_parse.web_parse import WebParser
 from modules.log_parse.waf_parse import WAFParser
 from modules.log_parse.firewall_parse import FirewallParser
 from modules.log_parse.db_parse import DBParser
+from modules.log_parse.traffic_parse import TrafficParser
 from core.rule_engine.regex_rule import RegexRuleEngine, RuleMatchResult
 from common.logger import LogManager
 
@@ -86,3 +87,4 @@ LogParserFactory.register("web", WebParser)
 LogParserFactory.register("waf", WAFParser)
 LogParserFactory.register("firewall", FirewallParser)
 LogParserFactory.register("db", DBParser)
+LogParserFactory.register("traffic", TrafficParser)

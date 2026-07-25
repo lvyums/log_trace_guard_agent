@@ -1,14 +1,14 @@
 <template>
   <div class="g-stack">
     <AlertGuide type="info" title="日志识别是分析的起点">
-      粘贴一行完整原始日志，系统自动识别设备类型。识别后可直接跳转解析/研判，形成完整分析链路。
+      粘贴一行或多行日志（每行一条），系统自动识别设备类型。识别后可直接跳转解析/研判，形成完整分析链路。
     </AlertGuide>
 
     <div class="g-card">
       <div class="g-card-header">
         <div>
           <div class="g-card-title"><el-icon><Aim /></el-icon> 日志识别</div>
-          <div class="g-card-desc">输入原始日志，AI自动识别设备类型、日志格式与关键字段</div>
+          <div class="g-card-desc">输入原始日志，自动识别设备类型（SSH/Web/WAF/防火墙/数据库/流量等）</div>
         </div>
         <div class="g-actions">
           <el-button size="small" @click="showSample = !showSample">
@@ -32,13 +32,13 @@
 
       <el-input
         v-model="input" type="textarea" :rows="6"
-        placeholder="在此粘贴日志内容..." class="log-input-area"
+        placeholder="粘贴一行或多行日志，每行一条..." class="log-input-area"
         :disabled="loading"
         @keyup.ctrl.enter="submit" @keyup.meta.enter="submit"
       />
       <div class="g-input-guide">
         <el-icon><InfoFilled /></el-icon>
-        <span>支持粘贴单条或多条日志，Ctrl+Enter 快速提交。最大50000字符。</span>
+        <span>支持格式：Syslog、JSON、CSV、纯文本。多条日志逐行粘贴，分别识别。最大50000字符。</span>
       </div>
 
       <div class="g-actions" style="margin-top:12px">
@@ -135,7 +135,7 @@
     <div v-if="results.length === 0 && !loading" class="g-card">
       <EmptyGuide
         title="等待日志输入"
-        desc="在上方输入框粘贴日志内容，点击识别分析。识别后可跳转解析和研判。"
+        desc="在上方输入框粘贴日志内容（支持 Syslog/JSON/CSV/纯文本），点击识别分析。识别后可跳转解析和研判。"
         action-text="填充测试日志"
         @action="fillSample"
       />

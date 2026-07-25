@@ -48,8 +48,8 @@
 
         <!-- LLM深度解读 -->
         <div v-if="item._raw?.llm_answer" style="margin-top:10px">
-          <div style="font-weight:600;margin-bottom:4px;font-size:12px;color:var(--el-color-primary)">AI深度解读</div>
-          <div style="padding:8px 12px;background:var(--bg-secondary);border-radius:4px;font-size:13px;line-height:1.8;white-space:pre-wrap;color:var(--text-secondary)">{{ item._raw.llm_answer }}</div>
+          <SectionTitle>AI深度解读</SectionTitle>
+          <SuggestionBox>{{ item._raw.llm_answer }}</SuggestionBox>
         </div>
 
         <!-- 备注 -->
@@ -69,6 +69,8 @@ import { ElMessage } from 'element-plus'
 import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
+import SectionTitle from '../../components/SectionTitle.vue'
+import SuggestionBox from '../../components/SuggestionBox.vue'
 defineProps<{ mode?: string }>()
 const question=ref(''); const loading=ref(false); const history=ref<any[]>([])
 function fillSample(){question.value='等保2.0三级对日志留存有什么要求？'}

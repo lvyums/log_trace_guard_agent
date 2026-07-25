@@ -1,25 +1,25 @@
 <template>
   <div class="g-stack">
     <AlertGuide type="info" title="结构化解析让日志可被检索和理解">
-      原始日志是给人看的文本，结构化字段可被机器检索。点击字段名查看释义，或一键跳转风险研判。
+      原始日志是给人看的文本，结构化字段可被机器检索。支持 Syslog / JSON / CSV 格式，点击字段名查看释义。
     </AlertGuide>
 
     <div class="g-card">
       <div class="g-card-header">
         <div>
           <div class="g-card-title"><el-icon><Document /></el-icon> 结构化解析</div>
-          <div class="g-card-desc">将原始日志文本解析为标准化的结构化字段</div>
+          <div class="g-card-desc">将一条原始日志文本解析为标准化的结构化字段（IP、用户、状态码等）</div>
         </div>
         <el-button size="small" type="primary" plain @click="fillSample">填充测试日志</el-button>
       </div>
       <el-input
         v-model="input" type="textarea" :rows="4"
-        placeholder="粘贴原始日志..." :disabled="loading"
+        placeholder="粘贴一条原始日志..." :disabled="loading"
         @keyup.ctrl.enter="submit"
       />
       <div class="g-input-guide">
         <el-icon><InfoFilled /></el-icon>
-        <span>支持 syslog / JSON / CSV 格式。从「日志识别」页面可自动填入日志。</span>
+        <span>仅支持单条日志解析。支持 Syslog / JSON / CSV 格式。从「日志识别」页面可自动填入。</span>
       </div>
       <div class="g-actions" style="margin-top:12px">
         <el-button type="primary" :loading="loading" @click="submit">解析</el-button>
@@ -123,9 +123,9 @@
     <div v-if="!result && !loading" class="g-card">
       <div style="text-align:center;padding:40px;color:var(--text-secondary)">
         <el-icon :size="48"><DataBoard /></el-icon>
-        <div style="margin-top:8px;font-weight:500">粘贴日志进行结构化解析</div>
+        <div style="margin-top:8px;font-weight:500">粘贴一条日志进行结构化解析</div>
         <div style="font-size:12px;margin-top:4px">
-          也可以从「日志识别」页面识别后直接跳转过来
+          支持 Syslog / JSON / CSV 格式。也可以从「日志识别」页面识别后直接跳转过来
         </div>
       </div>
     </div>

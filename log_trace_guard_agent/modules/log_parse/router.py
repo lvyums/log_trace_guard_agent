@@ -1,14 +1,20 @@
 """日志解析模块 — API 路由"""
 
-from fastapi import APIRouter, Depends
+import os
+import uuid
+from typing import List
+
+from fastapi import APIRouter, Depends, UploadFile, File
 
 from modules.log_parse.service import LogParseService
 from core.context_manager import ContextManager
 from app.dependencies import get_context
 from app.schemas.log_parse import (
     LogIdentifyReq, LogParseReq, RiskAssessReq,
-    FieldExplainReq, FieldExplainBatchReq, BatchParseReq,
+    FieldExplainReq, FieldExplainBatchReq, BatchParseReq, BatchFileParseReq,
 )
+from app.settings import settings
+from common.file_util import parse_upload_file
 from common.logger import LogManager
 
 logger = LogManager.get_logger()
@@ -62,3 +68,69 @@ async def batch_parse(req: BatchParseReq, ctx: ContextManager = Depends(get_cont
     """批量解析日志"""
     result = await LogParseService.batch_parse(req.logs, do_assess=req.assess, context=ctx)
     return result
+
+
+@router.post("/upload")
+async def upload_files(files: List[UploadFile] = File(..., description="日志文件（支持多文件）")):
+    """上传日志文件，返回保存路径供 batch-file 使用"""
+    saved_paths: list[str] = []
+    os.makedirs(settings.upload_temp_dir, exist_ok=True)
+
+    for f in files:
+        content = await f.read()
+        ext = os.path.splitext(f.filename or "")[1] or ".log"
+        save_name = f"{uuid.uuid4().hex[:8]}_{f.filename or 'upload'}{ext}"
+        save_path = os.path.join(settings.upload_temp_dir, save_name)
+        with open(save_path, "wb") as out:
+            out.write(content)
+        saved_paths.append(save_path)
+        logger.info(f"已上传文件: {f.filename} -> {save_path}")
+
+    return {
+        "code": 0,
+        "msg": f"成功上传 {len(saved_paths)} 个文件",
+        "data": {"file_paths": saved_paths, "count": len(saved_paths)},
+    }
+
+
+@router.post("/parse/batch-file")
+async def batch_file_parse(req: BatchFileParseReq, ctx: ContextManager = Depends(get_context)):
+    """从上传的文件批量解析日志"""
+    all_lines: list[str] = []
+    for fp in req.file_paths:
+        lines = parse_upload_file(fp)
+        all_lines.extend(lines)
+
+    if not all_lines:
+        return {"code": 1, "msg": "未从文件中解析到有效日志行", "data": None}
+
+    # 限制最大条数，避免超时
+    if len(all_lines) > 500:
+        all_lines = all_lines[:500]
+        logger.warning(f"文件日志行数超过500，已截断")
+
+    result = await LogParseService.batch_parse(all_lines, do_assess=req.assess, context=ctx)
+
+    # 清理临时文件
+    for fp in req.file_paths:
+        try:
+            if fp.startswith(settings.upload_temp_dir) and os.path.exists(fp):
+                os.remove(fp)
+        except OSError as e:
+            logger.warning(f"清理临时文件失败 {fp}: {e}")
+
+    return result
+
+
+@router.post("/cleanup")
+async def cleanup_files(req: BatchFileParseReq):
+    """清理上传的临时文件"""
+    cleaned = 0
+    for fp in req.file_paths:
+        try:
+            if fp.startswith(settings.upload_temp_dir) and os.path.exists(fp):
+                os.remove(fp)
+                cleaned += 1
+        except OSError as e:
+            logger.warning(f"清理临时文件失败 {fp}: {e}")
+    return {"code": 0, "msg": f"已清理 {cleaned} 个文件", "data": {"cleaned": cleaned}}

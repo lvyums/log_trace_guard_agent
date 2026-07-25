@@ -92,6 +92,12 @@ class BatchParseReq(BaseModel):
     assess: bool = Field(default=False, description="是否同时进行风险研判")
 
 
+class BatchFileParseReq(BaseModel):
+    """批量文件解析请求"""
+    file_paths: list[str] = Field(..., min_length=1, description="服务端文件路径列表")
+    assess: bool = Field(default=False, description="是否同时进行风险研判")
+
+
 class BatchParseItem(BaseModel):
     """批量解析单条结果"""
     index: int

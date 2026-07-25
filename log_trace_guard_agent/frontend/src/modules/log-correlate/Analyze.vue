@@ -5,8 +5,8 @@
       <div class="g-card">
         <div class="g-card-header">
           <div>
-            <div class="g-card-title"><el-icon><Connection /></el-icon> 安全威胁狩猎</div>
-            <div class="g-card-desc">输入多源日志，检测攻击链和跨设备关联事件</div>
+            <div class="g-card-title"><el-icon><Connection /></el-icon> 日志联合审查</div>
+            <div class="g-card-desc">支持粘贴多源日志或上传文件（.log/.txt/.csv/.json），检测攻击链和跨设备关联事件</div>
           </div>
           <div class="g-actions">
             <el-button size="small" @click="showSample = !showSample">
@@ -56,16 +56,19 @@
               @change="onFileSelected"
             />
             <el-button size="small" :disabled="loading" @click="triggerFilePicker">
-              <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件
+              <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件（可多选）
             </el-button>
-            <span v-if="loadedFiles.length" class="g-param-desc" style="margin-left:8px;color:var(--el-color-primary)">
-              已加载 {{ loadedFiles.length }} 个文件
-            </span>
           </div>
         </div>
 
+        <div v-if="loadedFiles.length" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+          <el-tag v-for="(name, i) in loadedFiles" :key="i" size="small" closable @close="removeFile(i)">
+            {{ name }}
+          </el-tag>
+        </div>
+
         <div class="g-actions" style="margin-top:12px">
-          <el-button type="primary" :loading="loading" :disabled="!input.trim()" @click="submit">
+          <el-button type="primary" :loading="loading" :disabled="!input.trim() && !loadedFiles.length" @click="submit">
             <el-icon style="margin-right:4px"><Search /></el-icon> 关联分析
           </el-button>
           <el-button :disabled="loading" @click="clear">清空</el-button>
@@ -75,15 +78,15 @@
 
     <!-- 实训模式：带引导 -->
     <template v-else>
-      <AlertGuide type="info" title="安全威胁狩猎 — 发现隐蔽攻击链">
+      <AlertGuide type="info" title="日志联合审查 — 发现隐蔽攻击链">
         输入多源日志（每行一条），系统自动进行安全攻击链检测。支持中文/英文日志，内置 16 种攻击链模型，关键词匹配不满 60% 时自动降级 LLM 智能分析。
       </AlertGuide>
 
       <div class="g-card">
         <div class="g-card-header">
           <div>
-            <div class="g-card-title"><el-icon><Connection /></el-icon> 安全威胁狩猎</div>
-            <div class="g-card-desc">输入多源日志，自动检测攻击链和关联事件</div>
+            <div class="g-card-title"><el-icon><Connection /></el-icon> 日志联合审查</div>
+            <div class="g-card-desc">支持粘贴多源日志或上传文件（.log/.txt/.csv/.json），自动检测攻击链和关联事件</div>
           </div>
           <div class="g-actions">
             <el-button size="small" @click="showSample = !showSample">
@@ -133,12 +136,15 @@
               @change="onFileSelected"
             />
             <el-button size="small" :disabled="loading" @click="triggerFilePicker">
-              <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件
+              <el-icon style="margin-right:4px"><Upload /></el-icon> 上传日志文件（可多选）
             </el-button>
-            <span v-if="loadedFiles.length" class="g-param-desc" style="margin-left:8px;color:var(--el-color-primary)">
-              已加载 {{ loadedFiles.length }} 个文件
-            </span>
           </div>
+        </div>
+
+        <div v-if="loadedFiles.length" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+          <el-tag v-for="(name, i) in loadedFiles" :key="i" size="small" closable @close="removeFile(i)">
+            {{ name }}
+          </el-tag>
         </div>
 
         <div class="g-input-guide">
@@ -147,7 +153,7 @@
         </div>
 
         <div class="g-actions" style="margin-top:12px">
-          <el-button type="primary" :loading="loading" :disabled="!input.trim()" @click="submit">
+          <el-button type="primary" :loading="loading" :disabled="!input.trim() && !loadedFiles.length" @click="submit">
             <el-icon style="margin-right:4px"><Search /></el-icon> 关联分析
           </el-button>
           <el-button :disabled="loading" @click="clear">清空</el-button>
@@ -180,6 +186,13 @@
           </el-tag>
         </el-descriptions-item>
       </el-descriptions>
+
+      <div v-if="result.source_files?.length" style="margin-bottom:12px">
+        <span style="font-size:12px;color:var(--text-tertiary)">数据来源：</span>
+        <el-tag v-for="(f, fi) in result.source_files" :key="fi" size="small" type="info" effect="plain" style="margin-right:4px">
+          {{ f }}
+        </el-tag>
+      </div>
 
       <div class="g-summary" style="margin-bottom:16px">
         <el-alert :title="result.summary" type="info" :closable="false" show-icon />
@@ -256,7 +269,7 @@
     <!-- 空状态 -->
     <div v-if="!result && !loading" class="g-card">
       <EmptyGuide
-        title="安全威胁狩猎 — 发现隐蔽攻击链"
+        title="日志联合审查 — 发现隐蔽攻击链"
         desc="输入多源日志（每行一条），系统自动检测安全攻击链。内置 16 种攻击链规则，支持中文/英文日志，关键词匹配不足时自动降级 LLM 智能分析。"
         action-text="加载攻击链样例"
         @action="fillSample"
@@ -311,6 +324,7 @@ const timeWindow = ref(5)
 const useLlm = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const loadedFiles = ref<string[]>([])
+const uploadedFilePaths = ref<string[]>([])
 
 // 联动弹窗
 const linkDialogVisible = ref(false)
@@ -339,47 +353,70 @@ async function onFileSelected(event: Event) {
   const files = el.files
   if (!files || files.length === 0) return
 
-  loadedFiles.value = []
-  const parts: string[] = []
-  let totalLines = 0
+  loading.value = true
+  result.value = null
+  const fileCount = files.length
 
-  for (const file of Array.from(files)) {
-    try {
-      const text = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = (e) => resolve((e.target?.result as string) || '')
-        reader.onerror = () => reject(new Error(`读取失败: ${file.name}`))
-        reader.readAsText(file)
-      })
-      const lines = text.split('\n').filter(l => l.trim())
-      totalLines += lines.length
-      loadedFiles.value.push(file.name)
-      if (files.length > 1 && parts.length > 0) {
-        // 多文件时标注来源
-        parts.push(`\n# ── 来源: ${file.name} ──\n${text}`)
-      } else {
-        parts.push(text)
-      }
-    } catch (err: any) {
-      ElMessage.error(err.message || `读取 ${file.name} 失败`)
+  try {
+    // 1. 上传新文件到服务端
+    const formData = new FormData()
+    for (const file of Array.from(files)) {
+      formData.append('files', file)
     }
-  }
 
-  if (parts.length === 0) return
+    const uploadRes = await Api.logCorrelate.upload(formData)
+    if (!uploadRes.success || !uploadRes.data?.file_paths?.length) {
+      ElMessage.error(uploadRes.msg || '文件上传失败')
+      return
+    }
 
-  input.value = parts.join('\n')
-  el.value = '' // 重置，允许重复选择
+    // 2. 累积文件路径和文件名（不覆盖之前的）
+    const newPaths: string[] = uploadRes.data.file_paths
+    const newNames = Array.from(files).map(f => f.name)
+    uploadedFilePaths.value = [...uploadedFilePaths.value, ...newPaths]
+    loadedFiles.value = [...loadedFiles.value, ...newNames]
 
-  const fileNames = Array.from(files).map(f => f.name).join('、')
-  if (files.length === 1) {
-    ElMessage.success(`已加载: ${fileNames}（${totalLines} 行）`)
-  } else {
-    ElMessage.success(`已加载 ${files.length} 个文件（${totalLines} 行）: ${fileNames}`)
+    // 3. 用所有累积的文件进行联合分析（不删除文件，支持重新分析）
+    const crunchPayload: any = {
+      file_paths: uploadedFilePaths.value,
+      time_window_minutes: timeWindow.value,
+      use_llm: useLlm.value,
+    }
+
+    const crunchRes = await Api.logCorrelate.fileCrunch(crunchPayload)
+    if (crunchRes.success) {
+      result.value = crunchRes.data
+      ElMessage.success(`已上传并分析 ${loadedFiles.value.length} 个文件（本次新增 ${fileCount} 个）`)
+    } else {
+      ElMessage.error(crunchRes.msg || '分析失败')
+    }
+  } catch (err: any) {
+    ElMessage.error('上传失败: ' + (err.message || '未知错误'))
+  } finally {
+    loading.value = false
+    el.value = '' // 重置，允许重复选择
   }
 }
 
 function clear() {
+  // 清理服务端临时文件
+  if (uploadedFilePaths.value.length) {
+    Api.logCorrelate.cleanup({ file_paths: uploadedFilePaths.value }).catch(() => {})
+  }
   input.value = ''
+  result.value = null
+  loadedFiles.value = []
+  uploadedFilePaths.value = []
+}
+
+function removeFile(index: number) {
+  // 清理服务端单个临时文件
+  const path = uploadedFilePaths.value[index]
+  if (path) {
+    Api.logCorrelate.cleanup({ file_paths: [path] }).catch(() => {})
+  }
+  loadedFiles.value.splice(index, 1)
+  uploadedFilePaths.value.splice(index, 1)
   result.value = null
 }
 
@@ -392,8 +429,11 @@ function getRiskKey(level: string): string {
 }
 
 async function submit() {
-  if (!input.value.trim()) {
-    ElMessage.warning('请输入日志内容')
+  const hasUploadedFiles = uploadedFilePaths.value.length > 0
+  const hasTextInput = input.value.trim()
+
+  if (!hasUploadedFiles && !hasTextInput) {
+    ElMessage.warning('请输入日志内容或上传文件')
     return
   }
 
@@ -401,16 +441,23 @@ async function submit() {
   result.value = null
 
   try {
-    const lines = input.value.split('\n').filter(l => l.trim())
-    const payload: any = {
-      log_lines: lines,
-      time_window_minutes: timeWindow.value,
-      detailed: true,
+    let res: any
+    if (hasUploadedFiles) {
+      // 有上传的文件 → 用 file-crunch（保留文件支持重新分析）
+      res = await Api.logCorrelate.fileCrunch({
+        file_paths: uploadedFilePaths.value,
+        time_window_minutes: timeWindow.value,
+        use_llm: useLlm.value,
+      })
+    } else {
+      // 粘贴的文本 → 用 correlate
+      const lines = input.value.split('\n').filter(l => l.trim())
+      res = await Api.logCorrelate.correlate({
+        log_lines: lines,
+        time_window_minutes: timeWindow.value,
+        use_llm: useLlm.value,
+      })
     }
-    if (useLlm.value) {
-      payload.use_llm = true
-    }
-    const res = await Api.logCorrelate.correlate(payload)
 
     if (res.success) {
       result.value = res.data

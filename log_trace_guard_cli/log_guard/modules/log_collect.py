@@ -985,6 +985,11 @@ class LogCollectService:
             logger.warning(f"Could not load arch_templates.json: {e}")
             return Result.fail("Architecture templates not available", code=500)
 
+        # Convert string volume to numeric GB value
+        volume_map = {"small": 5, "medium": 50, "large": 200}
+        if isinstance(daily_log_volume, str):
+            daily_log_volume = volume_map.get(daily_log_volume.lower().strip(), 50)
+
         # Determine scale
         if device_count <= 10 or daily_log_volume <= 10:
             scale_key = "lightweight"

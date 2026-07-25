@@ -127,6 +127,7 @@ class ComplianceService:
             "monitor_scenarios": monitor_scenarios,
             "industry": industry,
         }
+        logger.info(f"DEBUG: generate_baseline params={params}")
         result = strategy.execute(params)
 
         if context:
