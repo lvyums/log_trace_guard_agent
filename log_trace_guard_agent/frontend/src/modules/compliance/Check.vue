@@ -65,15 +65,16 @@
           </div>
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px"><strong>当前状态：</strong>{{ gap.current_status }}</div>
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px"><strong>风险描述：</strong>{{ gap.risk_description }}</div>
-          <div v-if="gap.remediation_steps?.length" style="margin-top:8px;padding:8px;background:var(--bg-tertiary);border-radius:4px">
-            <div style="font-size:12px;font-weight:500;margin-bottom:4px">整改措施：</div>
-            <div v-for="(step,j) in gap.remediation_steps" :key="j" style="font-size:12px;color:var(--text-secondary);margin-bottom:2px">{{ j+1 }}. {{ step }}</div>
+          <div v-if="gap.remediation_steps?.length" style="margin-top:8px">
+            <SuggestionBox title="整改措施">
+              <div v-for="(step,j) in gap.remediation_steps" :key="j" style="margin-bottom:2px">{{ j+1 }}. {{ step }}</div>
+            </SuggestionBox>
           </div>
         </div>
       </div>
       <div v-if="result.llm_remediation" style="margin-top:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">LLM 智能整改建议</div>
-        <div style="padding:12px;background:var(--bg-tertiary);border-radius:6px;font-size:13px;line-height:1.8;white-space:pre-wrap">{{ result.llm_remediation }}</div>
+        <SectionTitle>LLM 智能整改建议</SectionTitle>
+        <SuggestionBox>{{ result.llm_remediation }}</SuggestionBox>
       </div>
     </div>
     <div v-if="!result && !loading" class="g-card">
@@ -88,10 +89,12 @@ import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import RiskBadge from '../../components/RiskBadge.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
+import SectionTitle from '../../components/SectionTitle.vue'
+import SuggestionBox from '../../components/SuggestionBox.vue'
 defineProps<{ mode?: string }>()
 const form=reactive({log_retention_days:30,has_backup:false,has_tamper_proof:false,backup_frequency:'daily',device_count:10,has_audit_mechanism:false,has_ntp:true,audit_frequency:'monthly',has_alert_system:false,has_bastion:false,additional_info:''})
 const loading=ref(false); const result=ref<any>(null)
-function renderSummary(text){if(!text)return '';return text.replace(/\n/g,'<br>').replace(/🔴/g,'<span style="color:var(--risk-p0)">🔴</span>').replace(/🟡/g,'<span style="color:var(--risk-p2)">🟡</span>')}
+function renderSummary(text: string): string {if(!text)return '';return text.replace(/\n/g,'<br>').replace(/🔴/g,'<span style="color:var(--risk-p0)">🔴</span>').replace(/🟡/g,'<span style="color:var(--risk-p2)">🟡</span>')}
 function fillSample(){Object.assign(form,{log_retention_days:30,has_backup:false,has_tamper_proof:false,backup_frequency:'daily',device_count:20,has_audit_mechanism:true,has_ntp:true,audit_frequency:'weekly',has_alert_system:false,has_bastion:false,additional_info:'syslog日志无加密传输，管理员账户使用默认密码'})}
 async function submit(){
   loading.value=true;result.value=null

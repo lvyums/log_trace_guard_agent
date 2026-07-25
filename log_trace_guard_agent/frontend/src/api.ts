@@ -57,6 +57,9 @@ export const Api = {
     parse: (data: any) => request('POST', '/api/v1/log-parse/parse', data),
     assess: (data: any) => request('POST', '/api/v1/log-parse/assess', data),
     batch: (data: any) => request('POST', '/api/v1/log-parse/parse/batch', data),
+    batchFile: (data: any) => request('POST', '/api/v1/log-parse/parse/batch-file', data),
+    upload: (formData: FormData) => request('POST', '/api/v1/log-parse/upload', formData),
+    cleanup: (data: any) => request('POST', '/api/v1/log-parse/cleanup', data),
     explain: (data: any) => request('POST', '/api/v1/log-parse/explain', data),
   },
   logCollect: {

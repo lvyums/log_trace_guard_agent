@@ -46,7 +46,7 @@
 
       <!-- 可能原因 -->
       <div v-if="result.possible_causes?.length" style="margin-bottom:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px"><el-icon><Warning /></el-icon> 可能原因</div>
+        <SectionTitle :icon="Warning">可能原因</SectionTitle>
         <div v-for="(cause,i) in result.possible_causes" :key="i" class="g-alert g-alert--warning" style="margin-bottom:8px">
           <span>{{ i+1 }}. {{ cause }}</span>
         </div>
@@ -54,13 +54,13 @@
 
       <!-- 修复步骤 -->
       <div v-if="result.fix_steps" style="margin-bottom:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px"><el-icon><Tools /></el-icon> 修复步骤</div>
+        <SectionTitle :icon="Tools">修复步骤</SectionTitle>
         <CodeBlock :code="typeof result.fix_steps === 'string' ? result.fix_steps : result.fix_steps.join('\n')" lang="bash" />
       </div>
 
       <!-- 预防措施 -->
       <div v-if="result.prevention" style="margin-bottom:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px"><el-icon><Shield /></el-icon> 预防措施</div>
+        <SectionTitle :icon="Lock">预防措施</SectionTitle>
         <div class="g-alert g-alert--info" style="margin:0">
           <span>{{ result.prevention }}</span>
         </div>
@@ -68,7 +68,7 @@
 
       <!-- 候选匹配 -->
       <div v-if="result.candidates?.length" style="margin-bottom:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px"><el-icon><Search /></el-icon> 相似故障参考</div>
+        <SectionTitle :icon="Search">相似故障参考</SectionTitle>
         <div v-for="(c, i) in result.candidates" :key="i"
              style="padding:6px 10px;margin-bottom:4px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;display:flex;justify-content:space-between;align-items:center">
           <span>{{ c.fault_type }}</span>
@@ -88,11 +88,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Warning, Tools, Lock, Search } from '@element-plus/icons-vue'
 import { APP_CONFIG } from '../../config'
 import { Api } from '../../api'
 import CodeBlock from '../../components/CodeBlock.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
 import RiskBadge from '../../components/RiskBadge.vue'
+import SectionTitle from '../../components/SectionTitle.vue'
 defineProps<{ mode?: string }>()
 const symptom=ref(''); const deviceType=ref(''); const loading=ref(false); const result=ref<any>(null)
 const deviceOptions=APP_CONFIG.sampleData.deviceTypes

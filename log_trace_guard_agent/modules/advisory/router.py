@@ -50,8 +50,13 @@ async def generate_guide(req: GuideGenerateReq, ctx: ContextManager = Depends(ge
     result = await AdvisoryService.generate_guide(
         scale=req.scale,
         device_types=req.device_types,
-        scenario=req.scenario,
-        requirements=req.requirements,
+        device_count=req.device_count,
+        daily_log_volume=req.daily_log_volume,
+        budget=req.budget,
+        team_skill=req.team_skill,
+        collect_plans=req.collect_plans,
+        architecture=req.architecture,
+        platform=req.platform,
         context=ctx,
     )
     return result

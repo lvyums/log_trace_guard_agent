@@ -90,6 +90,73 @@ TRAINING_SCORING_PROMPT = """你是一个安全实训评分助理。请比较学
 }}
 """
 
+# 指导手册生成 Prompt
+GUIDE_GENERATE_PROMPT = """你是一位资深安全架构师，请根据以下结构化数据生成一份详细的日志采集与分析指导手册。
+
+## 基本信息
+- 企业规模：{scale}
+- 安全设备类型：{device_types}
+- 设备数量：{device_count} 台
+- 日均日志量：{daily_log_volume}
+- 预算水平：{budget}
+- 运维能力：{team_skill}
+
+## 采集方案数据
+以下是每种设备类型的采集方案（来自系统自动生成）：
+```json
+{collect_plans_json}
+```
+
+## 架构推荐数据
+以下是系统推荐的架构方案：
+```json
+{architecture_json}
+```
+
+## 平台选型数据
+以下是系统推荐的日志平台：
+```json
+{platform_json}
+```
+
+## 输出要求
+请基于上述结构化数据，生成一份完整的 Markdown 格式指导手册。不要编造配置代码，直接引用采集方案中的 config_template。
+
+请按以下章节组织内容：
+
+# 日志采集与分析指导手册
+
+## 1. 项目概述
+基于基本信息，描述项目背景、建设目标、预期收益。
+
+## 2. 架构方案
+基于架构推荐数据，描述推荐架构、组件清单、数据流向、估算成本。
+
+## 3. 设备采集配置
+基于采集方案数据，为每种设备类型提供：
+- 采集协议
+- 配置代码（直接引用 config_template）
+- 实施步骤
+- 注意事项
+
+## 4. 平台配置
+基于平台选型数据，描述平台选择理由、部署配置要点。
+
+## 5. 实施步骤
+基于上述数据，制定分阶段实施计划。
+
+## 6. 合规要求
+等保 2.0 要求对照、日志留存策略、传输加密要求。
+
+## 7. 运维手册
+日常巡检清单、常见故障排查、性能优化建议。
+
+## 8. 培训材料
+团队培训要点、操作手册要点、考核标准。
+
+请确保内容专业、基于数据、可直接落地执行。
+"""
+
 
 class PromptManager:
     """全局 Prompt 模板管理"""
@@ -126,6 +193,7 @@ class PromptManager:
             "log_identify_fallback": LOG_IDENTIFY_FALLBACK_PROMPT,
             "log_parse_fallback": LOG_PARSE_FALLBACK_PROMPT,
             "training_scoring": TRAINING_SCORING_PROMPT,
+            "guide_generate": GUIDE_GENERATE_PROMPT,
         }
         template = prompts.get(name)
         if not template:

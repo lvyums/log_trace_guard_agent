@@ -76,41 +76,42 @@
       </el-button>
 
       <!-- 逐步累积结果 -->
-      <div v-for="(sr, si) in stepResults" :key="si" class="slide" style="margin-top:20px"
-           v-if="sr">
-        <div class="g-divider" />
-        <div class="g-card-title" style="margin:16px 0 12px">
-          <el-icon><TrophyBase /></el-icon> 步骤 {{ si + 1 }}: {{ steps[si]?.title }} — {{ sr.grade }}级
-        </div>
-        <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
-          <el-descriptions-item label="得分">{{ sr.score }} / 100</el-descriptions-item>
-          <el-descriptions-item label="等级">
-            <RiskBadge :level="gradeLevel(sr.grade)" :label="sr.grade" />
-          </el-descriptions-item>
-        </el-descriptions>
+      <template v-for="(sr, si) in stepResults" :key="si">
+        <div v-if="sr" class="slide" style="margin-top:20px">
+          <div class="g-divider" />
+          <div class="g-card-title" style="margin:16px 0 12px">
+            <el-icon><TrophyBase /></el-icon> 步骤 {{ si + 1 }}: {{ steps[si]?.title }} — {{ sr.grade }}级
+          </div>
+          <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
+            <el-descriptions-item label="得分">{{ sr.score }} / 100</el-descriptions-item>
+            <el-descriptions-item label="等级">
+              <RiskBadge :level="gradeLevel(sr.grade)" :label="sr.grade" />
+            </el-descriptions-item>
+          </el-descriptions>
 
-        <div v-if="sr.checks?.length">
-          <div v-for="(item, ci) in sr.checks" :key="ci"
-               class="g-correction" :class="correctionClass(item)">
-            <el-icon v-if="item.status === 'correct'"><CircleCheckFilled /></el-icon>
-            <el-icon v-else-if="item.status === 'partial'"><WarningFilled /></el-icon>
-            <el-icon v-else><CircleCloseFilled /></el-icon>
-            <div>
-              <div style="font-weight:500">{{ item.field }}</div>
-              <div style="font-size:12px;opacity:0.8;margin-top:2px">{{ item.detail }}</div>
+          <div v-if="sr.checks?.length">
+            <div v-for="(item, ci) in sr.checks" :key="ci"
+                 class="g-correction" :class="correctionClass(item)">
+              <el-icon v-if="item.status === 'correct'"><CircleCheckFilled /></el-icon>
+              <el-icon v-else-if="item.status === 'partial'"><WarningFilled /></el-icon>
+              <el-icon v-else><CircleCloseFilled /></el-icon>
+              <div>
+                <div style="font-weight:500">{{ item.field }}</div>
+                <div style="font-size:12px;opacity:0.8;margin-top:2px">{{ item.detail }}</div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- LLM 分析结果 -->
-        <div v-if="sr.analysis && sr.analysis.trim()" style="margin-top:12px">
-          <KnowledgePanel title="知识点详解">
-            <div style="white-space:pre-wrap;line-height:1.8;font-size:13px">
-              {{ sr.analysis }}
-            </div>
-          </KnowledgePanel>
+          <!-- LLM 分析结果 -->
+          <div v-if="sr.analysis && sr.analysis.trim()" style="margin-top:12px">
+            <KnowledgePanel title="知识点详解">
+              <div style="white-space:pre-wrap;line-height:1.8;font-size:13px">
+                {{ sr.analysis }}
+              </div>
+            </KnowledgePanel>
+          </div>
         </div>
-      </div>
+      </template>
 
       <!-- 全部完成后的汇总 -->
       <div v-if="allDone" class="slide" style="margin-top:24px">
@@ -198,20 +199,24 @@ onMounted(() => {
 
       const tasks = scenario.tasks || []
       if (tasks.length > 0) {
-        steps.value = tasks.map((t: any) => ({
-          title: t.title || '',
-          question: t.description || '',
-          sample: Array.isArray(t.input_data) ? t.input_data.join('\n') : (t.input_data || ''),
-          hint: t.hint || '',
-          taskId: t.task_id || '',
-          submitType: t.submit_type || 'conclusion',
-          submitTypeLabel: ({
+        steps.value = tasks.map((t: any) => {
+          const typeMap: Record<string, string> = {
             conclusion: '结论分析',
             rule: '规则编写',
             script: '脚本编写',
             plan: '方案设计',
-          })[t.submit_type || 'conclusion'] || '综合',
-        }))
+          }
+          const submitType = t.submit_type || 'conclusion'
+          return {
+            title: t.title || '',
+            question: t.description || '',
+            sample: Array.isArray(t.input_data) ? t.input_data.join('\n') : (t.input_data || ''),
+            hint: t.hint || '',
+            taskId: t.task_id || '',
+            submitType,
+            submitTypeLabel: typeMap[submitType] || '综合',
+          }
+        })
       } else {
         steps.value = [{ title: '加载中', question: '暂无任务数据', sample: '', hint: '', taskId: '', submitType: 'conclusion', submitTypeLabel: '' }]
       }

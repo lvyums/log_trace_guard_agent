@@ -39,23 +39,20 @@
         <el-descriptions-item label="采集架构">{{ result.architecture || '-' }}</el-descriptions-item>
       </el-descriptions>
       <div v-if="result.steps?.length" style="margin-bottom:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">实施步骤</div>
-        <div v-for="(step, i) in result.steps" :key="i" style="display:flex;align-items:flex-start;gap:12px;margin-bottom:8px">
-          <div style="width:24px;height:24px;border-radius:50%;background:var(--el-color-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">{{ i+1 }}</div>
-          <div style="flex:1;font-size:13px;color:var(--text-secondary)">{{ step }}</div>
-        </div>
+        <SectionTitle>实施步骤</SectionTitle>
+        <NumberedList :items="result.steps" />
       </div>
       <div v-if="result.notes?.length" style="margin-bottom:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">注意事项</div>
-        <div v-for="(note, i) in result.notes" :key="i" style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;padding-left:12px;border-left:2px solid var(--el-color-warning)">{{ note }}</div>
+        <SectionTitle>注意事项</SectionTitle>
+        <NoteList :items="result.notes" />
       </div>
       <div v-if="result.config_template">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">配置代码</div>
+        <SectionTitle>配置代码</SectionTitle>
         <CodeBlock :code="typeof result.config_template === 'string' ? result.config_template : JSON.stringify(result.config_template,null,2)" lang="bash" />
       </div>
       <div v-if="result.rag_supplements?.length" style="margin-top:16px">
-        <div style="font-weight:600;margin-bottom:8px;font-size:13px">知识库补充</div>
-        <div v-for="(s, i) in result.rag_supplements" :key="i" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;padding:8px;background:var(--bg-tertiary);border-radius:4px">{{ s }}</div>
+        <SectionTitle>知识库补充</SectionTitle>
+        <SuggestionBox v-for="(s, i) in result.rag_supplements" :key="i">{{ s }}</SuggestionBox>
       </div>
     </div>
     <div v-if="!result && !loading" class="g-card">
@@ -71,6 +68,10 @@ import { Api } from '../../api'
 import AlertGuide from '../../components/AlertGuide.vue'
 import CodeBlock from '../../components/CodeBlock.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
+import SectionTitle from '../../components/SectionTitle.vue'
+import NumberedList from '../../components/NumberedList.vue'
+import NoteList from '../../components/NoteList.vue'
+import SuggestionBox from '../../components/SuggestionBox.vue'
 defineProps<{ mode?: string }>()
 const deviceType = ref(''); const deviceModel = ref(''); const scale = ref('small')
 const loading = ref(false); const result = ref<any>(null)

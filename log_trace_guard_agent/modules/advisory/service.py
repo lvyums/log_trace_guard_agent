@@ -9,7 +9,7 @@ from core.ai_base.prompt_manager import PromptManager
 from core.ai_base.rag_factory import RAGFactory
 from core.ai_base.llm_factory import LLMFactory
 from app.schemas.context_schema import ModuleStatus
-from app.exceptions import ParamInvalidException
+from app.exceptions import ParamInvalidException, LLMTimeoutException
 from common.logger import LogManager
 from common.result_util import Result
 
@@ -91,8 +91,13 @@ class AdvisoryService:
     async def generate_guide(
         scale: str,
         device_types: list[str],
-        scenario: str,
-        requirements: Optional[str] = None,
+        device_count: int,
+        daily_log_volume: str = "medium",
+        budget: str = "medium",
+        team_skill: str = "basic",
+        collect_plans: Optional[list[dict]] = None,
+        architecture: Optional[dict] = None,
+        platform: Optional[dict] = None,
         context: Optional[ContextManager] = None,
     ) -> Result:
         """生成指导手册"""
@@ -101,35 +106,23 @@ class AdvisoryService:
         if not device_types:
             raise ParamInvalidException("请至少选择一种设备类型")
 
-        # 检索知识库
-        rag_context = ""
-        try:
-            query = f"日志采集 {scale} {' '.join(device_types)}"
-            collection_result = RAGFactory.retrieve("collection", query, top_k=5)
-            compliance_result = RAGFactory.retrieve("compliance", "等保2.0 日志留存", top_k=3)
-
-            rag_parts = []
-            for item in collection_result.items:
-                rag_parts.append(item.get("content", ""))
-            for item in compliance_result.items:
-                rag_parts.append(item.get("content", ""))
-            rag_context = "\n---\n".join(rag_parts) if rag_parts else "暂无相关知识库内容"
-        except Exception as e:
-            logger.warning(f"知识库检索失败，使用纯 LLM 生成: {e}")
-            rag_context = "暂无相关知识库内容"
+        import json
 
         # 组装 Prompt
         scale_label = SCALE_MAP.get(scale, scale)
         device_types_str = "、".join(device_types)
-        requirements_text = requirements or "无"
 
         user_prompt = PromptManager.get_prompt(
             "guide_generate",
             scale=scale_label,
             device_types=device_types_str,
-            scenario=scenario,
-            requirements=requirements_text,
-            rag_context=rag_context,
+            device_count=device_count,
+            daily_log_volume=daily_log_volume,
+            budget=budget,
+            team_skill=team_skill,
+            collect_plans_json=json.dumps(collect_plans or [], ensure_ascii=False, indent=2),
+            architecture_json=json.dumps(architecture or {}, ensure_ascii=False, indent=2),
+            platform_json=json.dumps(platform or {}, ensure_ascii=False, indent=2),
         )
 
         # 调用 LLM
@@ -142,7 +135,10 @@ class AdvisoryService:
         response = await llm.chat(messages, temperature=0.3, timeout=120)
 
         if not response.get("success"):
-            raise ParamInvalidException(f"LLM 生成失败: {response.get('error')}")
+            error_msg = response.get("error", "未知错误")
+            if "402" in str(error_msg) or "quota" in str(error_msg).lower() or "欠费" in str(error_msg):
+                raise LLMTimeoutException("AI 服务配额不足，请联系管理员充值后重试")
+            raise LLMTimeoutException(f"AI 生成失败: {error_msg}")
 
         content = response.get("content", "")
 
@@ -151,7 +147,7 @@ class AdvisoryService:
             ctx = ModuleContext(
                 module_id="advisory",
                 status=ModuleStatus.SUCCESS,
-                input={"scale": scale, "device_types": device_types, "scenario": scenario},
+                input={"scale": scale, "device_types": device_types, "device_count": device_count},
                 output={"content_length": len(content)},
             )
             context.set_module_result("advisory_guide", ctx)
