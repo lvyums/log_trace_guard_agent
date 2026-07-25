@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     risk_confidence_medium: float = 0.70
     risk_confidence_low: float = 0.50
 
+    # ── Splunk 配置 ──
+    splunk_base_url: str = ""          # 如 https://splunk.company.com
+    splunk_username: str = ""          # 用户名（Token 认证时可为空）
+    splunk_password: str = ""          # 密码（Token 认证时可为空）
+    splunk_auth_token: str = ""        # Bearer Token（优先于用户名密码）
+    splunk_verify_ssl: bool = True     # 是否验证 SSL 证书
+    splunk_search_timeout: int = 30    # 查询超时（秒）
+    splunk_max_results: int = 100      # 最大返回条数
+
     # ── 规则引擎配置 ──
     rule_data_dir: str = os.path.join(_PROJECT_ROOT, "data", "rule_data")
     rule_watcher_enabled: bool = True

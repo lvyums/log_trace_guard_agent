@@ -4,6 +4,7 @@ import json
 import re
 from typing import Optional
 
+from common.splunk_client import SplunkClient
 from modules.script_gen.script_strategy import ScriptStrategyFactory
 from core.context_manager import ContextManager, ModuleContext
 from app.schemas.context_schema import ModuleStatus
@@ -130,32 +131,6 @@ class ScriptGenService:
             "items": items,
         })
 
-    @staticmethod
-    async def recommend_platform(device_count: int, daily_log_volume: str = "medium", budget: str = "medium", team_skill: str = "basic", requirements: Optional[list[str]] = None, context: Optional[ContextManager] = None) -> Result:
-        """平台选型推荐"""
-        strategy = ScriptStrategyFactory.get_strategy("platform")
-        if not strategy:
-            return Result.fail("平台选型策略未注册")
-
-        params = {
-            "device_count": device_count,
-            "daily_log_volume": daily_log_volume,
-            "budget": budget,
-            "team_skill": team_skill,
-            "requirements": requirements or [],
-        }
-        result = strategy.generate(params)
-
-        if context:
-            ctx = ModuleContext(
-                module_id="script_gen",
-                status=ModuleStatus.SUCCESS,
-                input=params,
-                output=result,
-            )
-            context.set_module_result("script_gen", ctx)
-
-        return Result.ok(result)
 
     @staticmethod
     async def trace_attack(logs: list[str], attack_type: Optional[str] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, context: Optional[ContextManager] = None) -> Result:
@@ -187,6 +162,63 @@ class ScriptGenService:
             context.set_module_result("script_gen", ctx)
 
         return Result.ok(result)
+
+    @staticmethod
+    def _get_splunk_client() -> SplunkClient:
+        """获取 Splunk 客户端实例"""
+        return SplunkClient(
+            base_url=settings.splunk_base_url,
+            username=settings.splunk_username,
+            password=settings.splunk_password,
+            auth_token=settings.splunk_auth_token,
+            verify_ssl=settings.splunk_verify_ssl,
+        )
+
+    @staticmethod
+    async def splunk_search(spl_query: str, max_results: Optional[int] = None, context: Optional[ContextManager] = None) -> Result:
+        """执行 Splunk 搜索"""
+        if not settings.splunk_base_url:
+            return Result.fail("Splunk 未配置，请在 .env 中设置 SPLUNK_BASE_URL")
+
+        client = ScriptGenService._get_splunk_client()
+        results = client.execute_search(
+            spl_query=spl_query,
+            max_results=max_results or settings.splunk_max_results,
+            timeout=settings.splunk_search_timeout,
+        )
+
+        if results.get("error"):
+            return Result.fail(results["error"])
+
+        open_url = client.build_open_url(spl_query)
+        data = {
+            "results": results["results"],
+            "sid": results["sid"],
+            "event_count": results["event_count"],
+            "open_url": open_url,
+            "execution_time": results.get("execution_time", 0),
+        }
+
+        if context:
+            ctx = ModuleContext(
+                module_id="script_gen",
+                status=ModuleStatus.SUCCESS if results["results"] else ModuleStatus.WARNING,
+                input={"spl_query": spl_query},
+                output=data,
+            )
+            context.set_module_result("script_gen", ctx)
+
+        return Result.ok(data)
+
+    @staticmethod
+    async def splunk_open_url(spl_query: str) -> Result:
+        """生成 Splunk Web UI 跳转链接"""
+        if not settings.splunk_base_url:
+            return Result.fail("Splunk 未配置，请在 .env 中设置 SPLUNK_BASE_URL")
+
+        client = ScriptGenService._get_splunk_client()
+        url = client.build_open_url(spl_query)
+        return Result.ok({"open_url": url})
 
     @staticmethod
     async def optimize_script(script: str, script_type: str = "regex", scenario: Optional[str] = None, context: Optional[ContextManager] = None) -> Result:

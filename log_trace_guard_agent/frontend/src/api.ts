@@ -63,14 +63,19 @@ export const Api = {
     match: (data: any) => request('POST', '/api/v1/log-collect/match', data),
     plan: (data: any) => request('POST', '/api/v1/log-collect/plan', data),
     fault: (data: any) => request('POST', '/api/v1/log-collect/fault/diagnose', data),
-    arch: (data: any) => request('POST', '/api/v1/log-collect/architecture/recommend', data),
   },
   scriptGen: {
     regex: (data: any) => request('POST', '/api/v1/script-gen/regex', data),
     esQuery: (data: any) => request('POST', '/api/v1/script-gen/es-query', data),
-    platform: (data: any) => request('POST', '/api/v1/script-gen/platform', data),
     trace: (data: any) => request('POST', '/api/v1/script-gen/trace', data),
     optimize: (data: any) => request('POST', '/api/v1/script-gen/optimize', data),
+    splunkSearch: (data: any) => request('POST', '/api/v1/script-gen/splunk/search', data),
+    splunkOpenUrl: (data: any) => request('POST', '/api/v1/script-gen/splunk/open-url', data),
+  },
+  advisory: {
+    arch: (data: any) => request('POST', '/api/v1/advisory/architecture/recommend', data),
+    platform: (data: any) => request('POST', '/api/v1/advisory/platform/choose', data),
+    guide: (data: any) => request('POST', '/api/v1/advisory/guide/generate', data),
   },
   compliance: {
     qa: (data: any) => request('POST', '/api/v1/compliance/qa', data),
@@ -80,7 +85,9 @@ export const Api = {
   logCorrelate: {
     correlate: (data: any) => request('POST', '/api/v1/log-correlate/correlate', data),
     patterns: () => request('GET', '/api/v1/log-correlate/patterns'),
+    upload: (formData: FormData) => request('POST', '/api/v1/log-correlate/upload', formData),
     fileCrunch: (data: any) => request('POST', '/api/v1/log-correlate/file-crunch', data),
+    cleanup: (data: any) => request('POST', '/api/v1/log-correlate/cleanup', data),
     toTrace: (data: any) => request('POST', '/api/v1/log-correlate/to-trace', data),
     toScenario: (data: any) => request('POST', '/api/v1/log-correlate/to-scenario', data),
   },

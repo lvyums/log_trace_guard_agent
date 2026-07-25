@@ -6,9 +6,9 @@ from modules.script_gen.service import ScriptGenService
 from modules.script_gen.schemas import (
     RegexGenReq, BatchRegexGenReq,
     ESQueryGenReq, BatchESQueryGenReq,
-    PlatformChooseReq,
     TraceLinkReq,
     OptimizeReq,
+    SplunkSearchReq,
 )
 from core.context_manager import ContextManager
 from app.dependencies import get_context
@@ -61,20 +61,6 @@ async def generate_es_query_batch(req: BatchESQueryGenReq, ctx: ContextManager =
     return result
 
 
-@router.post("/platform")
-async def recommend_platform(req: PlatformChooseReq, ctx: ContextManager = Depends(get_context)):
-    """平台选型推荐"""
-    result = await ScriptGenService.recommend_platform(
-        device_count=req.device_count,
-        daily_log_volume=req.daily_log_volume,
-        budget=req.budget,
-        team_skill=req.team_skill,
-        requirements=req.requirements,
-        context=ctx,
-    )
-    return result
-
-
 @router.post("/trace")
 async def trace_attack(req: TraceLinkReq, ctx: ContextManager = Depends(get_context)):
     """攻击链路溯源"""
@@ -97,4 +83,22 @@ async def optimize_script(req: OptimizeReq, ctx: ContextManager = Depends(get_co
         scenario=req.scenario,
         context=ctx,
     )
+    return result
+
+
+@router.post("/splunk/search")
+async def splunk_search(req: SplunkSearchReq, ctx: ContextManager = Depends(get_context)):
+    """执行 Splunk 搜索并返回结果"""
+    result = await ScriptGenService.splunk_search(
+        spl_query=req.spl_query,
+        max_results=req.max_results,
+        context=ctx,
+    )
+    return result
+
+
+@router.post("/splunk/open-url")
+async def splunk_open_url(req: SplunkSearchReq):
+    """生成 Splunk Web UI 跳转链接"""
+    result = await ScriptGenService.splunk_open_url(spl_query=req.spl_query)
     return result

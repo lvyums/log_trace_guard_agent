@@ -119,7 +119,7 @@
       </div>
       <div style="margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:6px;font-size:13px;line-height:1.8">
         <div style="font-weight:600;margin-bottom:6px">
-          <el-icon><Tips /></el-icon> 下一步建议
+          <el-icon><InfoFilled /></el-icon> 下一步建议
         </div>
         <div v-if="results[0].device_type && results[0].device_type !== 'unknown'" style="color:var(--text-secondary)">
           已识别为 <strong>{{ results[0].device_type }}</strong> 设备日志。建议继续「结构化解析」提取关键字段（源IP、用户、状态等），

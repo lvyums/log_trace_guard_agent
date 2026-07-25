@@ -48,33 +48,6 @@ class ESQueryGenResp(BaseModel):
     note: Optional[str] = None
 
 
-# ── 平台选型推荐 ──
-
-class PlatformChooseReq(BaseModel):
-    """平台选型推荐请求"""
-    device_count: int = Field(..., ge=1, le=100000, description="设备数量")
-    daily_log_volume: str = Field(default="medium", pattern="^(small|medium|large)$", description="日志量级")
-    budget: str = Field(default="medium", pattern="^(low|medium|high)$", description="预算")
-    team_skill: str = Field(default="basic", pattern="^(basic|intermediate|advanced)$", description="团队技术能力")
-    requirements: Optional[list[str]] = Field(default=None, description="附加需求列表")
-
-
-class PlatformOption(BaseModel):
-    """单个平台选项"""
-    name: str = Field(default="", description="平台名称")
-    type: str = Field(default="", description="类型：轻量日志/ELK集群/商用SIEM")
-    pros: list[str] = Field(default_factory=list, description="优点")
-    cons: list[str] = Field(default_factory=list, description="缺点")
-    estimated_cost: Optional[str] = Field(default=None, description="预估成本")
-    suitable_scenario: str = Field(default="", description="适用场景")
-
-
-class PlatformChooseResp(BaseModel):
-    """平台选型推荐响应"""
-    recommendation: PlatformOption = Field(default_factory=PlatformOption, description="推荐方案")
-    alternatives: list[PlatformOption] = Field(default_factory=list, description="备选方案")
-    summary: str = Field(default="", description="选型总结")
-
 
 # ── 攻击链路溯源 ──
 
@@ -122,6 +95,23 @@ class OptimizeResp(BaseModel):
     issues: list[str] = Field(default_factory=list, description="发现的问题列表")
     explanation: str = Field(default="", description="优化说明")
     score: int = Field(default=0, ge=0, le=100, description="原始脚本评分 0-100")
+
+
+# ── Splunk 查询 ──
+
+class SplunkSearchReq(BaseModel):
+    """Splunk 查询请求"""
+    spl_query: str = Field(..., max_length=5000, description="Splunk SPL 查询语句")
+    max_results: Optional[int] = Field(default=None, ge=1, le=1000, description="最大返回条数")
+
+
+class SplunkSearchResp(BaseModel):
+    """Splunk 查询响应"""
+    results: list[dict] = Field(default_factory=list, description="查询结果")
+    sid: str = Field(default="", description="搜索任务 ID")
+    event_count: int = Field(default=0, description="匹配事件总数")
+    open_url: str = Field(default="", description="Splunk Web UI 跳转链接")
+    execution_time: float = Field(default=0.0, description="执行耗时（秒）")
 
 
 # ── 批量请求 ──

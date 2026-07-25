@@ -59,6 +59,29 @@
           <div style="font-size:13px;font-weight:500;margin-bottom:4px">{{ script.name }}</div>
           <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">{{ script.description }}</div>
           <CodeBlock :code="script.code" :lang="script.lang" />
+          <!-- Splunk SPL 脚本的交互按钮 -->
+          <div v-if="script.lang === 'spl'" style="display:flex;gap:8px;margin-top:8px">
+            <el-button size="small" type="primary" :loading="splunkLoading" @click="executeSplunk(script.code)">
+              <el-icon><VideoPlay /></el-icon> 执行查询
+            </el-button>
+            <el-button size="small" plain @click="openSplunk(script.code)">
+              <el-icon><Link /></el-icon> 在 Splunk 中打开
+            </el-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Splunk 查询结果 -->
+      <div v-if="splunkResult" class="g-card" style="margin-top:12px;border:1px solid var(--el-border-color-light)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-weight:600;font-size:13px"><el-icon><Monitor /></el-icon> Splunk 查询结果</div>
+          <el-button size="small" text @click="splunkResult=null">关闭</el-button>
+        </div>
+        <el-table :data="splunkResult.results" border size="small" max-height="400" style="width:100%">
+          <el-table-column v-for="(_, key) in splunkResult.results[0] || {}" :key="key" :prop="key" :label="key" min-width="120" show-overflow-tooltip />
+        </el-table>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:8px">
+          共 {{ splunkResult.event_count }} 条结果，耗时 {{ splunkResult.execution_time }}s
         </div>
       </div>
     </div>
@@ -77,12 +100,21 @@ import CodeBlock from '../../components/CodeBlock.vue'
 import RiskBadge from '../../components/RiskBadge.vue'
 defineProps<{ mode?: string }>()
 const attackType=ref(''); const targetIp=ref(''); const timeRange=ref(''); const logs=ref(''); const loading=ref(false); const result=ref<any>(null)
+const splunkLoading=ref(false); const splunkResult=ref<any>(null)
 function fillSample(){attackType.value='SSH暴力破解';targetIp.value='192.168.1.50';timeRange.value='2024-01-05 10:00 ~ 2024-01-05 14:00';logs.value='<22>Jan  5 12:34:56 sshd[12345]: Failed password for root from 192.168.1.100 port 22'}
 async function submit(){
   if(!attackType.value.trim()){ElMessage.warning('请描述攻击类型');return}
   if(!logs.value.trim()){ElMessage.warning('请输入日志内容');return}
-  loading.value=true;result.value=null
+  loading.value=true;result.value=null;splunkResult.value=null
   try{const tp=timeRange.value?timeRange.value.split('~').map(s=>s.trim()):[];const r=await Api.scriptGen.trace({attack_type:attackType.value,logs:logs.value.split('\n').map(l=>l.trim()).filter(l=>l),start_time:tp[0]||'',end_time:tp[1]||''});if(r.success)result.value=r.data;else ElMessage.error(r.msg)}catch{ElMessage.error('请求失败')}
   finally{loading.value=false}
+}
+async function executeSplunk(spl: string){
+  splunkLoading.value=true;splunkResult.value=null
+  try{const r=await Api.scriptGen.splunkSearch({spl_query:spl});if(r.success)splunkResult.value=r.data;else ElMessage.error(r.msg||'Splunk 查询失败')}catch{ElMessage.error('Splunk 请求失败')}
+  finally{splunkLoading.value=false}
+}
+async function openSplunk(spl: string){
+  try{const r=await Api.scriptGen.splunkOpenUrl({spl_query:spl});if(r.success&&r.data?.open_url)window.open(r.data.open_url,'_blank');else ElMessage.error(r.msg||'无法生成 Splunk 链接')}catch{ElMessage.error('请求失败')}
 }
 </script>
