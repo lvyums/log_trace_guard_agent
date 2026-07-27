@@ -309,18 +309,36 @@
             <el-tag v-for="(a,i) in linkData.affected_assets" :key="i" type="danger" size="small" style="margin-right:4px;margin-bottom:4px">{{ a }}</el-tag>
           </div>
 
-          <!-- 攻击链事件 -->
+          <!-- 攻击链事件 — 时间轴 -->
           <div v-if="linkData?.attack_chain?.length" style="margin-bottom:12px">
-            <div style="font-weight:600;margin-bottom:6px;font-size:13px">攻击链路</div>
-            <div v-for="(ev,i) in linkData.attack_chain" :key="i" class="g-alert g-alert--info" style="margin-bottom:8px;padding:8px 10px">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
-                <span style="font-weight:600;font-size:12px;min-width:40px">Step {{i+1}}</span>
-                <el-tag size="small" type="primary" effect="plain" style="font-size:11px">{{ ev.event_type || '事件' }}</el-tag>
-                <RiskBadge v-if="ev.risk_level" :level="ev.risk_level" size="small" />
-                <span v-if="ev.timestamp" style="font-size:11px;color:var(--text-tertiary);margin-left:auto">{{ ev.timestamp }}</span>
-              </div>
-              <div style="font-size:12px">{{ ev.action }} — {{ ev.source }}<span v-if="ev.target"> → {{ ev.target }}</span></div>
-              <div v-if="ev.detail" style="font-size:11px;color:var(--text-tertiary);margin-top:2px">{{ ev.detail }}</div>
+            <div style="font-weight:600;margin-bottom:6px;font-size:13px">
+              <el-icon><Timer /></el-icon> 攻击时间轴（{{ linkData.attack_chain.length }} 个事件）
+            </div>
+            <div class="timeline">
+              <template v-for="(ev,i) in linkData.attack_chain" :key="i">
+                <div v-if="i===0||getEventPhase(ev.event_type)!==getEventPhase(linkData.attack_chain[i-1].event_type)" class="phase-label">
+                  <el-tag :type="getPhaseTagType(getEventPhase(ev.event_type))" size="small" effect="dark">
+                    <el-icon style="margin-right:2px"><Flag /></el-icon>{{ getEventPhase(ev.event_type) }}
+                  </el-tag>
+                </div>
+                <div class="tl-item">
+                  <div class="tl-line"></div>
+                  <div class="tl-dot" :style="{background:getRiskColor(ev.risk_level)}"></div>
+                  <div class="tl-card" :class="riskCardClass(ev.risk_level)">
+                    <div class="tl-card-header">
+                      <span v-if="ev.timestamp" class="tl-time">{{ ev.timestamp }}</span>
+                      <el-tag size="small" type="info" effect="plain" style="font-size:11px">{{ ev.event_type || '事件' }}</el-tag>
+                      <RiskBadge v-if="ev.risk_level" :level="ev.risk_level" size="small" />
+                    </div>
+                    <div class="tl-body">{{ ev.action }}</div>
+                    <div class="tl-meta">
+                      <el-icon style="margin-right:2px"><Position /></el-icon>{{ ev.source || '未知源' }}
+                      <template v-if="ev.target"> <el-icon style="margin:0 2px"><Right /></el-icon> {{ ev.target }}</template>
+                    </div>
+                    <div v-if="ev.detail" class="tl-detail">{{ ev.detail }}</div>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -380,6 +398,39 @@ import RiskBadge from '../../components/RiskBadge.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
 import FileUpload from '../../components/FileUpload.vue'
 import CodeBlock from '../../components/CodeBlock.vue'
+
+// 时间轴辅助函数（与 Trace.vue 一致）
+const EVENT_PHASES: Record<string, string> = {
+  port_scan: '侦查探测', brute_force: '初始入侵',
+  sql_injection: '权限提升/入侵', webshell: '权限提升/入侵',
+  suspicious: '权限提升/入侵', privilege_escalation: '权限提升/入侵',
+  lateral_move: '横向移动', persistence: '持久化驻留',
+  data_exfil: '数据窃取/破坏', c2: '命令控制', ransomware: '破坏',
+}
+function getEventPhase(eventType: string): string {
+  return EVENT_PHASES[eventType] || (eventType === 'unknown' ? '未知阶段' : '可疑行为')
+}
+function getPhaseTagType(phase: string): string {
+  if (phase.includes('窃取') || phase.includes('破坏')) return 'danger'
+  if (phase.includes('横向')) return 'warning'
+  if (phase.includes('提升') || phase.includes('入侵')) return 'danger'
+  if (phase.includes('初始')) return 'warning'
+  if (phase.includes('侦查')) return 'info'
+  return ''
+}
+function getRiskColor(level: string): string {
+  const key = level?.toLowerCase()
+  if (key?.startsWith('p0') || key === 'high' || key === 'critical') return '#f56c6c'
+  if (key?.startsWith('p1') || key === 'medium' || key === 'major') return '#e6a23c'
+  if (key?.startsWith('p2') || key === 'low' || key === 'warning') return '#909399'
+  return '#c0c4cc'
+}
+function riskCardClass(level: string): string {
+  const key = level?.toLowerCase()
+  if (key?.startsWith('p0') || key === 'high' || key === 'critical') return 'tl-card--high'
+  if (key?.startsWith('p1') || key === 'medium' || key === 'major') return 'tl-card--med'
+  return ''
+}
 
 defineProps<{ mode?: string }>()
 
@@ -649,4 +700,29 @@ onMounted(() => {
 .g-summary {
   font-size: 13px;
 }
+/* 时间轴样式（与 Trace.vue 一致） */
+.timeline { position:relative; padding-left:20px }
+.phase-label { position:relative; padding:8px 0 4px; margin-left:-20px }
+.tl-item { position:relative; padding:0 0 8px 20px; display:flex }
+.tl-line {
+  position:absolute; left:9px; top:0; bottom:0; width:2px;
+  background:linear-gradient(to bottom,var(--el-border-color-light),var(--el-border-color-darker))
+}
+.tl-item:last-child .tl-line { display:none }
+.tl-dot {
+  position:absolute; left:0; top:6px; width:20px; height:20px; border-radius:50%;
+  border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.15); z-index:1;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0
+}
+.tl-card {
+  flex:1; padding:8px 10px; border-radius:6px; border:1px solid var(--el-border-color-light);
+  background:var(--el-fill-color-light); transition:border-color .2s
+}
+.tl-card--high { border-left:3px solid #f56c6c; background:#fef0f0 }
+.tl-card--med  { border-left:3px solid #e6a23c; background:#fdf6ec }
+.tl-card-header { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:2px }
+.tl-time { font-size:12px; font-weight:600; color:var(--el-text-color-primary); min-width:130px }
+.tl-body  { font-size:13px; color:var(--el-text-color-primary); margin:2px 0 }
+.tl-meta  { font-size:12px; color:var(--el-text-color-secondary); display:flex; align-items:center; gap:2px; flex-wrap:wrap }
+.tl-detail { font-size:11px; color:var(--el-text-color-placeholder); margin-top:2px }
 </style>
