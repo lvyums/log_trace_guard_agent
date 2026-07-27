@@ -7,9 +7,14 @@ attack trace analysis, and script optimization for CLI-based log analysis.
 
 import json
 import logging
+import os
 import re
+import urllib.request
+import urllib.error
+import urllib.parse
+import base64
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Tuple
 
 from log_guard.common.utils import JsonConfigLoader, LogManager, Result
 
@@ -472,7 +477,199 @@ _default_factory = _register_default_strategies()
 
 
 # ---------------------------------------------------------------------------
-# ScriptGenService
+# ES 集群连接配置管理
+# ---------------------------------------------------------------------------
+
+
+def _es_config_path() -> str:
+    """获取 ES 配置文件路径 ~/.log-guard/config.json"""
+    home = os.path.expanduser("~")
+    cfg_dir = os.path.join(home, ".log-guard")
+    os.makedirs(cfg_dir, exist_ok=True)
+    return os.path.join(cfg_dir, "config.json")
+
+
+def load_es_config() -> dict:
+    """从 ~/.log-guard/config.json 加载 ES 连接配置"""
+    path = _es_config_path()
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("es", {})
+    except Exception:
+        return {}
+
+
+def save_es_config(host: str, port: int = 9200, scheme: str = "http",
+                   user: str = "", password: str = "") -> str:
+    """保存 ES 连接配置到 ~/.log-guard/config.json"""
+    path = _es_config_path()
+    data = {}
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    data["es"] = {
+        "host": host,
+        "port": port,
+        "scheme": scheme,
+        "user": user,
+        "password": password,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def _es_base_url(cfg: dict) -> Optional[str]:
+    """根据 ES 配置构建 base URL"""
+    host = cfg.get("host", "").strip()
+    if not host:
+        return None
+    port = cfg.get("port", 9200)
+    scheme = cfg.get("scheme", "http")
+    return f"{scheme}://{host}:{port}"
+
+
+def _es_auth_header(cfg: dict) -> Optional[dict]:
+    """如果配置了用户名密码，生成 Authorization header"""
+    user = cfg.get("user", "").strip()
+    password = cfg.get("password", "").strip()
+    if user and password:
+        token = base64.b64encode(f"{user}:{password}".encode()).decode()
+        return {"Authorization": f"Basic {token}"}
+    return None
+
+
+def execute_es_query(query_dict: dict, index_pattern: str = "logs-*",
+                     es_config: Optional[dict] = None,
+                     size: int = 20) -> dict:
+    """向 ES 集群发送查询并返回结果
+
+    Args:
+        query_dict: ES Query DSL dict
+        index_pattern: 索引模式
+        es_config: ES 连接配置（不传则从 ~/.log-guard/config.json 读取）
+        size: 返回结果条数
+
+    Returns:
+        dict with keys: success, hits (int), total (int), samples (list),
+                        took_ms (int), error (str)
+    """
+    cfg = es_config or load_es_config()
+    base_url = _es_base_url(cfg)
+    if not base_url:
+        return {"success": False, "hits": 0, "samples": [], "error": "ES 未配置，请先配置 ES 连接信息"}
+
+    # 构建请求 URL
+    url = f"{base_url}/{index_pattern}/_search"
+    headers = {"Content-Type": "application/json"}
+    auth_header = _es_auth_header(cfg)
+    if auth_header:
+        headers.update(auth_header)
+
+    # 限制返回条数
+    body = dict(query_dict)
+    body["size"] = size
+
+    try:
+        req_data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+        import time
+        start = time.time()
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            elapsed = int((time.time() - start) * 1000)
+            raw = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode("utf-8", errors="replace")[:500]
+        return {"success": False, "hits": 0, "samples": [],
+                "error": f"ES HTTP {e.code}: {body_text}"}
+    except urllib.error.URLError as e:
+        return {"success": False, "hits": 0, "samples": [],
+                "error": f"ES 连接失败: {e.reason}"}
+    except Exception as e:
+        return {"success": False, "hits": 0, "samples": [],
+                "error": f"ES 查询异常: {e}"}
+
+    # 解析结果
+    total = raw.get("hits", {}).get("total", {}).get("value", 0)
+    hits = raw.get("hits", {}).get("hits", [])
+    samples = []
+    for h in hits:
+        src = h.get("_source", {})
+        samples.append({
+            "index": h.get("_index", ""),
+            "id": h.get("_id", ""),
+            "score": h.get("_score", 0),
+            "source": src,
+            "preview": json.dumps(src, ensure_ascii=False)[:300],
+        })
+
+    return {
+        "success": True,
+        "hits": len(hits),
+        "total": total,
+        "samples": samples,
+        "took_ms": elapsed,
+        "timed_out": raw.get("timed_out", False),
+        "shards": raw.get("_shards", {}),
+    }
+
+
+def test_regex_on_file(regexes: List[Dict[str, Any]], log_lines: List[str]) -> dict:
+    """对日志文件内容测试正则规则匹配效果
+
+    Args:
+        regexes: 正则规则列表，每项含 name, pattern
+        log_lines: 日志行列表
+
+    Returns:
+        dict with keys: total_lines (int), results (list)
+    """
+    results = []
+    for rule in regexes:
+        pattern = rule.get("pattern", "")
+        name = rule.get("name", "Unnamed")
+        if not pattern:
+            results.append({"name": name, "pattern": pattern, "matched": 0,
+                            "total": len(log_lines), "samples": [],
+                            "error": "空白正则"})
+            continue
+        try:
+            compiled = re.compile(pattern)
+        except re.error as e:
+            results.append({"name": name, "pattern": pattern, "matched": 0,
+                            "total": len(log_lines), "samples": [],
+                            "error": f"正则语法错误: {e}"})
+            continue
+
+        matched_lines = []
+        for line_no, line in enumerate(log_lines, 1):
+            if compiled.search(line):
+                matched_lines.append({"line_no": line_no, "content": line[:200]})
+                if len(matched_lines) >= 5:
+                    break
+
+        results.append({
+            "name": name,
+            "pattern": pattern,
+            "matched": len(matched_lines),
+            "total": len(log_lines),
+            "samples": matched_lines,
+            "error": None,
+        })
+
+    total_matched = sum(r["matched"] for r in results)
+    return {
+        "total_lines": len(log_lines),
+        "total_rules": len(regexes),
+        "total_matched": total_matched,
+        "results": results,
+    }
 # ---------------------------------------------------------------------------
 
 class ScriptGenService:

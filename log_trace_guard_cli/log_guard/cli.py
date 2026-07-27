@@ -17,7 +17,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from log_guard.common.utils import Result, JsonConfigLoader, LogManager
 from log_guard.core.log_reader import LogReader
 from log_guard.modules.log_parse import LogParseService
-from log_guard.modules.script_gen import ScriptGenService
+from log_guard.modules.script_gen import ScriptGenService, execute_es_query, test_regex_on_file, load_es_config, save_es_config
 from log_guard.modules.compliance import ComplianceService
 from log_guard.modules.log_correlate import LogCorrelateService
 
@@ -593,6 +593,7 @@ def _menu_script_gen(context: dict):
         {"label": "ES查询生成", "desc": "生成 Elasticsearch 检索语句"},
         {"label": "攻击溯源", "desc": "分析攻击链路"},
         {"label": "脚本优化", "desc": "优化现有脚本（正则/ES查询）"},
+        {"label": "ES连接配置", "desc": "配置 ES 集群连接信息"},
     ]
 
     idx = _show_nav_menu(items)
@@ -600,38 +601,212 @@ def _menu_script_gen(context: dict):
         return
 
     if idx == 0:
-        scenario = input("攻防场景描述: ").strip()
-        sample = input("日志样例 (可选): ").strip() or None
-        device = input("设备类型 (可选): ").strip() or None
+        scenario = input("\n  攻防场景描述: ").strip()
+        sample = input("  日志样例 (可选): ").strip() or None
+        device = input("  设备类型 (可选): ").strip() or None
         result = _script_gen_svc.generate_regex(scenario, sample, device)
         _print_regex_natural(result)
 
+        # 生成后询问是否对日志文件测试
+        if result.get("code") == 0:
+            regexes = result.get("data", {}).get("regexes", [])
+            if regexes:
+                file_path = context.get("log_file")
+                if not file_path or not os.path.exists(file_path):
+                    file_path = input("\n  🎯 输入日志文件路径测试正则匹配 (Enter跳过): ").strip()
+                if file_path and os.path.exists(file_path):
+                    choice = input("  ⚡ 是否对日志文件执行规则测试？[y/N]: ").strip().lower()
+                    if choice == "y":
+                        from log_guard.core.log_reader import LogReader
+                        reader = LogReader()
+                        log_data = reader.read_log(file_path, line_limit=5000)
+                        lines = log_data.get("lines", [])
+                        if lines:
+                            test_result = test_regex_on_file(regexes, lines)
+                            _print_regex_test_result(test_result, file_path)
+                        else:
+                            print("  ⚠️ 日志文件为空或读取失败")
+
     elif idx == 1:
-        scenario = input("检索场景描述: ").strip()
-        index = input("索引模式 (如 logstash-*): ").strip() or None
-        time_range = input("时间范围 (如 last_24h, last_7d): ").strip() or None
+        scenario = input("\n  检索场景描述: ").strip()
+        index = input("  索引模式 (如 logstash-*): ").strip() or None
+        time_range = input("  时间范围 (如 last_24h, last_7d): ").strip() or None
         result = _script_gen_svc.generate_es_query(scenario, index, time_range)
         _print_es_query_natural(result)
+
+        # 生成后询问是否执行查询
+        if result.get("code") == 0:
+            query = result.get("data", {}).get("query", {})
+            if query:
+                choice = input("\n  ⚡ 是否向 ES 集群执行此查询？[y/N]: ").strip().lower()
+                if choice == "y":
+                    idx_pattern = index or result.get("data", {}).get("index_pattern", "logs-*")
+                    es_result = execute_es_query(query, idx_pattern)
+                    _print_es_execute_result(es_result)
 
     elif idx == 2:
         file_path = context.get("log_file")
         if not file_path or not os.path.exists(file_path):
-            print("\n  ⚠️ 请先选择日志文件")
-            input("  按 Enter 继续...")
-            return
-        attack_type = input("攻击类型 (如 ssh_bruteforce, web_sql_injection, 可选): ").strip() or None
+            file_path = input("\n  输入日志文件路径: ").strip()
+            if not file_path or not os.path.exists(file_path):
+                print("  ⚠️ 文件不存在，请先选择日志文件")
+                input("  按 Enter 继续...")
+                return
+        attack_type = input("  攻击类型 (如 ssh_bruteforce, web_sql_injection, 可选): ").strip() or None
         logs = LogReader().read_log(file_path, line_limit=100).get("lines", [])
         result = _script_gen_svc.trace_attack(logs, attack_type)
         _print_collect_plan_natural(result)
 
     elif idx == 3:
-        script = input("输入脚本内容: ").strip()
-        stype = input("脚本类型 [regex/es_query] (默认regex): ").strip() or "regex"
-        scenario = input("使用场景 (可选): ").strip() or None
+        script = input("\n  输入脚本内容: ").strip()
+        stype = input("  脚本类型 [regex/es_query] (默认regex): ").strip() or "regex"
+        scenario = input("  使用场景 (可选): ").strip() or None
         result = _script_gen_svc.optimize_script(script, stype, scenario)
         _print_optimize_natural(result)
 
-    input("  按 Enter 继续...")
+    elif idx == 4:
+        _menu_es_config()
+
+    input("\n  按 Enter 继续...")
+
+
+# ════════════════════════════════════════════
+# ES 连接配置
+# ════════════════════════════════════════════
+
+
+def _menu_es_config():
+    """ES 集群连接配置菜单"""
+    cfg = load_es_config()
+    current = cfg.get("host", "未配置")
+    _print_header("🔗 ES 集群连接配置")
+    print(f"  当前配置: {current}\n")
+    print("  1. 配置 ES 连接")
+    print("  2. 查看当前配置")
+    print("  3. 清除配置")
+    print("  0. 返回\n")
+
+    choice = input("  请选择: ").strip()
+    if choice == "1":
+        host = input("  ES 主机地址 (如 localhost): ").strip()
+        if not host:
+            print("  ❌ 主机地址不能为空")
+            return
+        port_str = input("  端口 [9200]: ").strip()
+        port = int(port_str) if port_str.isdigit() else 9200
+        scheme = input("  协议 [http] (http/https): ").strip() or "http"
+        user = input("  用户名 (可选): ").strip()
+        password = input("  密码 (可选): ").strip()
+        path = save_es_config(host, port, scheme, user, password)
+        print(f"\n  ✅ ES 连接配置已保存至 {path}")
+
+        # 测试连接
+        test_choice = input("\n  ⚡ 是否测试连接？[Y/n]: ").strip().lower()
+        if test_choice != "n":
+            test_result = execute_es_query(
+                {"query": {"match_all": {}}}, "_cluster/health", size=1
+            )
+            if test_result["success"]:
+                print(f"  ✅ ES 连接成功！集群健康状态: {json.dumps(test_result.get('samples', {}), ensure_ascii=False)[:100]}")
+            else:
+                print(f"  ❌ ES 连接失败: {test_result['error']}")
+
+    elif choice == "2":
+        if cfg:
+            print(f"\n  主机: {cfg.get('host', '?')}")
+            print(f"  端口: {cfg.get('port', '?')}")
+            print(f"  协议: {cfg.get('scheme', '?')}")
+            print(f"  用户名: {cfg.get('user', '(空)')}")
+            print(f"  密码: {'****' if cfg.get('password') else '(空)'}")
+        else:
+            print("\n  ⚠️ 未配置 ES 连接")
+    elif choice == "3":
+        save_es_config("", 9200, "http", "", "")
+        print("\n  ✅ ES 配置已清除")
+
+
+# ════════════════════════════════════════════
+# ES 执行结果展示
+# ════════════════════════════════════════════
+
+
+def _print_es_execute_result(result: dict):
+    """展示 ES 查询执行结果"""
+    if not result.get("success"):
+        print(f"\n  ❌ ES 查询执行失败")
+        print(f"     错误: {result.get('error', '未知错误')}")
+        return
+
+    total = result.get("total", 0)
+    hits = result.get("hits", 0)
+    took = result.get("took_ms", 0)
+    timed_out = result.get("timed_out", False)
+
+    print(f"\n  🔎 ES 查询执行结果")
+    print(f"     命中总数: {total}")
+    print(f"     返回条数: {hits}")
+    print(f"     耗时: {took}ms")
+    if timed_out:
+        print(f"     ⚠️ 查询超时")
+    shards = result.get("shards", {})
+    if shards:
+        total_shards = shards.get("total", 0)
+        failed_shards = shards.get("failed", 0)
+        if failed_shards:
+            print(f"     分片: {total_shards} 总 | ⚠️ {failed_shards} 失败")
+        else:
+            print(f"     分片: {total_shards} 全部成功")
+
+    samples = result.get("samples", [])
+    if samples:
+        print(f"\n  样本数据 (前 {len(samples)} 条):")
+        for i, s in enumerate(samples, 1):
+            print(f"    [{i}] 索引: {s.get('index', '?')} | 评分: {s.get('score', 0):.2f}")
+            preview = s.get("preview", "")
+            if preview:
+                print(f"        {preview[:200]}")
+            print()
+
+
+# ════════════════════════════════════════════
+# 正则规则测试结果展示
+# ════════════════════════════════════════════
+
+
+def _print_regex_test_result(result: dict, file_path: str):
+    """展示正则规则在日志文件上的测试结果"""
+    total_lines = result.get("total_lines", 0)
+    total_rules = result.get("total_rules", 0)
+    total_matched = result.get("total_matched", 0)
+
+    print(f"\n  📊 正则规则测试结果")
+    print(f"     文件: {file_path}")
+    print(f"     日志行数: {total_lines}")
+    print(f"     规则数: {total_rules}")
+    print(f"     总匹配数: {total_matched}\n")
+
+    for r in result.get("results", []):
+        name = r.get("name", "?")
+        matched = r.get("matched", 0)
+        total = r.get("total", 0)
+        error = r.get("error")
+        if error:
+            print(f"  ❌ [{name}] — {error}")
+            continue
+        pct = (matched / total * 100) if total > 0 else 0
+        icon = "✅" if matched > 0 else "⬜"
+        print(f"  {icon} [{name}] 匹配 {matched}/{total} ({pct:.1f}%)")
+
+        samples = r.get("samples", [])
+        if samples:
+            for s in samples:
+                print(f"      第 {s['line_no']} 行: {s['content'][:120]}")
+            print()
+
+
+# ════════════════════════════════════════════
+# 合规审计
+# ════════════════════════════════════════════
 
 
 def _menu_compliance(context: dict):
