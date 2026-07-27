@@ -244,7 +244,7 @@
             <el-button size="small" type="primary" plain @click="toTraceScript(chain)">
               <el-icon><Document /></el-icon> 生成溯源脚本
             </el-button>
-            <el-button size="small" type="success" plain @click="toTrainingScenario(chain)">
+            <el-button v-if="mode !== 'ops'" size="small" type="success" plain @click="toTrainingScenario(chain)">
               <el-icon><Monitor /></el-icon> 下发实训场景
             </el-button>
           </div>
@@ -275,7 +275,7 @@
     <el-dialog v-model="linkDialogVisible" :title="linkDialogTitle" width="720px" top="5vh">
       <div v-if="linkLoading" style="text-align:center;padding:40px">
         <el-icon class="is-loading" :size="28"><Loading /></el-icon>
-        <div style="margin-top:12px;color:var(--text-secondary)">正在生成溯源脚本...</div>
+        <div style="margin-top:12px;color:var(--text-secondary)">{{ linkIsScenario ? '正在生成实战场景...' : '正在生成溯源脚本...' }}</div>
       </div>
 
       <template v-else-if="linkResult">
@@ -285,12 +285,43 @@
           <span>{{ linkResult.msg || '操作失败' }}</span>
         </div>
 
-        <!-- 成功 — 完整溯源结果展示 -->
+        <!-- 成功 — 场景模式 (实战实训) -->
         <template v-if="linkResult.success">
-          <div class="g-alert g-alert--success" style="margin-bottom:12px">
-            <el-icon><CircleCheck /></el-icon>
-            <span>溯源脚本已生成</span>
-          </div>
+          <!-- 场景模式 -->
+          <template v-if="linkIsScenario">
+            <div class="g-alert g-alert--success" style="margin-bottom:12px">
+              <el-icon><CircleCheck /></el-icon>
+              <span>{{ linkScenarioMessage || '实战场景已生成' }}</span>
+            </div>
+            <div v-if="scenarioInfo" class="g-card" style="margin-bottom:12px;padding:12px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+                <el-tag type="danger" size="small" effect="dark">实战</el-tag>
+                <strong style="font-size:15px">{{ scenarioInfo.name }}</strong>
+                <RiskBadge :level="diffLevel(scenarioInfo.difficulty)" :label="scenarioInfo.difficulty" />
+              </div>
+              <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">{{ scenarioInfo.description }}</div>
+              <div v-if="scenarioInfo.objectives?.length" style="margin-bottom:8px">
+                <div style="font-weight:600;font-size:12px;margin-bottom:4px">学习目标：</div>
+                <ul style="margin:0;padding-left:16px;font-size:12px;color:var(--text-secondary)">
+                  <li v-for="(obj, oi) in scenarioInfo.objectives" :key="oi">{{ obj }}</li>
+                </ul>
+              </div>
+              <div style="font-weight:600;font-size:12px;margin-bottom:6px">实训任务（{{ scenarioTasks.length }} 个）：</div>
+              <div v-for="(task, ti) in scenarioTasks" :key="ti" style="padding:6px 8px;margin-bottom:4px;background:var(--bg-secondary);border-radius:4px;font-size:12px">
+                <div style="font-weight:500">T{{ ti+1 }}. {{ task.title }}</div>
+                <div style="color:var(--text-tertiary);margin-top:2px">{{ task.description }}</div>
+              </div>
+            </div>
+            <el-button type="primary" size="large" style="width:100%" @click="startTrainingFromLink">
+              <el-icon><Promotion /></el-icon> 立即进入实训
+            </el-button>
+          </template>
+          <!-- 溯源模式 -->
+          <template v-else>
+            <div class="g-alert g-alert--success" style="margin-bottom:12px">
+              <el-icon><CircleCheck /></el-icon>
+              <span>溯源脚本已生成</span>
+            </div>
 
           <!-- 攻击阶段 + 入口 -->
           <el-descriptions :column="2" border size="small" style="margin-bottom:12px">
@@ -381,6 +412,7 @@
               共 {{ dialogSplunkResult.event_count }} 条，耗时 {{ dialogSplunkResult.execution_time }}s
             </div>
           </div>
+          </template>
         </template>
       </template>
     </el-dialog>
@@ -454,6 +486,11 @@ const linkResult = ref<any>(null)
 const linkData = ref<any>(null)
 const dialogSplunkLoading = ref(false)
 const dialogSplunkResult = ref<any>(null)
+// 场景模式（to-scenario vs to-trace 弹窗区分）
+const linkIsScenario = ref(false)
+const linkScenarioMessage = ref('')
+const scenarioInfo = ref<any>(null)
+const scenarioTasks = ref<any[]>([])
 
 const sampleLogs = `2024-01-05 12:34:56 web-server sshd[12345]: Failed password for invalid user admin from 192.168.1.100 port 22 ssh2
 2024-01-05 12:34:57 web-server sshd[12345]: Failed password for root from 192.168.1.100 port 22 ssh2
@@ -566,6 +603,7 @@ async function toTraceScript(chain: any) {
   linkResult.value = null
   linkData.value = null
   dialogSplunkResult.value = null
+  linkIsScenario.value = false
 
   try {
     const lines = input.value.split('\n').filter(l => l.trim())
@@ -627,10 +665,36 @@ async function toTrainingScenario(chain: any) {
       },
     })
     linkResult.value = res
+    // 提取场景数据用于弹窗展示
+    linkIsScenario.value = true
+    if (res.success && res.data?.scenarios?.[0]) {
+      const s = res.data.scenarios[0]
+      scenarioInfo.value = s.scenario || {}
+      scenarioTasks.value = s.tasks || []
+      linkScenarioMessage.value = res.data.message || '实战场景已生成'
+    }
   } catch (err: any) {
     linkResult.value = { code: -1, msg: err.message || '请求失败' }
   } finally {
     linkLoading.value = false
+  }
+}
+
+// 从弹窗导航到实训答题
+function startTrainingFromLink() {
+  if (scenarioInfo.value && scenarioInfo.value.scenario_id) {
+    linkDialogVisible.value = false
+    // 复用 Scenarios.vue → Submit.vue 的 sessionStorage 数据传递
+    const scenario = {
+      scenario: scenarioInfo.value,
+      tasks: scenarioTasks.value,
+      total_tasks: scenarioTasks.value.length,
+      completed_tasks: 0,
+    }
+    sessionStorage.setItem('current-training-scenario', JSON.stringify(scenario))
+    window.location.hash = '#/training/submit'
+  } else {
+    ElMessage.warning('场景数据异常，无法进入实训')
   }
 }
 
