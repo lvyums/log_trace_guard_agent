@@ -34,6 +34,7 @@ class ToScenarioReq(BaseModel):
     log_lines: list[str] = Field(..., min_length=1, description="攻击链相关的日志行")
     chain_name: str = Field(default="", description="攻击链名称")
     chain_description: str = Field(default="", description="攻击链描述")
+    chain_data: Optional[dict] = Field(default=None, description="攻击链完整数据（含 temporal 字段），用于生成动态实训场景")
 
 
 class CorrelateResp(BaseModel):

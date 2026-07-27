@@ -1,5 +1,12 @@
-"""模块五：智能化任务下发引擎 — 自动加载场景资源、下发标准化实操任务"""
+"""
+模块五：智能化任务下发引擎 — 自动加载场景资源、下发标准化实操任务
 
+支持动态场景注入（DYN_ 前缀），供 log-correlate to-scenario 使用：
+  - inject_scenario(): 注入一个由攻击链数据动态生成的场景
+  - 动态场景会被 dispatch()、get_scenario()、get_standard_answer() 识别
+"""
+
+import time
 from typing import Optional
 
 from common.logger import LogManager
@@ -14,6 +21,10 @@ class TaskEngine:
     _scenarios_cache = None
     _answers_cache = None
     _session_records: dict[str, dict] = {}  # student_id -> {scenario_id -> {task_id -> [records]}}
+
+    # 动态场景（由 to-scenario 注入，不持久化到 JSON）
+    _dynamic_scenarios: list[dict] = []
+    _dynamic_answers: dict[str, dict] = {}
 
     @classmethod
     def _load_scenarios(cls) -> list[dict]:
@@ -35,12 +46,17 @@ class TaskEngine:
 
     @classmethod
     def get_all_scenarios(cls) -> list[dict]:
-        """获取所有场景"""
-        return cls._load_scenarios()
+        """获取所有场景（含动态场景）"""
+        return cls._get_dynamic_scenarios() + cls._load_scenarios()
 
     @classmethod
     def get_scenario(cls, scenario_id: str) -> Optional[dict]:
-        """获取单个场景"""
+        """获取单个场景（支持动态场景 DYN_ 前缀）"""
+        # 优先查动态
+        for s in cls._dynamic_scenarios:
+            if s.get("scenario_id") == scenario_id:
+                return s
+        # 再查 JSON
         scenarios = cls._load_scenarios()
         for s in scenarios:
             if s["scenario_id"] == scenario_id:
@@ -49,8 +65,8 @@ class TaskEngine:
 
     @classmethod
     def get_scenarios_by_category(cls, category: str) -> list[dict]:
-        """按分类获取场景"""
-        scenarios = cls._load_scenarios()
+        """按分类获取场景（含动态场景）"""
+        scenarios = cls.get_all_scenarios()
         return [s for s in scenarios if s.get("category") == category]
 
     @classmethod
@@ -72,7 +88,11 @@ class TaskEngine:
 
     @classmethod
     def get_standard_answer(cls, scenario_id: str, task_id: str) -> Optional[dict]:
-        """获取标准答案"""
+        """获取标准答案（优先查动态，再查 JSON）"""
+        # 查动态
+        if scenario_id in cls._dynamic_answers:
+            return cls._dynamic_answers[scenario_id].get(task_id)
+        # 查 JSON
         answers = cls._load_answers()
         scenario_answers = answers.get(scenario_id, {})
         return scenario_answers.get(task_id)
@@ -107,7 +127,7 @@ class TaskEngine:
     @classmethod
     def dispatch(cls, scenario_id: Optional[str] = None,
                  category: Optional[str] = None) -> list[dict]:
-        """下发任务 — 返回场景+任务列表"""
+        """下发任务 — 返回场景+任务列表（支持动态场景）"""
         if scenario_id:
             scenario = cls.get_scenario(scenario_id)
             if not scenario:
@@ -136,6 +156,39 @@ class TaskEngine:
             })
 
         return result
+
+    # ── 动态场景注入（供 log-correlate to-scenario 使用） ──
+
+    @classmethod
+    def inject_scenario(cls, scenario: dict, standard_answers: dict) -> str:
+        """
+        注入一个动态生成的场景到引擎中。
+        注入后的场景可被 dispatch()、get_scenario()、get_standard_answer() 等访问。
+
+        Args:
+            scenario: { name, description, category, difficulty, objectives, tasks }
+                其中 tasks 为 { task_id, title, description, input_type, submit_type, hint }
+            standard_answers: { task_id: { ... 标准答案字段 } }
+
+        Returns:
+            注入的场景 ID（形如 DYN_1712345678_0）
+        """
+        scenario_id = f"DYN_{int(time.time())}_{len(cls._dynamic_scenarios)}"
+        scenario["scenario_id"] = scenario_id
+
+        cls._dynamic_scenarios.append(scenario)
+        cls._dynamic_answers[scenario_id] = standard_answers or {}
+        logger.info(
+            f"动态场景已注入: {scenario_id} — {scenario.get('name', '?')}, "
+            f"{len(scenario.get('tasks', []))} 个任务"
+        )
+        return scenario_id
+
+    @classmethod
+    def _get_dynamic_scenarios(cls) -> list[dict]:
+        return list(cls._dynamic_scenarios)
+
+    # ── 学员记录 ──
 
     @classmethod
     def record_submission(cls, student_id: str, scenario_id: str,

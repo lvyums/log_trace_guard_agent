@@ -598,7 +598,7 @@ async function toTraceScript(chain: any) {
   }
 }
 
-// 联动：下发实训场景
+// 联动：下发实训场景（★ 增强版：传递完整 chain_data 以生成动态场景）
 async function toTrainingScenario(chain: any) {
   linkDialogVisible.value = true
   linkDialogTitle.value = `下发实训场景 — ${chain.chain_name}`
@@ -613,6 +613,18 @@ async function toTrainingScenario(chain: any) {
       log_lines: lines.slice(0, 10),
       chain_name: chain.chain_name || '',
       chain_description: chain.description || '',
+      // ★ 传递完整攻击链数据，后端据此用 LLM 生成专属实战场景
+      chain_data: {
+        chain_name: chain.chain_name,
+        description: chain.description,
+        risk_level: chain.risk_level,
+        confidence: chain.confidence,
+        matched_keywords: chain.matched_keywords,
+        matched_line_indices: chain.matched_line_indices,
+        indicators: chain.indicators,
+        suggestion: chain.suggestion,
+        temporal: chain.temporal,  // 含 timeline、stages_observed 等
+      },
     })
     linkResult.value = res
   } catch (err: any) {

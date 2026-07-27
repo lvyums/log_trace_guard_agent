@@ -78,11 +78,12 @@ async def to_trace(req: ToTraceReq, ctx: ContextManager = Depends(get_context)):
 
 @router.post("/to-scenario")
 async def to_scenario(req: ToScenarioReq, ctx: ContextManager = Depends(get_context)):
-    """攻击链结果 → 下发实训场景"""
+    """攻击链结果 → 下发实训场景（含动态场景生成）"""
     result = await LogCorrelateService.to_training_scenario(
         log_lines=req.log_lines,
         chain_name=req.chain_name,
         chain_description=req.chain_description,
+        chain_data=req.chain_data,
         context=ctx,
     )
     return result

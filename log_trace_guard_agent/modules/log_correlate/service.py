@@ -27,6 +27,8 @@ from common.logger import LogManager
 from common.result_util import Result
 from app.settings import settings
 
+from modules.log_correlate.temporal import TemporalAnalyzer
+
 logger = LogManager.get_logger()
 
 CORRELATION_PATTERNS_PATH = os.path.join(settings.rule_data_dir, "correlation_patterns.json")
@@ -464,6 +466,13 @@ class LogCorrelateService:
         matcher = cls._get_matcher()
         keyword_chains = matcher.match(lines)
 
+        # ★ 时序推理增强：对所有匹配到的攻击链执行时间轴分析
+        keyword_chain_dicts: List[dict] = []
+        if keyword_chains:
+            keyword_chain_dicts = [c.to_dict() for c in keyword_chains]
+            for chain_dict in keyword_chain_dicts:
+                TemporalAnalyzer.analyze(chain_dict, lines)
+
         # Stage 2: 合并策略
         if not use_llm:
             # ── 纯关键词模式（原有行为） ──
@@ -480,7 +489,7 @@ class LogCorrelateService:
 
                 return Result.ok({
                     "total_events": len(lines),
-                    "chains": [c.to_dict() for c in keyword_chains],
+                    "chains": keyword_chain_dicts,
                     "summary": f"共分析 {len(lines)} 条日志。{chain_summary}。",
                     "method": "keyword",
                     "matched_keywords": sorted(matched_kws)[:20],
@@ -497,14 +506,15 @@ class LogCorrelateService:
 
             if keyword_chains and not llm_chains:
                 # LLM 没找到，但关键词找到了 → 返回关键词结果
+                matched_kws_llm = sorted(set(
+                    kw.split("|")[0][:50] for c in keyword_chain_dicts for kw in c.get("matched_keywords", [])
+                ))[:20]
                 return Result.ok({
                     "total_events": len(lines),
-                    "chains": [c.to_dict() for c in keyword_chains],
+                    "chains": keyword_chain_dicts,
                     "summary": f"共分析 {len(lines)} 条日志。关键词匹配到 {len(keyword_chains)} 条攻击链（LLM 未检出）。",
                     "method": "keyword",
-                    "matched_keywords": sorted(set(
-                        kw.split("|")[0][:50] for c in keyword_chains for kw in c.matched_keywords
-                    ))[:20],
+                    "matched_keywords": matched_kws_llm,
                 })
 
             if llm_chains and not keyword_chains:
@@ -514,10 +524,9 @@ class LogCorrelateService:
             if keyword_chains and llm_chains:
                 # 两者都有 → 按 chain_name 去重合并
                 chain_map: Dict[str, dict] = {}
-                for kc in keyword_chains:
-                    d = kc.to_dict()
-                    d["_source"] = "keyword"
-                    chain_map[d["chain_name"]] = d
+                for kcd in keyword_chain_dicts:
+                    kcd["_source"] = "keyword"
+                    chain_map[kcd["chain_name"]] = kcd
 
                 for lc in llm_chains:
                     name = lc.get("chain_name", "unknown")
@@ -557,7 +566,7 @@ class LogCorrelateService:
                     "summary": f"共分析 {len(lines)} 条日志。关键词+LLM 联合检出 {len(merged)} 条攻击链（关键词 {kw_count} 条 + LLM 补充 {llm_count} 条）。",
                     "method": "hybrid",
                     "matched_keywords": sorted(set(
-                        kw.split("|")[0][:50] for c in keyword_chains for kw in c.matched_keywords
+                        kw.split("|")[0][:50] for c in keyword_chain_dicts for kw in c.get("matched_keywords", [])
                     ))[:20],
                 })
 
@@ -710,11 +719,78 @@ class LogCorrelateService:
         log_lines: List[str],
         chain_name: str = "",
         chain_description: str = "",
+        chain_data: Optional[dict] = None,
         context: Optional[ContextManager] = None,
     ) -> dict:
-        """攻击链 → 实训场景（调用 training/dispatch）"""
+        """攻击链 → 实训场景
+
+        两种模式：
+          - chain_data 存在 → 动态生成专属实战场景（LLM 根据攻击数据定制）
+          - chain_data 不存在 → 传统模式，按分类下发预置场景
+        """
         from modules.training.service import TrainingService
 
+        # ── 模式1：动态生成实战场景 ──
+        if chain_data:
+            from modules.log_correlate.temporal import TemporalAnalyzer
+
+            try:
+                # LLM 根据攻击数据生成场景内容
+                training_data = await TemporalAnalyzer.generate_training(chain_data, log_lines)
+                if training_data.get("scenario") and training_data.get("tasks"):
+                    scenario = training_data["scenario"]
+                    tasks = training_data["tasks"]
+                    standard_answers = training_data["standard_answers"]
+
+                    # 注入到 TaskEngine
+                    from modules.training.task_engine import TaskEngine
+                    scenario_id = TaskEngine.inject_scenario(
+                        scenario={
+                            "name": scenario.get("name", f"实战溯源：{chain_name}"),
+                            "description": scenario.get("description", chain_description),
+                            "category": scenario.get("category", "实战"),
+                            "difficulty": scenario.get("difficulty", "中级"),
+                            "objectives": scenario.get("objectives", []),
+                            "tasks": tasks,
+                        },
+                        standard_answers=standard_answers,
+                    )
+
+                    # 构建标准化的 dispatch 返回格式
+                    dispatch_result = [{
+                        "scenario": {
+                            "scenario_id": scenario_id,
+                            "name": scenario.get("name", ""),
+                            "category": scenario.get("category", "实战"),
+                            "difficulty": scenario.get("difficulty", "中级"),
+                            "order": 0,
+                            "description": scenario.get("description", ""),
+                            "objectives": scenario.get("objectives", []),
+                        },
+                        "tasks": [{
+                            "task_id": t.get("task_id"),
+                            "order": t.get("order", i + 1),
+                            "title": t.get("title", ""),
+                            "description": t.get("description", ""),
+                            "input_type": t.get("input_type", "text"),
+                            "input_data": log_lines[:50],  # 传入实际日志作为输入
+                            "submit_type": t.get("submit_type", "conclusion"),
+                            "hint": t.get("hint"),
+                        } for i, t in enumerate(tasks)],
+                        "total_tasks": len(tasks),
+                        "completed_tasks": 0,
+                        "_dynamic": True,  # 前端可据此显示"实战场景"标签
+                    }]
+
+                    return Result.ok({
+                        "scenarios": dispatch_result,
+                        "total": 1,
+                        "message": f"已生成实战场景：{scenario.get('name', '')}",
+                    })
+            except Exception as e:
+                logger.warning(f"动态场景生成失败，降级到传统模式: {e}")
+
+        # ── 模式2：传统模式（按分类下发预置场景） ──
         # 根据攻击链名称推断合适的分类
         category_map: Dict[str, str] = {
             "brute_force": "basic",
