@@ -596,6 +596,103 @@ class GenericParser(BaseParser):
         return fields
 
 
+class TrafficParser(BaseParser):
+    """网络流量 CSV 解析器 — 支持 Wireshark / tcpdump / 通用 CSV 导出格式"""
+
+    device_type = "traffic"
+
+    _COL_ALIASES = {
+        "no": None, "no.": None, "number": None, "#": None,
+        "time": "timestamp", "timestamp": "timestamp", "datetime": "timestamp",
+        "src": "src_ip", "source": "src_ip", "src_ip": "src_ip", "ip.src": "src_ip",
+        "dst": "dst_ip", "destination": "dst_ip", "dst_ip": "dst_ip", "ip.dst": "dst_ip",
+        "src_port": "src_port", "sport": "src_port", "tcp.srcport": "src_port",
+        "dst_port": "dst_port", "dport": "dst_port", "tcp.dstport": "dst_port",
+        "protocol": "protocol", "proto": "protocol",
+        "length": "length", "len": "length", "size": "length",
+        "info": "info", "info+": "info",
+        "flags": "flags",
+    }
+
+    _IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+    _PROTOCOLS = {"tcp", "udp", "icmp", "arp", "dns", "http", "https", "ftp", "ssh",
+                  "smtp", "pop3", "imap", "ssl", "tls", "quic", "igmp", "icmpv6"}
+
+    def can_parse(self, log_line: str) -> bool:
+        stripped = log_line.strip()
+        if not stripped:
+            return False
+        lower = stripped.lower()
+        if any(kw in lower for kw in ("no.,time", "no., timestamp", "source,destination", "src,dst")):
+            return False
+        if not self._IP_RE.search(stripped):
+            return False
+        has_protocol = any(p in lower for p in self._PROTOCOLS)
+        has_port = bool(re.search(r":\d{2,5}\b", stripped))
+        has_comma = "," in stripped
+        return has_comma and (has_protocol or has_port)
+
+    def parse_fields(self, log_line: str) -> Dict[str, Any]:
+        stripped = log_line.strip()
+        result: Dict[str, Any] = {
+            "device_type": "traffic",
+            "raw_log": stripped[:500],
+            "extra_info": {},
+        }
+        cells = [c.strip().strip('"') for c in stripped.split(",")]
+        if not cells:
+            return result
+        col_map = self._infer_columns(cells)
+
+        for idx, val in enumerate(cells):
+            if not val:
+                continue
+            mapped = col_map.get(idx)
+            if not mapped:
+                continue
+            if mapped == "src_ip" and self._IP_RE.fullmatch(val):
+                result["src_ip"] = val
+            elif mapped == "dst_ip" and self._IP_RE.fullmatch(val):
+                result["dst_ip"] = val
+            elif mapped == "timestamp":
+                result["timestamp"] = val
+            elif mapped in ("src_port", "dst_port", "protocol", "length", "info", "flags"):
+                result["extra_info"][mapped] = val
+
+        if not result["extra_info"].get("protocol"):
+            info_text = (result["extra_info"].get("info", "") + " " + stripped).lower()
+            for proto in self._PROTOCOLS:
+                if proto in info_text:
+                    result["extra_info"]["protocol"] = proto.upper()
+                    break
+
+        proto = result["extra_info"].get("protocol", "")
+        src = result.get("src_ip", "?")
+        dst = result.get("dst_ip", "?")
+        result["status"] = f"{proto} {src}→{dst}" if proto else f"{src}→{dst}"
+        return result
+
+    def _infer_columns(self, cells: list[str]) -> dict:
+        col_map: dict = {}
+        for i, cell in enumerate(cells):
+            alias = self._COL_ALIASES.get(cell.lower().strip('"').strip())
+            if alias:
+                col_map[i] = alias
+            elif self._IP_RE.fullmatch(cell):
+                if "src_ip" not in col_map.values():
+                    col_map[i] = "src_ip"
+                elif "dst_ip" not in col_map.values():
+                    col_map[i] = "dst_ip"
+            elif cell.isdigit() and 1 <= len(cell) <= 5:
+                if "src_port" not in col_map.values():
+                    col_map[i] = "src_port"
+                elif "dst_port" not in col_map.values():
+                    col_map[i] = "dst_port"
+            elif cell.upper() in {p.upper() for p in self._PROTOCOLS}:
+                col_map[i] = "protocol"
+        return col_map
+
+
 # ---------------------------------------------------------------------------
 # LogParserFactory
 # ---------------------------------------------------------------------------
@@ -711,6 +808,7 @@ _default_factory: Optional[LogParserFactory] = None
 def _register_default_parsers() -> LogParserFactory:
     """Create the default factory and register all built-in parsers."""
     factory = LogParserFactory()
+    factory.register("traffic", TrafficParser, "network", "wireshark", "tcpdump", "csv")
     factory.register("ssh", SSHParser, "sshd", "secure")
     factory.register("web", WebParser, "http", "apache", "nginx", "iis")
     factory.register("waf", WAFParser, "modsecurity", "web_application_firewall")
