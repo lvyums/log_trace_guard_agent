@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""日志溯源卫士 CLI 智能体 v2.0 — 双模式：菜单操作 + AI 智能对话"""
+"""日志溯源卫士 CLI 智能体 v3.0 — 双模式：菜单操作 + AI 智能对话"""
 # -*- coding: utf-8 -*-
 
 import json
@@ -53,7 +53,7 @@ _log_correlate_svc = LogCorrelateService()
 def _print_banner():
     banner = r"""
 ╔══════════════════════════════════════════════════════╗
-║       🔍 日志溯源卫士 CLI 智能体 v2.0               ║
+║       🔍 日志溯源卫士 CLI 智能体 v3.0               ║
 ║       菜单操作 + AI 智能对话 · 双模式兼容            ║
 ╚══════════════════════════════════════════════════════╝
 """
@@ -1424,7 +1424,7 @@ def main():
     # 快速启动：如果有参数就走命令行模式
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser(
-            description="日志溯源卫士 CLI 智能体 v2.0 — 日志分析 + AI 智能对话",
+            description="日志溯源卫士 CLI 智能体 v3.0 — 日志分析 + AI 智能对话",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog=textwrap.dedent("""\
                 示例:
@@ -1468,7 +1468,7 @@ def main():
 
         # --version
         if args.version:
-            print("log-guard 2.0.0")
+            print("log-guard 3.0.0")
             return
 
         # --ask 非交互式 AI 问答
