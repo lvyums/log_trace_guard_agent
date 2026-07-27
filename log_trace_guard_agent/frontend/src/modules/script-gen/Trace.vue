@@ -87,6 +87,15 @@
         <div style="font-size:12px;color:var(--text-tertiary);margin-top:8px">
           共 {{ splunkResult.event_count }} 条结果，耗时 {{ splunkResult.execution_time }}s
         </div>
+        <!-- ★ 回流按钮：Splunk 结果送到关联分析再分析 -->
+        <div style="margin-top:10px;display:flex;gap:8px;border-top:1px solid var(--el-border-color-light);padding-top:10px">
+          <el-button size="small" type="primary" @click="sendToCorrelate">
+            <el-icon><Connection /></el-icon> 送到关联分析再分析
+          </el-button>
+          <span style="font-size:12px;color:var(--text-tertiary);line-height:32px">
+            将 Splunk 查到的日志送日志联合审查模块重新分析，发现更深层攻击链
+          </span>
+        </div>
       </div>
     </div>
     <div v-if="!result && !loading" class="g-card">
@@ -99,6 +108,7 @@ import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Api } from '../../api'
 import { getSplunkConfig } from '../../utils/splunk'
+import { sendToCorrelate as storeSendToCorrelate } from '../../utils/crossModuleStore'
 import AlertGuide from '../../components/AlertGuide.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
 import CodeBlock from '../../components/CodeBlock.vue'
@@ -124,5 +134,44 @@ async function executeSplunk(spl: string){
 async function openSplunk(spl: string){
   const cfg=getSplunkConfig();if(!cfg){ElMessage.warning('请先在导航栏设置中配置 Splunk');return}
   try{const r=await Api.scriptGen.splunkOpenUrl({spl_query:spl,splunk_config:cfg});if(r.success&&r.data?.open_url)window.open(r.data.open_url,'_blank');else ElMessage.error(r.msg||'无法生成 Splunk 链接')}catch{ElMessage.error('请求失败')}
+}
+// ★ 回流：Splunk 查询结果 → 关联分析
+function sendToCorrelate() {
+  if (!splunkResult.value?.results?.length) {
+    ElMessage.warning('没有可分析的 Splunk 结果')
+    return
+  }
+  // 把 Splunk 结果转回日志行格式
+  const newLogs: string[] = []
+  for (const row of splunkResult.value.results) {
+    // 优先取 _raw 字段（Splunk 原始日志）
+    if (row._raw && typeof row._raw === 'string') {
+      newLogs.push(row._raw)
+      continue
+    }
+    // 无 _raw 则拼接所有非空字段
+    const parts = Object.values(row)
+      .filter(v => v != null && v !== '')
+      .map(v => String(v))
+    if (parts.length) {
+      newLogs.push(parts.join(' | '))
+    }
+  }
+  // 合并用户输入的原始日志
+  const allLogs = [
+    ...logs.value.split('\n').map(l => l.trim()).filter(l => l),
+    ...newLogs,
+  ]
+  if (!allLogs.length) {
+    ElMessage.warning('没有可分析的日志')
+    return
+  }
+  storeSendToCorrelate({
+    logs: allLogs,
+    source: 'trace-splunk',
+    chainName: attackType.value || '',
+  })
+  window.location.hash = '#/log-correlate/analyze'
+  ElMessage.success(`已发送 ${allLogs.length} 条日志到关联分析`)
 }
 </script>

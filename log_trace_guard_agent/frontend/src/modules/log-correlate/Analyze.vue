@@ -143,6 +143,18 @@
       </div>
     </template>
 
+    <!-- ★ 回流通知条 -->
+    <div v-if="incomingData" class="g-card" style="border:1px solid var(--el-color-primary);margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:12px;padding:4px 0">
+        <el-icon :size="20" color="var(--el-color-primary)"><Connection /></el-icon>
+        <span style="flex:1;font-size:13px">
+          来自 <strong>{{ incomingData.source === 'trace-splunk' ? '攻击溯源·Splunk 查询' : '外部模块' }}</strong>
+          的 {{ incomingData.logs?.length || 0 }} 条日志，将自动进行关联分析
+        </span>
+        <el-button size="small" @click="incomingData = null; clear()">取消</el-button>
+      </div>
+    </div>
+
     <!-- 分析结果 -->
     <div v-if="result" class="g-card slide">
       <!-- 分析概览 -->
@@ -152,6 +164,7 @@
           <el-tag v-if="result.method === 'keyword'" type="success" size="small" effect="dark">关键词匹配</el-tag>
           <el-tag v-else-if="result.method === 'llm'" type="warning" size="small" effect="dark">LLM 分析</el-tag>
           <el-tag v-else-if="result.method === 'hybrid'" type="info" size="small" effect="dark">混合模式</el-tag>
+          <el-tag v-if="incomingData?.source" type="primary" size="small" effect="plain">回流分析</el-tag>
         </div>
       </div>
 
@@ -258,44 +271,115 @@
       />
     </div>
 
-    <!-- 联动结果弹窗 -->
-    <el-dialog v-model="linkDialogVisible" :title="linkDialogTitle" width="600px">
-      <div v-if="linkLoading" style="text-align:center;padding:30px">
-        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-        <div style="margin-top:8px">正在处理...</div>
+    <!-- ★ 升级版：溯源脚本结果弹窗（含完整攻击链展示 + 执行按钮） -->
+    <el-dialog v-model="linkDialogVisible" :title="linkDialogTitle" width="720px" top="5vh">
+      <div v-if="linkLoading" style="text-align:center;padding:40px">
+        <el-icon class="is-loading" :size="28"><Loading /></el-icon>
+        <div style="margin-top:12px;color:var(--text-secondary)">正在生成溯源脚本...</div>
       </div>
-      <div v-else-if="linkResult" style="white-space:pre-wrap;font-size:13px;line-height:1.8">
-        <div v-if="linkResult.code === 0">
-          <div class="g-alert g-alert--success">
-            <el-icon><CircleCheck /></el-icon>
-            <span>{{ linkResult.msg || linkResult.data?.msg || '操作成功' }}</span>
-          </div>
-          <div v-if="linkResult.data?.trace_script" style="margin-top:12px">
-            <div style="font-weight:600;margin-bottom:6px">生成的脚本：</div>
-            <div class="g-code-block">
-              <div class="g-code-body" style="max-height:300px">
-                <code>{{ linkResult.data.trace_script }}</code>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-else class="g-alert g-alert--warning">
+
+      <template v-else-if="linkResult">
+        <!-- 错误状态 -->
+        <div v-if="linkResult.code !== 0 && !linkResult.success" class="g-alert g-alert--warning" style="margin-bottom:12px">
           <el-icon><Warning /></el-icon>
           <span>{{ linkResult.msg || '操作失败' }}</span>
         </div>
-      </div>
+
+        <!-- 成功 — 完整溯源结果展示 -->
+        <template v-if="linkResult.success">
+          <div class="g-alert g-alert--success" style="margin-bottom:12px">
+            <el-icon><CircleCheck /></el-icon>
+            <span>溯源脚本已生成</span>
+          </div>
+
+          <!-- 攻击阶段 + 入口 -->
+          <el-descriptions :column="2" border size="small" style="margin-bottom:12px">
+            <el-descriptions-item label="攻击阶段">
+              <el-tag
+                :type="linkData?.attack_stage?.includes('数据窃取') ? 'danger' : linkData?.attack_stage?.includes('横向移动') ? 'warning' : 'info'"
+                size="small"
+              >{{ linkData?.attack_stage || '未知' }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="攻击入口">{{ linkData?.entry_point || '未知' }}</el-descriptions-item>
+          </el-descriptions>
+
+          <!-- 受影响资产 -->
+          <div v-if="linkData?.affected_assets?.length" style="margin-bottom:12px">
+            <div style="font-weight:600;margin-bottom:4px;font-size:13px">受影响资产</div>
+            <el-tag v-for="(a,i) in linkData.affected_assets" :key="i" type="danger" size="small" style="margin-right:4px;margin-bottom:4px">{{ a }}</el-tag>
+          </div>
+
+          <!-- 攻击链事件 -->
+          <div v-if="linkData?.attack_chain?.length" style="margin-bottom:12px">
+            <div style="font-weight:600;margin-bottom:6px;font-size:13px">攻击链路</div>
+            <div v-for="(ev,i) in linkData.attack_chain" :key="i" class="g-alert g-alert--info" style="margin-bottom:8px;padding:8px 10px">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
+                <span style="font-weight:600;font-size:12px;min-width:40px">Step {{i+1}}</span>
+                <el-tag size="small" type="primary" effect="plain" style="font-size:11px">{{ ev.event_type || '事件' }}</el-tag>
+                <RiskBadge v-if="ev.risk_level" :level="ev.risk_level" size="small" />
+                <span v-if="ev.timestamp" style="font-size:11px;color:var(--text-tertiary);margin-left:auto">{{ ev.timestamp }}</span>
+              </div>
+              <div style="font-size:12px">{{ ev.action }} — {{ ev.source }}<span v-if="ev.target"> → {{ ev.target }}</span></div>
+              <div v-if="ev.detail" style="font-size:11px;color:var(--text-tertiary);margin-top:2px">{{ ev.detail }}</div>
+            </div>
+          </div>
+
+          <!-- 溯源总结 -->
+          <div v-if="linkData?.summary" style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;padding:6px 8px;background:var(--bg-secondary);border-radius:4px">
+            <strong>总结：</strong>{{ linkData.summary }}
+          </div>
+
+          <!-- 检索脚本（可复制 + 可执行） -->
+          <div v-if="linkData?.scripts?.length">
+            <div style="font-weight:600;margin-bottom:8px;font-size:13px">
+              <el-icon><Tickets /></el-icon> 溯源检索脚本（共 {{ linkData.scripts.length }} 个）
+            </div>
+            <div v-for="(sc, si) in linkData.scripts" :key="si" style="margin-bottom:14px">
+              <div style="font-size:13px;font-weight:500;margin-bottom:2px">{{ sc.name }}</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">{{ sc.description }}</div>
+              <CodeBlock :code="sc.code" :lang="sc.lang" />
+              <!-- SPL 脚本的执行按钮 -->
+              <div v-if="sc.lang === 'spl'" style="display:flex;gap:8px;margin-top:6px">
+                <el-button size="small" type="primary" plain @click="executeSplunkInDialog(sc.code)">
+                  <el-icon><VideoPlay /></el-icon> 执行查询
+                </el-button>
+                <el-button size="small" plain @click="openSplunkInDialog(sc.code)">
+                  <el-icon><Link /></el-icon> 在 Splunk 中打开
+                </el-button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 弹窗内 Splunk 结果 -->
+          <div v-if="dialogSplunkResult" class="g-card" style="margin-top:8px;border:1px solid var(--el-border-color-light)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span style="font-weight:600;font-size:13px"><el-icon><Monitor /></el-icon> Splunk 查询结果</span>
+              <el-button size="small" text @click="dialogSplunkResult=null">关闭</el-button>
+            </div>
+            <el-table :data="dialogSplunkResult.results" border size="small" max-height="300" style="width:100%">
+              <el-table-column v-for="(_, key) in dialogSplunkResult.results[0] || {}" :key="key" :prop="key" :label="key" min-width="100" show-overflow-tooltip />
+            </el-table>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px">
+              共 {{ dialogSplunkResult.event_count }} 条，耗时 {{ dialogSplunkResult.execution_time }}s
+            </div>
+          </div>
+        </template>
+      </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Api } from '../../api'
+import { getSplunkConfig } from '../../utils/splunk'
+import { consumeIncoming } from '../../utils/crossModuleStore'
 import AlertGuide from '../../components/AlertGuide.vue'
 import RiskBadge from '../../components/RiskBadge.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
 import FileUpload from '../../components/FileUpload.vue'
+import CodeBlock from '../../components/CodeBlock.vue'
 
 defineProps<{ mode?: string }>()
 
@@ -308,11 +392,17 @@ const useLlm = ref(false)
 const fileUploadRef = ref<InstanceType<typeof FileUpload> | null>(null)
 const uploadedFilePaths = ref<string[]>([])
 
+// ★ 回流数据
+const incomingData = ref<any>(null)
+
 // 联动弹窗
 const linkDialogVisible = ref(false)
 const linkDialogTitle = ref('')
 const linkLoading = ref(false)
 const linkResult = ref<any>(null)
+const linkData = ref<any>(null)
+const dialogSplunkLoading = ref(false)
+const dialogSplunkResult = ref<any>(null)
 
 const sampleLogs = `2024-01-05 12:34:56 web-server sshd[12345]: Failed password for invalid user admin from 192.168.1.100 port 22 ssh2
 2024-01-05 12:34:57 web-server sshd[12345]: Failed password for root from 192.168.1.100 port 22 ssh2
@@ -332,7 +422,6 @@ function onFilesUpdate(files: any[]) {
 }
 
 async function onUploadSuccess(_newFiles: any[]) {
-  // 文件上传成功后自动触发分析
   if (uploadedFilePaths.value.length > 0) {
     loading.value = true
     result.value = null
@@ -361,6 +450,7 @@ function clear() {
   input.value = ''
   result.value = null
   uploadedFilePaths.value = []
+  incomingData.value = null
 }
 
 function getRiskKey(level: string): string {
@@ -386,14 +476,12 @@ async function submit() {
   try {
     let res: any
     if (hasUploadedFiles) {
-      // 有上传的文件 → 用 file-crunch（保留文件支持重新分析）
       res = await Api.logCorrelate.fileCrunch({
         file_paths: uploadedFilePaths.value,
         time_window_minutes: timeWindow.value,
         use_llm: useLlm.value,
       })
     } else {
-      // 粘贴的文本 → 用 correlate
       const lines = input.value.split('\n').filter(l => l.trim())
       res = await Api.logCorrelate.correlate({
         log_lines: lines,
@@ -419,12 +507,14 @@ async function retryWithLLM() {
   await submit()
 }
 
-// 联动：生成溯源脚本
+// 联动：生成溯源脚本（★ 升级版：解析完整返回结构）
 async function toTraceScript(chain: any) {
   linkDialogVisible.value = true
   linkDialogTitle.value = `生成溯源脚本 — ${chain.chain_name}`
   linkLoading.value = true
   linkResult.value = null
+  linkData.value = null
+  dialogSplunkResult.value = null
 
   try {
     const lines = input.value.split('\n').filter(l => l.trim())
@@ -434,6 +524,10 @@ async function toTraceScript(chain: any) {
       attack_type: chain.chain_name || 'unknown',
     })
     linkResult.value = res
+    // 解析出 data 中的溯源信息
+    if (res.success && res.data) {
+      linkData.value = res.data
+    }
   } catch (err: any) {
     linkResult.value = { code: -1, msg: err.message || '请求失败' }
   } finally {
@@ -447,6 +541,8 @@ async function toTrainingScenario(chain: any) {
   linkDialogTitle.value = `下发实训场景 — ${chain.chain_name}`
   linkLoading.value = true
   linkResult.value = null
+  linkData.value = null
+  dialogSplunkResult.value = null
 
   try {
     const lines = input.value.split('\n').filter(l => l.trim())
@@ -462,6 +558,53 @@ async function toTrainingScenario(chain: any) {
     linkLoading.value = false
   }
 }
+
+// 弹窗内执行 Splunk 查询
+async function executeSplunkInDialog(spl: string) {
+  const cfg = getSplunkConfig()
+  if (!cfg) { ElMessage.warning('请先在导航栏设置中配置 Splunk'); return }
+  dialogSplunkLoading.value = true
+  dialogSplunkResult.value = null
+  try {
+    const r = await Api.scriptGen.splunkSearch({ spl_query: spl, splunk_config: cfg })
+    if (r.success) dialogSplunkResult.value = r.data
+    else ElMessage.error(r.msg || 'Splunk 查询失败')
+  } catch {
+    ElMessage.error('Splunk 请求失败')
+  } finally {
+    dialogSplunkLoading.value = false
+  }
+}
+
+async function openSplunkInDialog(spl: string) {
+  const cfg = getSplunkConfig()
+  if (!cfg) { ElMessage.warning('请先配置 Splunk'); return }
+  try {
+    const r = await Api.scriptGen.splunkOpenUrl({ spl_query: spl, splunk_config: cfg })
+    if (r.success && r.data?.open_url) window.open(r.data.open_url, '_blank')
+    else ElMessage.error(r.msg || '无法生成 Splunk 链接')
+  } catch {
+    ElMessage.error('请求失败')
+  }
+}
+
+// ★ 检查回流数据（组件挂载时自动检查）
+function checkIncoming() {
+  const data = consumeIncoming()
+  if (data && data.logs?.length) {
+    incomingData.value = data
+    input.value = data.logs.join('\n')
+    useLlm.value = true  // 回流分析默认启用 LLM
+    showSample.value = false
+    // 自动提交分析（延迟一帧确保 UI 渲染完毕）
+    ElMessage.info(`收到 ${data.logs.length} 条来自溯源模块的日志，正在自动分析...`)
+    setTimeout(() => submit(), 300)
+  }
+}
+
+onMounted(() => {
+  checkIncoming()
+})
 </script>
 
 <style scoped>
