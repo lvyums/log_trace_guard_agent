@@ -133,7 +133,7 @@ class ScriptGenService:
 
 
     @staticmethod
-    async def trace_attack(logs: list[str], attack_type: Optional[str] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, context: Optional[ContextManager] = None) -> Result:
+    async def trace_attack(logs: list[str], attack_type: Optional[str] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, pre_analyzed: Optional[dict] = None, context: Optional[ContextManager] = None) -> Result:
         """攻击链路溯源"""
         if not logs:
             return Result.fail("日志列表不能为空")
@@ -149,6 +149,7 @@ class ScriptGenService:
             "attack_type": attack_type,
             "start_time": start_time,
             "end_time": end_time,
+            "pre_analyzed": pre_analyzed,  # 关联分析已检出的信息，避免重复解析
         }
         result = strategy.generate(params)
 

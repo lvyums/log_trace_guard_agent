@@ -26,6 +26,7 @@ class ToTraceReq(BaseModel):
     log_lines: list[str] = Field(..., min_length=1, description="攻击链相关的日志行")
     chain_name: str = Field(default="", description="攻击链名称")
     attack_type: str = Field(default="unknown", description="攻击类型")
+    pre_analyzed: Optional[dict] = Field(default=None, description="关联分析已检出的信息（matched_keywords, indicators, matched_line_indices 等），避免重复解析")
 
 
 class ToScenarioReq(BaseModel):

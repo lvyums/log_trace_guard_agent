@@ -34,6 +34,9 @@
         <el-button v-if="result" :disabled="loading" @click="exportResults">
           <el-icon style="margin-right:4px"><Download /></el-icon> 导出结果
         </el-button>
+        <el-button v-if="result" type="primary" plain :disabled="loading" @click="sendToCorrelate">
+          <el-icon><Connection /></el-icon> 送到关联分析
+        </el-button>
       </div>
     </div>
 
@@ -143,6 +146,7 @@ import { ElMessage } from 'element-plus'
 import { APP_CONFIG } from '../../config'
 import { Api } from '../../api'
 import { Utils } from '../../utils'
+import { sendToCorrelate as storeSendToCorrelate } from '../../utils/crossModuleStore'
 import RiskBadge from '../../components/RiskBadge.vue'
 import EmptyGuide from '../../components/EmptyGuide.vue'
 import FileUpload from '../../components/FileUpload.vue'
@@ -268,5 +272,31 @@ async function submit() {
     if (r.success) result.value = r.data; else ElMessage.error(r.msg)
   } catch { ElMessage.error('请求失败') }
   finally { loading.value = false }
+}
+
+// 送到关联分析：收集所有解析过的日志，传递到 log-correlate 模块
+function sendToCorrelate() {
+  if (!result.value?.items?.length) {
+    ElMessage.warning('没有可发送的解析结果')
+    return
+  }
+  const logs: string[] = []
+  for (const item of result.value.items) {
+    if (item.log_line) {
+      logs.push(item.log_line)
+    } else if (item.parse_result?.raw_log) {
+      logs.push(item.parse_result.raw_log)
+    }
+  }
+  if (!logs.length) {
+    ElMessage.warning('没有可发送的日志内容')
+    return
+  }
+  storeSendToCorrelate({
+    logs,
+    source: 'batch-parse',
+  })
+  window.location.hash = '#/log-correlate/analyze'
+  ElMessage.success(`已发送 ${logs.length} 条日志到关联分析`)
 }
 </script>

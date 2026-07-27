@@ -686,6 +686,7 @@ class LogCorrelateService:
         log_lines: List[str],
         chain_name: str = "",
         attack_type: str = "unknown",
+        pre_analyzed: Optional[dict] = None,
         context: Optional[ContextManager] = None,
     ) -> dict:
         """攻击链 → 攻击溯源脚本（调用 script-gen/trace）"""
@@ -695,6 +696,7 @@ class LogCorrelateService:
             result = await ScriptGenService.trace_attack(
                 logs=log_lines[:100],
                 attack_type=attack_type or "unknown",
+                pre_analyzed=pre_analyzed,
                 context=context,
             )
             return result if isinstance(result, dict) else result.to_dict() if hasattr(result, 'to_dict') else {"code": 0, "data": str(result)}

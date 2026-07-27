@@ -507,7 +507,7 @@ async function retryWithLLM() {
   await submit()
 }
 
-// 联动：生成溯源脚本（★ 升级版：解析完整返回结构）
+// 联动：生成溯源脚本（★ 升级版：传递预分析结果，避免溯源重复解析）
 async function toTraceScript(chain: any) {
   linkDialogVisible.value = true
   linkDialogTitle.value = `生成溯源脚本 — ${chain.chain_name}`
@@ -518,10 +518,22 @@ async function toTraceScript(chain: any) {
 
   try {
     const lines = input.value.split('\n').filter(l => l.trim())
+    // 构建预分析数据：传递已有检测结果，避免溯源重复跑正则
+    const preAnalyzed: any = {}
+    if (chain.matched_keywords?.length) {
+      preAnalyzed.matched_keywords = chain.matched_keywords
+    }
+    if (chain.indicators?.length) {
+      preAnalyzed.indicators = chain.indicators
+    }
+    if (chain.matched_line_indices?.length) {
+      preAnalyzed.matched_line_indices = chain.matched_line_indices
+    }
     const res = await Api.logCorrelate.toTrace({
       log_lines: lines.slice(0, 100),
       chain_name: chain.chain_name || '',
       attack_type: chain.chain_name || 'unknown',
+      pre_analyzed: Object.keys(preAnalyzed).length > 0 ? preAnalyzed : undefined,
     })
     linkResult.value = res
     // 解析出 data 中的溯源信息

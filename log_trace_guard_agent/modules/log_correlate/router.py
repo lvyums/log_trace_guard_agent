@@ -70,6 +70,7 @@ async def to_trace(req: ToTraceReq, ctx: ContextManager = Depends(get_context)):
         log_lines=req.log_lines,
         chain_name=req.chain_name,
         attack_type=req.attack_type,
+        pre_analyzed=req.pre_analyzed,
         context=ctx,
     )
     return result

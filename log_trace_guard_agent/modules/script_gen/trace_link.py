@@ -60,14 +60,30 @@ class TraceLinkStrategy(BaseScriptStrategy):
     def generate(self, params: dict) -> dict:
         logs = params.get("logs", [])
         attack_type = params.get("attack_type")
+        pre_analyzed = params.get("pre_analyzed")
+
+        # 预分析结果辅助信息
+        pre_matched_keywords = set()
+        pre_indicators = []
+        pre_matched_indices = set()
+        if pre_analyzed:
+            pre_matched_keywords = set(
+                kw.lower() for kw in (pre_analyzed.get("matched_keywords") or [])
+            )
+            pre_indicators = pre_analyzed.get("indicators") or []
+            pre_matched_indices = set(
+                pre_analyzed.get("matched_line_indices") or []
+            )
 
         # 1. 逐条分析日志，提取事件
         events = []
         all_ips = set()
         affected_assets = set()
 
-        for log_line in logs:
-            event = self._analyze_log_event(log_line)
+        for i, log_line in enumerate(logs):
+            # 预分析标记过的行：注入已知匹配信息，加快解析
+            is_matched = i in pre_matched_indices
+            event = self._analyze_log_event(log_line, is_matched=is_matched, pre_keywords=pre_matched_keywords)
             if event:
                 events.append(event)
                 if event.get("source"):
@@ -75,6 +91,12 @@ class TraceLinkStrategy(BaseScriptStrategy):
                 if event.get("target"):
                     all_ips.add(event["target"])
                     affected_assets.add(event["target"])
+
+        # 注入预分析中的 indicator IP
+        for ind in pre_indicators:
+            ip = ind.get("ip") or ind.get("value", "")
+            if ip and re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", ip):
+                all_ips.add(ip)
 
         # 2. 按时间排序
         events.sort(key=lambda e: e.get("timestamp") or "")
@@ -99,8 +121,8 @@ class TraceLinkStrategy(BaseScriptStrategy):
                 if summary:
                     summary += "（注：部分数据来自知识库检索，建议人工验证）"
 
-        # 7. 生成溯源检索脚本
-        scripts = self._generate_scripts(events, entry_point, attack_type, params)
+        # 7. 生成溯源检索脚本 — 注入预分析关键词使检索更精准
+        scripts = self._generate_scripts(events, entry_point, attack_type, params, pre_matched_keywords=pre_matched_keywords)
 
         return {
             "attack_chain": events,
@@ -137,8 +159,13 @@ class TraceLinkStrategy(BaseScriptStrategy):
             logger.warning(f"溯源RAG检索失败: {e}")
         return [], None
 
-    def _analyze_log_event(self, log_line: str) -> Optional[dict]:
-        """分析单条日志，提取事件"""
+    def _analyze_log_event(self, log_line: str, is_matched: bool = False, pre_keywords: set = None) -> Optional[dict]:
+        """分析单条日志，提取事件
+        Args:
+            log_line: 日志行
+            is_matched: 是否已被 log-correlate 标记为命中
+            pre_keywords: log-correlate 命中的关键词集合，用于加速事件类型判定
+        """
         log_lower = log_line.lower()
 
         # 提取时间戳
@@ -151,10 +178,40 @@ class TraceLinkStrategy(BaseScriptStrategy):
 
         # 识别攻击类型
         event_type = "unknown"
-        for atype, pattern in self._attack_patterns.items():
-            if pattern.search(log_lower):
-                event_type = atype
-                break
+
+        # 优先使用预分析关键词匹配 — 避免重复跑全量 regex
+        if is_matched and pre_keywords:
+            for kw in pre_keywords:
+                if kw in log_lower:
+                    # 根据关键词推断事件类型（简化逻辑）
+                    if "password" in kw or "authentication" in kw or "login" in kw or "invalid user" in log_lower:
+                        event_type = "brute_force"
+                        break
+                    elif "sql" in kw or "select" in kw or "union" in kw or "injection" in kw:
+                        event_type = "sql_injection"
+                        break
+                    elif "eval" in kw or "system(" in kw or "webshell" in kw or "base64" in kw:
+                        event_type = "webshell"
+                        break
+                    elif "scan" in kw or "nmap" in kw:
+                        event_type = "port_scan"
+                        break
+                    elif "psexec" in kw or "wmiexec" in kw or "lateral" in kw:
+                        event_type = "lateral_move"
+                        break
+                    elif "exfil" in kw or "data" in kw or "download" in kw:
+                        event_type = "data_exfil"
+                        break
+                    else:
+                        event_type = "suspicious"
+                        break
+
+        # 仍未识别则走标准 regex 模式匹配
+        if event_type == "unknown":
+            for atype, pattern in self._attack_patterns.items():
+                if pattern.search(log_lower):
+                    event_type = atype
+                    break
 
         # 风险等级 — 配置驱动
         if event_type in self._high_risk_events:
@@ -248,7 +305,8 @@ class TraceLinkStrategy(BaseScriptStrategy):
         return summary
 
     def _generate_scripts(self, events: list, entry_point: Optional[str],
-                          attack_type: Optional[str], params: dict) -> list[dict]:
+                          attack_type: Optional[str], params: dict,
+                          pre_matched_keywords: set = None) -> list[dict]:
         """生成溯源检索脚本（grep / ES DSL / SIEM 查询）"""
         scripts = []
         start_time = params.get("start_time", "")
@@ -256,7 +314,7 @@ class TraceLinkStrategy(BaseScriptStrategy):
         target_ip = params.get("target_ip") or entry_point
 
         # 1. grep 脚本
-        grep_patterns = self._build_grep_patterns(events, attack_type)
+        grep_patterns = self._build_grep_patterns(events, attack_type, pre_matched_keywords=pre_matched_keywords)
         if grep_patterns:
             grep_cmd = self._build_grep_command(grep_patterns, target_ip, start_time, end_time)
             scripts.append({
@@ -267,7 +325,7 @@ class TraceLinkStrategy(BaseScriptStrategy):
             })
 
         # 2. Elasticsearch DSL 查询
-        es_query = self._build_es_query(events, attack_type, target_ip, start_time, end_time)
+        es_query = self._build_es_query(events, attack_type, target_ip, start_time, end_time, pre_matched_keywords=pre_matched_keywords)
         if es_query:
             scripts.append({
                 "name": "Elasticsearch 查询",
@@ -277,7 +335,7 @@ class TraceLinkStrategy(BaseScriptStrategy):
             })
 
         # 3. Splunk SPL 查询
-        splunk_query = self._build_splunk_query(events, attack_type, target_ip, start_time, end_time)
+        splunk_query = self._build_splunk_query(events, attack_type, target_ip, start_time, end_time, pre_matched_keywords=pre_matched_keywords)
         if splunk_query:
             scripts.append({
                 "name": "Splunk SPL 查询",
@@ -288,7 +346,8 @@ class TraceLinkStrategy(BaseScriptStrategy):
 
         return scripts
 
-    def _build_grep_patterns(self, events: list, attack_type: Optional[str]) -> list[str]:
+    def _build_grep_patterns(self, events: list, attack_type: Optional[str],
+                              pre_matched_keywords: set = None) -> list[str]:
         """根据事件类型构建 grep 正则"""
         patterns = []
         event_types = set(e.get("event_type", "") for e in events)
@@ -303,6 +362,12 @@ class TraceLinkStrategy(BaseScriptStrategy):
             patterns.append(r"(?i)(psexec|wmiexec|smbexec|PsExec)")
         if "port_scan" in event_types:
             patterns.append(r"(?i)(SYN.*scan|nmap|masscan|port.*scan)")
+
+        # 注入预分析中实际命中的关键词作为精确匹配模式
+        if pre_matched_keywords:
+            escaped_kws = [re.escape(kw) for kw in pre_matched_keywords if len(kw) > 3]
+            if escaped_kws:
+                patterns.append("|".join(escaped_kws))
 
         if not patterns:
             patterns.append(r"(?i)(failed|error|attack|blocked|denied)")
@@ -322,7 +387,8 @@ class TraceLinkStrategy(BaseScriptStrategy):
         return cmd
 
     def _build_es_query(self, events: list, attack_type: Optional[str],
-                        target_ip: str, start_time: str, end_time: str) -> str:
+                        target_ip: str, start_time: str, end_time: str,
+                        pre_matched_keywords: set = None) -> str:
         """构建 Elasticsearch DSL 查询"""
         must_conditions = []
 
@@ -347,6 +413,12 @@ class TraceLinkStrategy(BaseScriptStrategy):
         if not keywords:
             keywords.append(attack_type or "attack")
 
+        # 追加预分析实际命中的关键词（精确命中）
+        if pre_matched_keywords:
+            for kw in pre_matched_keywords:
+                if kw not in " ".join(keywords).lower():
+                    keywords.append(kw)
+
         must_conditions.append({"match": {"message": " OR ".join(keywords)}})
 
         # 时间范围
@@ -366,7 +438,8 @@ class TraceLinkStrategy(BaseScriptStrategy):
         return json.dumps(query, indent=2, ensure_ascii=False)
 
     def _build_splunk_query(self, events: list, attack_type: Optional[str],
-                            target_ip: str, start_time: str, end_time: str) -> str:
+                            target_ip: str, start_time: str, end_time: str,
+                            pre_matched_keywords: set = None) -> str:
         """构建 Splunk SPL 查询"""
         event_types = set(e.get("event_type", "") for e in events)
         search_terms = []
@@ -379,6 +452,12 @@ class TraceLinkStrategy(BaseScriptStrategy):
             search_terms.append("(eval OR system OR webshell)")
         else:
             search_terms.append(attack_type or "attack")
+
+        # 追加预分析关键词
+        if pre_matched_keywords:
+            quoted_kws = [f'"{kw}"' for kw in pre_matched_keywords if len(kw) > 3]
+            if quoted_kws:
+                search_terms.append(" OR ".join(quoted_kws))
 
         query = "index=* " + " ".join(search_terms)
 
