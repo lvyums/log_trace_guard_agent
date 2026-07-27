@@ -17,7 +17,13 @@ sys.path.insert(0, PROJECT_ROOT)
 from log_guard.common.utils import Result, JsonConfigLoader, LogManager
 from log_guard.core.log_reader import LogReader
 from log_guard.modules.log_parse import LogParseService
-from log_guard.modules.script_gen import ScriptGenService, execute_es_query, test_regex_on_file, load_es_config, save_es_config
+from log_guard.modules.script_gen import (
+    ScriptGenService,
+    execute_es_query, test_regex_on_file, load_es_config, save_es_config,
+    export_trace_report, trace_to_monitoring_rules,
+    save_es_template, list_es_templates, delete_es_template, load_es_template,
+    generate_splunk_query, execute_splunk_query, load_splunk_config, save_splunk_config,
+)
 from log_guard.modules.compliance import ComplianceService
 from log_guard.modules.log_correlate import LogCorrelateService
 
@@ -591,9 +597,10 @@ def _menu_script_gen(context: dict):
     items = [
         {"label": "正则规则生成", "desc": "根据攻防场景生成正则检测规则"},
         {"label": "ES查询生成", "desc": "生成 Elasticsearch 检索语句"},
+        {"label": "Splunk SPL生成", "desc": "生成 Splunk 搜索语句"},
         {"label": "攻击溯源", "desc": "分析攻击链路"},
         {"label": "脚本优化", "desc": "优化现有脚本（正则/ES查询）"},
-        {"label": "ES连接配置", "desc": "配置 ES 集群连接信息"},
+        {"label": "连接配置", "desc": "配置 ES / Splunk 集群连接"},
     ]
 
     idx = _show_nav_menu(items)
@@ -607,7 +614,6 @@ def _menu_script_gen(context: dict):
         result = _script_gen_svc.generate_regex(scenario, sample, device)
         _print_regex_natural(result)
 
-        # 生成后询问是否对日志文件测试
         if result.get("code") == 0:
             regexes = result.get("data", {}).get("regexes", [])
             if regexes:
@@ -628,23 +634,12 @@ def _menu_script_gen(context: dict):
                             print("  ⚠️ 日志文件为空或读取失败")
 
     elif idx == 1:
-        scenario = input("\n  检索场景描述: ").strip()
-        index = input("  索引模式 (如 logstash-*): ").strip() or None
-        time_range = input("  时间范围 (如 last_24h, last_7d): ").strip() or None
-        result = _script_gen_svc.generate_es_query(scenario, index, time_range)
-        _print_es_query_natural(result)
-
-        # 生成后询问是否执行查询
-        if result.get("code") == 0:
-            query = result.get("data", {}).get("query", {})
-            if query:
-                choice = input("\n  ⚡ 是否向 ES 集群执行此查询？[y/N]: ").strip().lower()
-                if choice == "y":
-                    idx_pattern = index or result.get("data", {}).get("index_pattern", "logs-*")
-                    es_result = execute_es_query(query, idx_pattern)
-                    _print_es_execute_result(es_result)
+        _menu_es_query(context)
 
     elif idx == 2:
+        _menu_splunk_query()
+
+    elif idx == 3:
         file_path = context.get("log_file")
         if not file_path or not os.path.exists(file_path):
             file_path = input("\n  输入日志文件路径: ").strip()
@@ -655,24 +650,57 @@ def _menu_script_gen(context: dict):
         attack_type = input("  攻击类型 (如 ssh_bruteforce, web_sql_injection, 可选): ").strip() or None
         logs = LogReader().read_log(file_path, line_limit=100).get("lines", [])
         result = _script_gen_svc.trace_attack(logs, attack_type)
-        _print_collect_plan_natural(result)
+        _print_trace_natural(result)
 
-    elif idx == 3:
+        # 溯源后：导出报告 + 生成监控规则
+        if result.get("code") == 0:
+            trace_data = result.get("data", {})
+            if trace_data.get("attack_chain"):
+                # 导出报告
+                exp = input("\n  📄 是否导出溯源报告？[y/N]: ").strip().lower()
+                if exp == "y":
+                    fmt = input("  格式 [markdown/json] (默认markdown): ").strip() or "markdown"
+                    rpt = export_trace_report(trace_data, fmt=fmt)
+                    print(f"  ✅ 报告已导出: {rpt['path']} ({rpt['size']} 字节)")
+
+                # 生成监控规则（闭环）
+                mon = input("\n  🔄 是否基于溯源结果生成持续监控规则？[y/N]: ").strip().lower()
+                if mon == "y":
+                    rules = trace_to_monitoring_rules(trace_data)
+                    _print_monitoring_rules(rules)
+
+    elif idx == 4:
         script = input("\n  输入脚本内容: ").strip()
         stype = input("  脚本类型 [regex/es_query] (默认regex): ").strip() or "regex"
         scenario = input("  使用场景 (可选): ").strip() or None
         result = _script_gen_svc.optimize_script(script, stype, scenario)
         _print_optimize_natural(result)
 
-    elif idx == 4:
-        _menu_es_config()
+    elif idx == 5:
+        _menu_connection_config()
 
     input("\n  按 Enter 继续...")
 
 
 # ════════════════════════════════════════════
-# ES 连接配置
+# 连接配置（ES + Splunk）
 # ════════════════════════════════════════════
+
+
+def _menu_connection_config():
+    """连接配置菜单：ES + Splunk"""
+    _print_header("🔗 连接配置")
+    print("  1. ES 集群连接")
+    print("  2. Splunk 连接")
+    print("  0. 返回\n")
+
+    choice = input("  请选择: ").strip()
+    if choice == "0":
+        return
+    elif choice == "1":
+        _menu_es_config()
+    elif choice == "2":
+        _menu_splunk_config()
 
 
 def _menu_es_config():
@@ -700,7 +728,6 @@ def _menu_es_config():
         path = save_es_config(host, port, scheme, user, password)
         print(f"\n  ✅ ES 连接配置已保存至 {path}")
 
-        # 测试连接
         test_choice = input("\n  ⚡ 是否测试连接？[Y/n]: ").strip().lower()
         if test_choice != "n":
             test_result = execute_es_query(
@@ -723,6 +750,177 @@ def _menu_es_config():
     elif choice == "3":
         save_es_config("", 9200, "http", "", "")
         print("\n  ✅ ES 配置已清除")
+
+
+def _menu_splunk_config():
+    """Splunk 连接配置"""
+    cfg = load_splunk_config()
+    current = cfg.get("host", "未配置")
+    _print_header("🔗 Splunk 连接配置")
+    print(f"  当前配置: {current}\n")
+    print("  1. 配置 Splunk 连接")
+    print("  2. 查看当前配置")
+    print("  3. 清除配置")
+    print("  0. 返回\n")
+
+    choice = input("  请选择: ").strip()
+    if choice == "1":
+        host = input("  Splunk 主机地址 (如 localhost): ").strip()
+        if not host:
+            print("  ❌ 主机地址不能为空")
+            return
+        port_str = input("  REST API 端口 [8089]: ").strip()
+        port = int(port_str) if port_str.isdigit() else 8089
+        scheme = input("  协议 [https] (http/https): ").strip() or "https"
+        user = input("  用户名 (可选): ").strip()
+        password = input("  密码 (可选): ").strip()
+        path = save_splunk_config(host, port, scheme, user, password)
+        print(f"\n  ✅ Splunk 连接配置已保存至 {path}")
+
+        test_choice = input("\n  ⚡ 是否测试连接？[Y/n]: ").strip().lower()
+        if test_choice != "n":
+            test_result = execute_splunk_query("| version", max_results=1)
+            if test_result["success"]:
+                print(f"  ✅ Splunk 连接成功！返回 {test_result['event_count']} 条结果")
+            else:
+                print(f"  ❌ Splunk 连接失败: {test_result['error']}")
+
+    elif choice == "2":
+        if cfg:
+            print(f"\n  主机: {cfg.get('host', '?')}")
+            print(f"  端口: {cfg.get('port', '?')}")
+            print(f"  协议: {cfg.get('scheme', '?')}")
+            print(f"  用户名: {cfg.get('user', '(空)')}")
+            print(f"  密码: {'****' if cfg.get('password') else '(空)'}")
+        else:
+            print("\n  ⚠️ 未配置 Splunk 连接")
+    elif choice == "3":
+        save_splunk_config("", 8089, "https", "", "")
+        print("\n  ✅ Splunk 配置已清除")
+
+
+# ════════════════════════════════════════════
+# ES 查询子菜单（生成 + 模板管理 + 执行）
+# ════════════════════════════════════════════
+
+
+def _menu_es_query(context: dict = None):
+    """ES 查询生成子菜单"""
+    _print_header("🔎 ES 查询生成")
+    print("  1. 按场景生成查询")
+    print("  2. 管理 ES 查询模板")  
+    print("  0. 返回\n")
+
+    choice = input("  请选择: ").strip()
+    if choice == "0":
+        return
+
+    if choice == "1":
+        scenario = input("\n  检索场景描述: ").strip()
+        index = input("  索引模式 (如 logstash-*): ").strip() or None
+        time_range = input("  时间范围 (如 last_24h, last_7d): ").strip() or None
+        result = _script_gen_svc.generate_es_query(scenario, index, time_range)
+        _print_es_query_natural(result)
+
+        if result.get("code") == 0:
+            query = result.get("data", {}).get("query", {})
+            if query:
+                # 保存为模板
+                save_tpl = input("\n  💾 是否将此查询保存为模板？[y/N]: ").strip().lower()
+                if save_tpl == "y":
+                    tpl_name = input("  模板名称: ").strip()
+                    if tpl_name:
+                        idx_pattern = index or result.get("data", {}).get("index_pattern", "logs-*")
+                        save_es_template(tpl_name, query, scenario, idx_pattern, time_range or "last_24h")
+                        print(f"  ✅ 模板「{tpl_name}」已保存")
+
+                # 执行查询
+                run = input("\n  ⚡ 是否向 ES 集群执行此查询？[y/N]: ").strip().lower()
+                if run == "y":
+                    idx_pattern = index or result.get("data", {}).get("index_pattern", "logs-*")
+                    es_result = execute_es_query(query, idx_pattern)
+                    _print_es_execute_result(es_result)
+
+    elif choice == "2":
+        _menu_es_templates()
+
+
+def _menu_es_templates():
+    """ES 查询模板管理"""
+    templates = list_es_templates()
+    if not templates:
+        print("\n  ⚠️ 暂无模板")
+        return
+
+    _print_header("📚 ES 查询模板")
+    items_json = json.dumps(templates, ensure_ascii=False, indent=2)
+    print(f"  共 {len(templates)} 个模板:\n")
+    for t in templates:
+        print(f"  📌 {t['name']}")
+        print(f"     场景: {t['scenario']}")
+        print(f"     索引: {t['index_pattern']} | 时间: {t['time_range']}")
+        print()
+
+    print("  1. 加载模板并执行")
+    print("  2. 删除模板")
+    print("  0. 返回\n")
+
+    choice = input("  请选择: ").strip()
+    if choice == "1":
+        name = input("  模板名称: ").strip()
+        tpl = load_es_template(name)
+        if not tpl:
+            print(f"  ❌ 模板「{name}」不存在")
+            return
+        print(f"\n  📋 加载模板: {name}")
+        print(f"     索引: {tpl['index_pattern']} | 时间: {tpl['time_range']}")
+        print(f"     查询: {json.dumps(tpl['query'], ensure_ascii=False, indent=2)}")
+        run = input("\n  ⚡ 是否执行此查询？[y/N]: ").strip().lower()
+        if run == "y":
+            es_result = execute_es_query(tpl['query'], tpl['index_pattern'])
+            _print_es_execute_result(es_result)
+    elif choice == "2":
+        name = input("  输入要删除的模板名称: ").strip()
+        if delete_es_template(name):
+            print(f"  ✅ 模板「{name}」已删除")
+        else:
+            print(f"  ❌ 模板「{name}」不存在")
+
+
+# ════════════════════════════════════════════
+# Splunk SPL 查询子菜单
+# ════════════════════════════════════════════
+
+
+def _menu_splunk_query():
+    """Splunk SPL 查询生成子菜单"""
+    _print_header("📊 Splunk SPL 查询生成")
+    print("  1. 按场景生成 SPL")
+    print("  0. 返回\n")
+
+    choice = input("  请选择: ").strip()
+    if choice == "0":
+        return
+
+    scenario = input("\n  检索场景描述 (如 SSH爆破攻击, SQL注入): ").strip()
+    if not scenario:
+        print("  ⚠️ 场景描述不能为空")
+        return
+    index = input("  索引 [*]: ").strip() or "*"
+    time_range = input("  时间范围 [last_24h] (last_1h/last_24h/last_7d): ").strip() or "last_24h"
+
+    result = generate_splunk_query(scenario, index, time_range)
+    _print_splunk_natural(result)
+
+    # 执行查询
+    run = input("\n  ⚡ 是否向 Splunk 集群执行此查询？[y/N]: ").strip().lower()
+    if run == "y":
+        cfg = load_splunk_config()
+        if not cfg.get("host"):
+            print("  ⚠️ Splunk 未配置，请先在「连接配置」中配置")
+            return
+        spl_result = execute_splunk_query(result["spl"])
+        _print_splunk_execute_result(spl_result)
 
 
 # ════════════════════════════════════════════
@@ -1285,8 +1483,102 @@ def _print_optimize_natural(result):
         print(f"     {optimized}")
 
 
+def _print_trace_natural(result):
+    """攻击溯源自然语言输出（替代旧的 _print_collect_plan_natural）"""
+    if result.get("code") != 0:
+        print(f"  ❌ {result.get('msg', '溯源失败')}")
+        return
+
+    data = result.get("data", {})
+    attack_chain = data.get("attack_chain", [])
+    timeline = data.get("timeline", [])
+    summary = data.get("summary", "")
+
+    print(f"\n  🔍 攻击溯源结果")
+    if summary:
+        print(f"     摘要: {summary[:200]}")
+
+    print(f"\n  📋 攻击链 ({len(attack_chain)} 阶段):")
+    stage_icons = {"侦查探测": "🔎", "初始入侵": "🚪", "权限提升": "⬆️",
+                   "横向移动": "➡️", "持久化驻留": "🏠", "数据窃取/破坏": "💀"}
+    for i, stage in enumerate(attack_chain, 1):
+        stage_name = stage.get("stage", "?")
+        icon = stage_icons.get(stage_name, "📌")
+        count = stage.get("event_count", 0)
+        print(f"\n  {icon} 阶段 {i}: {stage_name}（{count} 条事件）")
+        for evt in stage.get("events", [])[:3]:
+            print(f"       └ {evt[:150]}")
+        if len(stage.get("events", [])) > 3:
+            print(f"       └ ... 还有 {len(stage['events']) - 3} 条")
+
+    if timeline:
+        print(f"\n  ⏱ 时间线 ({len(timeline)} 节点):")
+        for t in timeline[:5]:
+            print(f"     [{t.get('sequence', '?')}] {t.get('event', '')[:100]} | {t.get('stage', '')}")
+        if len(timeline) > 5:
+            print(f"     ... 还有 {len(timeline) - 5} 个节点")
+
+
+def _print_monitoring_rules(rules: dict):
+    """展示从溯源结果生成的持续监控规则"""
+    print(f"\n  🔄 溯源→监控规则（闭环生成）")
+    print(f"     攻击类型: {rules.get('source_attack_type', '?')}")
+    print(f"     提取关键词: {', '.join(rules.get('keywords', [])[:8])}")
+    print(f"     提取IP: {', '.join(rules.get('ips', [])[:5]) or '(无)'}")
+
+    es_query = rules.get("es_query", {})
+    regex_rules = rules.get("regex_rules", [])
+
+    print(f"\n  📦 ES 查询 DSL:")
+    print(json.dumps(es_query, ensure_ascii=False, indent=2))
+
+    print(f"\n  📜 正则规则（{len(regex_rules)} 条）:")
+    for r in regex_rules:
+        if len(r.get("pattern", "")) > 60:
+            pat = r["pattern"][:60] + "..."
+        else:
+            pat = r.get("pattern", "")
+        print(f"     • {r.get('name', '?')}: {pat}")
+
+    # 可选保存为模板
+    save_choice = input(f"\n  💾 是否将 ES 查询保存为模板？[y/N]: ").strip().lower()
+    if save_choice == "y" and es_query:
+        tpl_name = input(f"  模板名称 [溯源-{rules.get('source_attack_type', 'unknown')}]: ").strip()
+        if not tpl_name:
+            tpl_name = f"溯源-{rules.get('source_attack_type', 'unknown')}"
+        save_es_template(tpl_name, es_query,
+                         f"从攻击溯源自动生成: {rules.get('summary', '')[:60]}",
+                         "logs-*", "last_24h")
+        print(f"  ✅ 模板「{tpl_name}」已保存至 ES 模板库")
+
+
+def _print_splunk_natural(result: dict):
+    """Splunk SPL 查询自然语言输出"""
+    print(f"\n  📊 Splunk SPL 查询")
+    print(f"     场景: {result.get('scene_label', '?')}")
+    print(f"     索引: {result.get('index', '*')}")
+    print(f"     时间: {result.get('time_range', 'last_24h')}")
+    print(f"     说明: {result.get('note', '?')}")
+    print(f"\n  SPL 语句:")
+    print(f"     {result.get('spl', '')}")
+
+
+def _print_splunk_execute_result(result: dict):
+    """Splunk 执行结果展示"""
+    if result.get("success"):
+        print(f"\n  ✅ Splunk 查询成功！返回 {result['event_count']} 条结果")
+        if result.get("sid"):
+            print(f"     搜索 ID: {result['sid']}")
+        for item in result.get("results", [])[:5]:
+            print(f"     └ {json.dumps(item, ensure_ascii=False)[:200]}")
+        if len(result.get("results", [])) > 5:
+            print(f"     └ ... 还有 {len(result['results']) - 5} 条")
+    else:
+        print(f"  ❌ Splunk 查询失败: {result.get('error', '未知错误')}")
+
+
 def _print_collect_plan_natural(result):
-    """采集方案自然语言输出"""
+    """采集方案自然语言输出（日志采集模块用）"""
     if result.get("code") != 0:
         print(f"  ❌ {result.get('msg', '生成失败')}")
         return

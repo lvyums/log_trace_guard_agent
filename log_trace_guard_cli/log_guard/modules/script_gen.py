@@ -670,7 +670,538 @@ def test_regex_on_file(regexes: List[Dict[str, Any]], log_lines: List[str]) -> d
         "total_matched": total_matched,
         "results": results,
     }
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────
+# 溯源报告导出
+# ──────────────────────────────────────────────
+
+
+def export_trace_report(trace_data: dict, output_path: Optional[str] = None,
+                        fmt: str = "markdown") -> dict:
+    """将溯源结果导出为可读报告
+
+    Args:
+        trace_data: trace_attack() 返回的 data dict (含 attack_chain, timeline, summary)
+        output_path: 输出路径，不传则自动生成
+        fmt: 格式 markdown / json
+
+    Returns:
+        {"path": ..., "format": ..., "size": ...}
+    """
+    if not output_path:
+        import time as _t
+        ts = _t.strftime("%Y%m%d_%H%M%S")
+        base = os.path.join(os.path.expanduser("~"), ".log-guard", "reports")
+        os.makedirs(base, exist_ok=True)
+        output_path = os.path.join(base, f"trace_report_{ts}.{fmt}")
+
+    if fmt == "json":
+        content = json.dumps(trace_data, ensure_ascii=False, indent=2)
+    else:
+        content = _build_markdown_report(trace_data)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    return {"path": output_path, "format": fmt, "size": len(content)}
+
+
+def _build_markdown_report(data: dict) -> str:
+    """构建 Markdown 格式溯源报告"""
+    lines = []
+    lines.append("# 🔍 攻击溯源报告")
+    lines.append("")
+    lines.append(f"**摘要**: {data.get('summary', '')}")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append("## 攻击链分析")
+    lines.append("")
+
+    attack_chain = data.get("attack_chain", [])
+    for i, stage in enumerate(attack_chain, 1):
+        stage_name = stage.get("stage", "?")
+        count = stage.get("event_count", 0)
+        icon = "🟢" if count > 0 else "⚪"
+        lines.append(f"### {icon} 阶段 {i}: {stage_name}")
+        lines.append("")
+        lines.append(f"- 匹配事件数: **{count}**")
+        if count > 0:
+            lines.append("")
+            lines.append("| # | 事件 |")
+            lines.append("|---|------|")
+            for j, evt in enumerate(stage.get("events", [])[:10], 1):
+                lines.append(f"| {j} | `{evt[:200]}` |")
+        lines.append("")
+
+    timeline = data.get("timeline", [])
+    if timeline:
+        lines.append("---")
+        lines.append("")
+        lines.append("## 时间线")
+        lines.append("")
+        lines.append("| 序号 | 事件 | 阶段 |")
+        lines.append("|------|------|------|")
+        for t in timeline:
+            lines.append(f"| {t.get('sequence', '?')} | `{t.get('event', '')[:120]}` | {t.get('stage', '')} |")
+        lines.append("")
+
+    lines.append("---")
+    lines.append(f"*报告生成时间: {__import__('time').strftime('%Y-%m-%d %H:%M:%S')}*")
+    return "\n".join(lines)
+
+
+# ════════════════════════════════════════════
+# ES 查询模板管理
+# ════════════════════════════════════════════
+
+_ES_TEMPLATES_PATH = os.path.join(os.path.expanduser("~"), ".log-guard", "es_templates.json")
+
+
+def _ensure_es_templates() -> dict:
+    """确保模板文件存在并返回当前模板字典"""
+    os.makedirs(os.path.dirname(_ES_TEMPLATES_PATH), exist_ok=True)
+    if not os.path.isfile(_ES_TEMPLATES_PATH):
+        default = {
+            "SSH爆破检测": {
+                "scenario": "检测SSH爆破攻击",
+                "index_pattern": "logs-*",
+                "time_range": "last_24h",
+                "query": {"query": {"bool": {"must": [{"bool": {"should": [
+                    {"match_phrase": {"message": "Failed password"}},
+                    {"match_phrase": {"message": "Invalid user"}}
+                ]}}], "filter": [{"range": {"@timestamp": {"gte": "now-24h", "lte": "now"}}}]}}, "size": 0,
+                "aggs": {"brute_force_ips": {"terms": {"field": "source.ip", "size": 20}}}}
+            },
+            "SQL注入检测": {
+                "scenario": "检测SQL注入攻击",
+                "index_pattern": "logs-*",
+                "time_range": "last_24h",
+                "query": {"query": {"bool": {"must": [{"bool": {"should": [
+                    {"wildcard": {"url": {"value": "*union*select*"}}},
+                    {"match": {"url": "1=1"}}
+                ]}}, {"match": {"event.type": "http"}}], "filter": [{"range": {"@timestamp": {"gte": "now-24h", "lte": "now"}}}]}}, "size": 10}
+            },
+        }
+        with open(_ES_TEMPLATES_PATH, "w", encoding="utf-8") as f:
+            json.dump(default, f, ensure_ascii=False, indent=2)
+        return default
+    try:
+        with open(_ES_TEMPLATES_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def list_es_templates() -> list[dict]:
+    """列出所有 ES 查询模板"""
+    data = _ensure_es_templates()
+    result = []
+    for name, tpl in data.items():
+        result.append({
+            "name": name,
+            "scenario": tpl.get("scenario", ""),
+            "index_pattern": tpl.get("index_pattern", "logs-*"),
+            "time_range": tpl.get("time_range", "last_24h"),
+        })
+    return result
+
+
+def save_es_template(name: str, query_dict: dict, scenario: str = "",
+                     index_pattern: str = "logs-*", time_range: str = "last_24h") -> str:
+    """保存 ES 查询为命名模板"""
+    data = _ensure_es_templates()
+    data[name] = {
+        "scenario": scenario,
+        "index_pattern": index_pattern,
+        "time_range": time_range,
+        "query": query_dict,
+    }
+    with open(_ES_TEMPLATES_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return name
+
+
+def delete_es_template(name: str) -> bool:
+    """删除命名模板"""
+    data = _ensure_es_templates()
+    if name not in data:
+        return False
+    del data[name]
+    with open(_ES_TEMPLATES_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return True
+
+
+def load_es_template(name: str) -> Optional[dict]:
+    """加载命名模板的 query dict"""
+    data = _ensure_es_templates()
+    tpl = data.get(name)
+    if not tpl:
+        return None
+    return {
+        "query": tpl.get("query", {}),
+        "index_pattern": tpl.get("index_pattern", "logs-*"),
+        "time_range": tpl.get("time_range", "last_24h"),
+        "scenario": tpl.get("scenario", ""),
+    }
+
+
+# ════════════════════════════════════════════
+# 溯源 → 监控规则（闭环）
+# ════════════════════════════════════════════
+
+
+def trace_to_monitoring_rules(trace_data: dict) -> dict:
+    """从溯源结果自动生成持续监控规则
+
+    根据攻击链中的 matched events，提取关键词和 IP，
+    生成 ES 查询 DSL 和 正则检测规则，实现分析→监控的闭环。
+
+    Args:
+        trace_data: trace_attack() 返回的 data dict
+
+    Returns:
+        {"es_query": {...}, "regex_rules": [...], "summary": str}
+    """
+    # 提取关键词
+    attack_chain = trace_data.get("attack_chain", [])
+    timeline = trace_data.get("timeline", [])
+    summary = trace_data.get("summary", "")
+
+    keywords = set()
+    ips = set()
+    for stage in attack_chain:
+        for evt in stage.get("events", []):
+            # 提取 IP
+            found_ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", evt)
+            for ip in found_ips:
+                ips.add(ip)
+            # 提取关键词（取常见的攻击特征词）
+            for kw in ["Failed password", "Invalid user", "Accepted password",
+                       "sudo", "COMMAND", "error", "warning", "login",
+                       "SELECT", "UNION", "DROP", "exec", "eval",
+                       "POST", "GET", "HTTP", "script", "alert"]:
+                if kw.lower() in evt.lower():
+                    keywords.add(kw)
+
+    # 构建 ES 查询
+    es_query = _build_es_from_keywords(list(keywords)[:10], list(ips)[:5])
+    # 构建正则规则
+    regex_rules = _build_regex_from_keywords(list(keywords)[:10], list(ips)[:5])
+
+    return {
+        "es_query": es_query,
+        "regex_rules": regex_rules,
+        "summary": summary,
+        "keywords": sorted(keywords),
+        "ips": sorted(ips),
+        "source_attack_type": summary.split("|")[0].replace("Attack type:", "").strip() if "|" in summary else "unknown",
+    }
+
+
+def _build_es_from_keywords(keywords: list[str], ips: list[str]) -> dict:
+    """根据关键词+IP列表生成 ES Query DSL"""
+    should = []
+    for kw in keywords[:8]:
+        if kw and len(kw) > 2:
+            should.append({"match_phrase": {"message": kw}})
+    for ip in ips[:3]:
+        should.append({"match_phrase": {"message": ip}})
+
+    if not should:
+        return {"query": {"match_all": {}}, "size": 10}
+
+    return {
+        "query": {
+            "bool": {
+                "must": [{"bool": {"should": should}}],
+                "filter": [{"range": {"@timestamp": {"gte": "now-24h", "lte": "now"}}}]
+            }
+        },
+        "size": 10,
+    }
+
+
+def _build_regex_from_keywords(keywords: list[str], ips: list[str]) -> list[dict]:
+    """根据关键词+IP列表生成正则检测规则"""
+    rules = []
+    for kw in keywords[:8]:
+        if not kw or len(kw) < 3:
+            continue
+        escaped = re.escape(kw)
+        rules.append({
+            "name": f"溯源自动规则: {kw[:30]}",
+            "pattern": f"(?i){escaped}",
+            "description": f"从攻击溯源自动生成的检测规则（关键词: {kw}）",
+            "match_example": kw,
+            "priority": 75,
+            "source": "trace_to_rule",
+        })
+    for ip in ips[:3]:
+        rules.append({
+            "name": f"溯源自动规则: IP_{ip}",
+            "pattern": re.escape(ip),
+            "description": f"从攻击溯源自动生成的检测规则（IP: {ip}）",
+            "match_example": ip,
+            "priority": 85,
+            "source": "trace_to_rule",
+        })
+    return rules
+
+
+# ════════════════════════════════════════════
+# Splunk 配置管理
+# ════════════════════════════════════════════
+
+
+def save_splunk_config(host: str = "", port: int = 8089, scheme: str = "https",
+                       user: str = "", password: str = "") -> str:
+    """保存 Splunk 连接配置到 ~/.log-guard/config.json"""
+    path = _es_config_path()  # 同文件
+    data = {}
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    data["splunk"] = {
+        "host": host,
+        "port": port,
+        "scheme": scheme,
+        "user": user,
+        "password": password,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def load_splunk_config() -> dict:
+    """加载 Splunk 连接配置"""
+    path = _es_config_path()
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("splunk", {})
+    except Exception:
+        return {}
+
+
+def execute_splunk_query(spl_query: str, splunk_config: Optional[dict] = None,
+                         max_results: int = 50, timeout: int = 30) -> dict:
+    """向 Splunk 执行 SPL 查询
+
+    使用 Splunk REST API: POST /services/search/jobs → 轮询 → GET results
+
+    Args:
+        spl_query: SPL 查询语句
+        splunk_config: 连接配置（不传则从文件加载）
+        max_results: 最大返回条数
+        timeout: 超时秒数
+
+    Returns:
+        {"success": bool, "results": [...], "event_count": int, "error": str}
+    """
+    cfg = splunk_config or load_splunk_config()
+    host = cfg.get("host", "").strip()
+    if not host:
+        return {"success": False, "results": [], "event_count": 0,
+                "error": "Splunk 未配置，请先配置 Splunk 连接信息"}
+
+    port = cfg.get("port", 8089)
+    scheme = cfg.get("scheme", "https")
+    user = cfg.get("user", "")
+    password = cfg.get("password", "")
+    base_url = f"{scheme}://{host}:{port}"
+
+    # 基础认证
+    auth_data = None
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    if user and password:
+        import base64 as _b64
+        token = _b64.b64encode(f"{user}:{password}".encode()).decode()
+        headers["Authorization"] = f"Basic {token}"
+
+    try:
+        import time as _t
+        # 1. 提交搜索任务
+        import urllib.parse
+        search_url = f"{base_url}/services/search/jobs"
+        post_data = urllib.parse.urlencode({
+            "search": spl_query,
+            "max_count": str(max_results),
+        }).encode("utf-8")
+
+        req = urllib.request.Request(search_url, data=post_data, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+
+        # 2. 从响应中提取 sid
+        sid = ""
+        for line in body.split("\n"):
+            if "<sid>" in line or "sid" in line.lower():
+                import xml.etree.ElementTree as ET
+                try:
+                    root = ET.fromstring(body)
+                    ns = {"s": "http://www.w3.org/2005/Atom"}
+                    sid_elem = root.find(".//s:entry//s:id", ns)
+                    if sid_elem is not None:
+                        sid = sid_elem.text or ""
+                    else:
+                        sid = root.findtext(".//sid", "")
+                except Exception:
+                    # 简单匹配
+                    m = re.search(r"<sid[^>]*>([^<]+)</sid>", body)
+                    if m:
+                        sid = m.group(1)
+                break
+
+        if not sid:
+            return {"success": False, "results": [], "event_count": 0,
+                    "error": "无法从 Splunk 响应中提取 SID"}
+
+        # 3. 轮询等待完成
+        job_url = f"{base_url}/services/search/jobs/{sid}"
+        deadline = _t.time() + timeout
+        while _t.time() < deadline:
+            status_req = urllib.request.Request(job_url, headers=headers)
+            try:
+                with urllib.request.urlopen(status_req, timeout=10) as sresp:
+                    stext = sresp.read().decode("utf-8")
+                if 'isDone">1<' in stext or '"isDone":"1"' in stext:
+                    break
+            except Exception:
+                pass
+            _t.sleep(1)
+        else:
+            return {"success": False, "results": [], "event_count": 0,
+                    "error": f"Splunk 搜索超时（{timeout}s）"}
+
+        # 4. 获取结果
+        results_url = f"{base_url}/services/search/jobs/{sid}/results?count={max_results}&output_mode=json"
+        results_req = urllib.request.Request(results_url, headers=headers)
+        with urllib.request.urlopen(results_req, timeout=timeout) as rresp:
+            rdata = json.loads(rresp.read().decode("utf-8"))
+
+        results = rdata.get("results", [])
+        return {
+            "success": True,
+            "results": results,
+            "event_count": len(results),
+            "sid": sid,
+            "error": None,
+        }
+
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode("utf-8", errors="replace")[:500]
+        return {"success": False, "results": [], "event_count": 0,
+                "error": f"Splunk HTTP {e.code}: {body_text}"}
+    except urllib.error.URLError as e:
+        return {"success": False, "results": [], "event_count": 0,
+                "error": f"Splunk 连接失败: {e.reason}"}
+    except Exception as e:
+        return {"success": False, "results": [], "event_count": 0,
+                "error": f"Splunk 查询异常: {e}"}
+
+
+# Splunk SPL 查询模板
+_SPL_TEMPLATES = {
+    "ssh_brute": {
+        "scene_label": "SSH爆破攻击",
+        "spl": 'index=* sourcetype=ssh* "Failed password" OR "Invalid user" | stats count by src_ip | where count > 5 | sort -count',
+    },
+    "sql_injection": {
+        "scene_label": "SQL注入攻击",
+        "spl": 'index=* sourcetype=access_* "union select" OR "1=1" OR "1=2" OR "%27" OR "--" | stats count by src_ip, uri_path | sort -count',
+    },
+    "web_attack": {
+        "scene_label": "Web攻击事件",
+        "spl": 'index=* sourcetype=access_* (status=403 OR status=404 OR status>=500) | stats count by src_ip, uri_path, status | sort -count',
+    },
+    "abnormal_traffic": {
+        "scene_label": "异常流量检测",
+        "spl": 'index=* sourcetype=netflow* bytes > 1000000 | stats sum(bytes) as total_bytes, count by src_ip | where total_bytes > 10000000 | sort -total_bytes',
+    },
+    "data_exfil": {
+        "scene_label": "数据泄露检测",
+        "spl": 'index=* ("INTO OUTFILE" OR mysqldump OR pg_dump OR export OR download) | stats count by user, src_ip | sort -count',
+    },
+}
+
+
+def generate_splunk_query(search_scenario: str, index: str = "*",
+                          time_range: str = "last_24h") -> dict:
+    """根据场景描述生成 Splunk SPL 查询语句
+
+    Args:
+        search_scenario: 检索场景描述
+        index: 索引名称
+        time_range: 时间范围标签
+
+    Returns:
+        {"spl": ..., "scene_label": ..., "note": ..., "index": ..., "time_range": ...}
+    """
+    scene_lower = search_scenario.lower()
+
+    best_match = None
+    best_score = 0
+    for key, tpl in _SPL_TEMPLATES.items():
+        kw = key.replace("_", " ")
+        # 同时匹配英文关键词和中文场景标签
+        score = sum(1 for word in kw.split() if word in scene_lower)
+        cn_label = tpl.get("scene_label", "")
+        if any(ch in scene_lower for ch in cn_label):
+            score += 2
+        if cn_label and cn_label[:2] in scene_lower:
+            score += 1
+        if score > best_score:
+            best_score = score
+            best_match = key
+
+    if best_match and best_match in _SPL_TEMPLATES:
+        tpl = _SPL_TEMPLATES[best_match]
+        spl = tpl["spl"]
+        # 替换索引
+        if index != "*":
+            spl = spl.replace("index=*", f"index={index}")
+        # 添加时间范围
+        time_map = {"last_1h": "-1h@h", "last_4h": "-4h@h", "last_24h": "-1d@d",
+                    "last_7d": "-7d@d", "last_30d": "-30d@d"}
+        rt = time_map.get(time_range, "-1d@d")
+        spl = f"{spl} | eval _time=now() | where _time > relative_time(now(), \"{rt}\")"
+
+        return {
+            "spl": spl,
+            "scene_label": tpl["scene_label"],
+            "note": f"匹配模板: {tpl['scene_label']} | 索引: {index} | 时间: {time_range}",
+            "index": index,
+            "time_range": time_range,
+        }
+
+    # 无匹配 → 生成通用查询
+    spl_parts = []
+    for word in search_scenario.split()[:5]:
+        if len(word) > 2:
+            spl_parts.append(word)
+    if spl_parts:
+        search_terms = " OR ".join(spl_parts)
+        spl = f'index={index} "{search_terms}" | stats count by src_ip | sort -count | head 50'
+    else:
+        spl = f"index={index} | head 50"
+
+    return {
+        "spl": spl,
+        "scene_label": "自定义查询",
+        "note": f"未匹配到模板，基于描述关键词生成 | 索引: {index} | 时间: {time_range}",
+        "index": index,
+        "time_range": time_range,
+    }
+
+
+# ──────────────────────────────────────────────
 
 class ScriptGenService:
     """
