@@ -58,7 +58,7 @@ class LLMClient:
 
     def chat_json(self, messages: list[dict], temperature: Optional[float] = None,
                   max_tokens: Optional[int] = None) -> dict:
-        """调用 LLM 并解析返回 JSON"""
+        """调用 LLM 并解析返回 JSON（带截断恢复）"""
         result = self.chat(messages, temperature, max_tokens)
         if not result["success"] or not result["content"]:
             return {"success": False, "error": result["error"], "data": None}
@@ -70,11 +70,33 @@ class LLMClient:
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
 
+        # 尝试直接解析
         try:
             data = json.loads(content)
             return {"success": True, "error": None, "data": data}
         except json.JSONDecodeError:
-            return {"success": False, "error": "LLM 返回内容不是有效 JSON", "data": content}
+            pass
+
+        # 截断恢复：尝试补全缺失括号/提取部分JSON
+        clean = content.rstrip(",; \t\n\r")
+        for suffix in ["]", "}]", "\n]", "\n}\n]"]:
+            try:
+                data = json.loads(clean + suffix)
+                return {"success": True, "error": None, "data": data}
+            except json.JSONDecodeError:
+                continue
+
+        # 流式截断：提取第一个完整JSON对象
+        try:
+            decoder = json.JSONDecoder()
+            idx = content.find("[")
+            if idx >= 0:
+                data, _ = decoder.raw_decode(content[idx:])
+                return {"success": True, "error": None, "data": data}
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        return {"success": False, "error": "LLM 返回内容不是有效 JSON（截断恢复失败）", "data": content}
 
 
 class EmbeddingClient:

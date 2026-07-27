@@ -1,157 +1,215 @@
 {
   "rules": [
     {
-      "id": "CHAIN-SSH-001",
-      "name": "SSH暴力破解",
-      "description": "检测SSH暴力破解攻击链：多次认证失败 → 最终成功登录",
-      "risk_level": "P2_高危",
-      "min_events": 2,
-      "max_time_window_minutes": 10,
-      "suggestion": "立即封禁源IP，启用fail2ban，强制密钥认证",
-      "stages": [
-        {
-          "device_type": "ssh",
-          "status": "failed",
-          "min_count": 3,
-          "label": "多次SSH认证失败"
-        },
-        {
-          "device_type": "ssh",
-          "status": "success",
-          "label": "SSH登录成功"
-        }
-      ]
+      "name": "ssh_brute_to_privesc",
+      "description": "SSH暴力破解后提权攻击链：多次登录失败 → 登录成功 → sudo提权",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "Failed password|登录失败|密码错误|认证失败", "source": "ssh|auth|.*"},
+        {"keyword": "Accepted password|登录成功|登录认证成功", "source": "ssh|auth|.*"},
+        {"keyword": "sudo.*COMMAND=|sudo.*执行|SUDO.*|提权|root权限|sudo:", "source": "ssh|auth|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 3
     },
     {
-      "id": "CHAIN-SSH-002",
-      "name": "SSH暴力破解（仅失败）",
-      "description": "检测SSH暴力破解：短时间大量失败尝试",
-      "risk_level": "P2_高危",
-      "min_events": 5,
-      "max_time_window_minutes": 5,
-      "suggestion": "检查是否存在暴力破解，考虑封禁源IP",
-      "stages": [
-        {
-          "device_type": "ssh",
-          "status": "failed",
-          "min_count": 5,
-          "label": "大量SSH认证失败"
-        }
-      ]
+      "name": "brute_force_attempt",
+      "description": "暴力破解攻击链：高频登录失败 → 异常IP → 账号爆破",
+      "type": "time_window",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "Failed password|登录失败|密码错误|invalid password|wrong credential|认证失败", "source": "auth|ssh|application|.*"},
+        {"keyword": "invalid user|Invalid user|不存在的用户|unknown user|非法用户", "source": "ssh|auth|.*"},
+        {"keyword": "brute force|暴力破解|爆破|blocked ip|入侵检测|blocked|多次尝试", "source": "security|waf|ids|ssh|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2,
+      "min_freq": 3
     },
     {
-      "id": "CHAIN-DEF-001",
-      "name": "防火墙拦截链",
-      "description": "检测防火墙持续拦截：大量drop → rejected，可能为扫描或攻击",
-      "risk_level": "P2_高危",
-      "min_events": 3,
-      "max_time_window_minutes": 5,
-      "suggestion": "检查源IP是否为恶意扫描，考虑永久封禁",
-      "stages": [
-        {
-          "device_type": "firewall",
-          "status": "dropped",
-          "min_count": 3,
-          "label": "防火墙丢弃流量"
-        },
-        {
-          "device_type": "firewall",
-          "status_startswith": "reject",
-          "min_count": 2,
-          "label": "防火墙拒绝连接"
-        }
-      ]
+      "name": "sql_injection_chain",
+      "description": "SQL注入攻击链：异常SQL查询 → 数据泄露 → 表结构探测",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "SELECT.*FROM|INSERT.*INTO|DROP.*TABLE|UPDATE.*SET|DELETE.*FROM|select.*from|insert.*into|drop.*table", "source": "db|mysql|waf|.*"},
+        {"keyword": "OR.*=.*1|UNION.*SELECT|--.*|'.*OR.*'|1=1|and.*=.*|union.*select|sql注入", "source": "db|mysql|waf|.*"},
+        {"keyword": "information_schema|table_schema|column_name|系统表|用户表|敏感表", "source": "db|mysql|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
     },
     {
-      "id": "CHAIN-WEB-001",
-      "name": "Web攻击→数据库入侵",
-      "description": "检测Web攻击到数据库入侵链：WAF拦截 → Web异常 → 数据库错误",
-      "risk_level": "P1_中危",
-      "min_events": 2,
-      "max_time_window_minutes": 10,
-      "suggestion": "检查SQL注入攻击，审计数据库操作日志",
-      "stages": [
-        {
-          "device_type": "waf",
-          "status": "blocked",
-          "attack_type": "sql",
-          "label": "WAF拦截SQL注入"
-        },
-        {
-          "device_type": "web",
-          "status_startswith": "5",
-          "label": "Web服务器5xx错误"
-        },
-        {
-          "device_type": "db",
-          "status": "error",
-          "label": "数据库错误"
-        }
-      ]
+      "name": "web_scan_to_exploit",
+      "description": "Web扫描到漏洞利用攻击链：大量4XX请求 → 漏洞利用尝试 → 成功入侵(200+payload)",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "404|403|400|301|扫描|probe|scan|dir busting|dirsearch|gobuster|admin|phpinfo|test|路径遍历|目录扫描|..\\/", "source": "web|nginx|http|waf|.*"},
+        {"keyword": "eval|exec|system|cmd|passthru|shell_exec|webshell|木马|后门|RCE|命令执行|远程代码", "source": "web|waf|.*"},
+        {"keyword": "200.*(eval|shell|cmd|exec|whoami|cat|flag|admin/login|success)|200.*(木马|后门|webshell)|200.*(phpinfo|phpmyadmin)", "source": "web|nginx|http|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
     },
     {
-      "id": "CHAIN-DB-001",
-      "name": "数据库连接失败链",
-      "description": "检测数据库连接失败关联链：连接失败 → 重试 → 最终超时",
-      "risk_level": "P1_中危",
-      "min_events": 2,
-      "max_time_window_minutes": 5,
-      "suggestion": "检查数据库服务状态和连接池配置",
-      "stages": [
-        {
-          "device_type": "db",
-          "status": "error",
-          "label": "数据库连接失败"
-        },
-        {
-          "device_type": "db",
-          "status": "timeout",
-          "label": "数据库超时"
-        }
-      ]
+      "name": "initial_access_to_lateral",
+      "description": "入口入侵到横向移动：Web漏洞利用 → SSH/internal跳转 → 内网扫描",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "webshell|shell|反弹|reverse|exec|whoami|RCE|命令执行|上传|upload|getshell", "source": "web|waf|.*"},
+        {"keyword": "ssh.*(192.168|10.|172.1[6-9]|172.2[0-9]|172.3[0-1])|SSH.*(内网|跳转|跳板)|ssh:.*Accepted|SSH登录", "source": "ssh|auth|.*"},
+        {"keyword": "nmap|扫描|scan|探测|port.*scan|端口扫描|主机发现|内网探测|横向", "source": "firewall|ids|network|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
     },
     {
-      "id": "CHAIN-AUTH-001",
-      "name": "认证失败→访问拒绝",
-      "description": "检测认证失败关联链：多次认证失败 → 账户锁定 → 访问拒绝",
-      "risk_level": "P2_高危",
-      "min_events": 2,
-      "max_time_window_minutes": 5,
-      "suggestion": "检查账户安全策略，启用多因素认证",
-      "stages": [
-        {
-          "device_type": "auth",
-          "status": "failed",
-          "min_count": 3,
-          "label": "多次认证失败"
-        },
-        {
-          "device_type": "auth",
-          "status_startswith": "denied",
-          "label": "访问被拒绝"
-        }
-      ]
+      "name": "privilege_escalation",
+      "description": "权限提升攻击链：低权限操作 → sudo提权 → 敏感文件访问",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "su.*|sudo.*|切换用户|su:.*|sudo:|提权", "source": "auth|system|ssh|.*"},
+        {"keyword": "sudo.*COMMAND=|sudo:.*COMMAND|sudo:.*command|提权成功|获取root", "source": "auth|system|ssh|.*"},
+        {"keyword": "/etc/shadow|/etc/passwd|/etc/sudoers|shadow|passwd|密钥|私钥|证书|秘钥|credential|凭据", "source": "auth|system|.*"}
+      ],
+      "time_window": 120,
+      "required_matches": 2
     },
     {
-      "id": "CHAIN-NET-001",
-      "name": "网络超时级联链",
-      "description": "检测网络超时关联链：重试 → 超时 → 服务降级",
-      "risk_level": "P2_高危",
-      "min_events": 2,
-      "max_time_window_minutes": 3,
-      "suggestion": "检查网络连通性和下游服务健康状态",
-      "stages": [
-        {
-          "device_type": "network",
-          "status_startswith": "timeout",
-          "label": "网络超时"
-        },
-        {
-          "device_type": "network",
-          "status": "error",
-          "label": "网络错误"
-        }
-      ]
+      "name": "data_exfiltration",
+      "description": "数据窃取攻击链：大量查询 → 大流量出站 → DNS/隐蔽通道",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "select|query|查询|export|dump|备份|下载|批量|大量|bulk|mass|select.*into|into outfile", "source": "db|application|.*"},
+        {"keyword": "outbound|出站|出口|egress|大流量|high.*traffic|大量数据|data.*transfer|upload|上传.*外部", "source": "network|firewall|.*"},
+        {"keyword": "dns.*tunnel|dns隧道|dns.*query.*(base64|hex|encoded)|DNS.*异常|encoded|编码传输|domain.*(base64|random)|异常DNS", "source": "dns|network|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "c2_beacon",
+      "description": "C2通信检测链：周期性出站 → 心跳信号 → 数据回传",
+      "type": "time_window",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "outbound|出站|connect.*(外部|external|公网|internet)|external.*connect|连接.*(外部|未知)", "source": "firewall|network|.*"},
+        {"keyword": "heartbeat|心跳|beacon|轮询|poll|periodic|定时|sleep.*(connect|请求)|sleep.*(10|30|60)|间隔.*请求", "source": "network|ids|.*"},
+        {"keyword": "callback|回连|回传|reverse.*(shell|connect)|beacon|C2|command.*control|受控|后门|木马|远控", "source": "ids|waf|security|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2,
+      "min_freq": 3
+    },
+    {
+      "name": "ransomware_attack",
+      "description": "勒索软件攻击链：文件加密 → 扩展名变更 → 勒索通知/系统降级",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "encrypt|加密|lock|锁定|file.*modif|文件.*修改|文件.*操作|批量.*文件|rename|重命名", "source": "system|application|.*"},
+        {"keyword": ".(encrypted|locked|crypted|enc|locked|勒索|加密文件)|扩展名.*(加密|lock|被修改)|original.*rename", "source": "system|filesystem|.*"},
+        {"keyword": "ransom|勒索|decrypt|解密|READ_ME|README|如何解密|比特币|bitcoin|支付|赎金|系统.*(降级|崩溃|瘫痪)", "source": "security|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
+    },
+    {
+      "name": "internal_reconnaissance",
+      "description": "内网侦察攻击链：内网扫描 → 服务发现 → 漏洞探测",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "SYN.*(scan|扫描)|port.*scan|端口.*扫描|nmap|masscan|zmap|内网.*(扫描|探测)|internal.*scan", "source": "ids|firewall|network|.*"},
+        {"keyword": "22.*(open|开放)|443.*(open|开放)|3306.*(open|开放)|服务.*(发现|探测)|service.*(detect|discover)|端口.*(开|开放)", "source": "network|.*"},
+        {"keyword": "vuln|漏洞|CVE|exploit|exp|poc|payload|渗透|exploit.*attempt|漏洞利用|Exp.*尝试", "source": "waf|ids|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "web_attack_to_data_theft",
+      "description": "Web攻击到数据窃取：SQL注入/文件读取 → 数据库查询 → 凭据/数据回传",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "注入|injection|sql|select.*from|UNION|OR.*=.*|1=1|'.*OR|LFI|RFI|路径穿越|目录穿越|文件包含|file.*include|../", "source": "web|waf|.*"},
+        {"keyword": "database|db|mysql|select.*user|select.*password|select.*from.*admin|user.*table|用户表|密码表|凭据|credentials", "source": "db|mysql|.*"},
+        {"keyword": "token|session|cookie|jwt|api.*key|密钥|token|凭证|认证.*(信息|数据)|窃取|steal|exfil|泄露|outbound.*(data|数据)", "source": "web|application|network|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "dns_tunneling",
+      "description": "DNS隧道检测链：异常DNS查询 → 长编码域名 → 隐蔽数据传输",
+      "type": "time_window",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "dns.*query|dns.*request|DNS.*(查询|请求)|(查询|请求).*DNS|txt.*record|TXT.*(查询|记录)", "source": "dns|network|.*"},
+        {"keyword": "base64|hex|encode|encoded|long.*domain|长.*域名|异常.*域名|random.*domain|随机.*域名|subdomain.*(64|128|256)", "source": "dns|.*"},
+        {"keyword": "tunnel|隧道|covert|隐蔽|channel|隐蔽通道|data.*(exfil|exfiltration)|数据传输", "source": "dns|network|security|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2,
+      "min_freq": 5
+    },
+    {
+      "name": "supply_chain_attack",
+      "description": "供应链攻击链：可疑组件下载 → 恶意进程执行 → C2回连",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "npm|pip|gem|maven|nuget|go.*get|docker.*pull|下载|package|install|wget.*(external|http)|curl.*(external|http)|第三方|外部.*包|依赖.*下载", "source": "system|application|.*"},
+        {"keyword": "suspicious.*(process|exec|binary)|可疑.*(进程|文件|程序)|unknown.*process|未知.*进程|异常.*(进程|行为)|新.*进程.*启动", "source": "system|security|.*"},
+        {"keyword": "callback|回连|beacon|heartbeat|C2|remote.*(connect|access)|远控|外连|出站.*(连接|请求)|external.*connection", "source": "network|firewall|security|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "insider_threat",
+      "description": "内部威胁检测链：非工作时间访问 → 大量文件操作 → 外部存储转存",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "非工作|off.*hour|after.*hour|凌晨|深夜|2[2-3]:|0[0-5]:|周末|holiday|异常.*(时间|时段)|non.*business", "source": "auth|system|.*"},
+        {"keyword": "download|下载|export|导出|大量|大量.*(文件|数据)|批量|batch|bulk|copy|cp|scp.*(下载|到)|rsync", "source": "system|application|.*"},
+        {"keyword": "upload|上传|转存|external.*(storage|upload)|云端|云盘|网盘|USB|移动|介质|外设|transfer.*(外部|外网)|外发", "source": "network|system|.*"}
+      ],
+      "time_window": 1200,
+      "required_matches": 2
+    },
+    {
+      "name": "waf_alert_to_attack",
+      "description": "WAF告警到成功攻击链：WAF拦截 → 绕过尝试 → 攻击成功",
+      "type": "sequence",
+      "severity": "critical",
+      "patterns": [
+        {"keyword": "WAF.*(block|拦截|禁止|denied)|waf.*(alert|告警)|Web.*(防火墙|阻断)|恶意.*请求|恶意请求|攻击.*(请求|行为)|SQL.*(注入|injection)|XSS|跨站", "source": "waf|security|.*"},
+        {"keyword": "bypass|绕过|绕过.*(waf|检测)|编码|encode|base64|unicode|变形|混淆|obfuscat|case.*(转换|change)|双写|双重", "source": "waf|web|.*"},
+        {"keyword": "200.*(login|admin|upload|shell|命令|执行)|status.*(200|成功)|access.*granted|登录.*成功|上传.*成功|攻击成功|入侵.*成功", "source": "web|nginx|http|.*"}
+      ],
+      "time_window": 600,
+      "required_matches": 2
+    },
+    {
+      "name": "auth_failure_chain",
+      "description": "认证失败关联链：多次认证失败 → 账户锁定 → 访问拒绝",
+      "type": "sequence",
+      "severity": "major",
+      "patterns": [
+        {"keyword": "authentication failed|login failed|invalid credential|Failed password|认证失败|登录失败|密码错误|验证失败", "source": "auth|security|ssh|.*"},
+        {"keyword": "account locked|too many attempts|rate limit|Invalid user|账户锁定|尝试过多|次数限制|锁定|禁用|冻结|locked", "source": "auth|security|ssh"},
+        {"keyword": "access denied|permission denied|forbidden|拒绝访问|权限不足|禁止访问|无权|authorization failed|授权失败", "source": "auth|security|ssh|.*"}
+      ],
+      "time_window": 300,
+      "required_matches": 2
     }
   ]
 }

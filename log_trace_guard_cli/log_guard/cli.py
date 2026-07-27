@@ -716,11 +716,12 @@ def _menu_log_correlate(context: dict):
         line_limit = _input_int("\n  读取行数 [默认500]: ", default=500, max_val=10000)
         grep = input("  关键词过滤（可选）: ").strip() or None
         window = _input_int("  关联时间窗口(分钟) [默认5]: ", default=5, max_val=60)
+        use_llm_opt = input("  LLM增强分析 [y/N]: ").strip().lower() == 'y'
 
         _show_status_bar(f"正在对 {os.path.basename(file_path)} 进行关联分析...")
         result = _log_correlate_svc.correlate_logs_from_file(
             file_path, line_limit=line_limit, grep=grep,
-            time_window_minutes=window, detailed=True,
+            time_window_minutes=window, detailed=True, use_llm=use_llm_opt,
         )
         _print_correlation_result(result)
 
@@ -740,9 +741,10 @@ def _menu_log_correlate(context: dict):
             return
 
         window = _input_int("\n  关联时间窗口(分钟) [默认5]: ", default=5, max_val=60)
+        use_llm_opt = input("  LLM增强分析 [y/N]: ").strip().lower() == 'y'
 
         _show_status_bar(f"正在分析 {len(lines)} 条日志...")
-        result = _log_correlate_svc.correlate_logs(lines, time_window_minutes=window, detailed=True)
+        result = _log_correlate_svc.correlate_logs(lines, time_window_minutes=window, detailed=True, use_llm=use_llm_opt)
         _print_correlation_result(result)
 
     elif idx == 2:

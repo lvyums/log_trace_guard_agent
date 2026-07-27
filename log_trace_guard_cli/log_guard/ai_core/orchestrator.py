@@ -136,7 +136,11 @@ class AIOrchestrator:
                 else:
                     lines = question.split("\n") if question else [question]
                 window = int(params.get("time_window", 5))
-                result = svc.correlate_logs(lines, time_window_minutes=window)
+                # 支持 use_llm 参数：LLM 增强模式（关键词 + LLM 合并分析）
+                use_llm = params.get("use_llm", False)
+                if isinstance(use_llm, str):
+                    use_llm = use_llm.lower() in ("true", "1", "yes", "y")
+                result = svc.correlate_logs(lines, time_window_minutes=window, use_llm=use_llm)
                 return {"correlation": result}
 
         except Exception as e:
