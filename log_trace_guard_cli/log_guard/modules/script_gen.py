@@ -1,7 +1,7 @@
 """
 Module 3: Script Generation
 
-Provides regex generation, ES query generation, platform recommendation,
+Provides regex generation, ES query generation,
 attack trace analysis, and script optimization for CLI-based log analysis.
 """
 
@@ -292,173 +292,6 @@ class EsQueryGenStrategy(BaseScriptStrategy):
 
 
 # ---------------------------------------------------------------------------
-# PlatformStrategy
-# ---------------------------------------------------------------------------
-
-class PlatformStrategy(BaseScriptStrategy):
-    """Strategy for recommending log analysis platforms based on requirements."""
-
-    strategy_type = "platform"
-
-    def __init__(self) -> None:
-        self._platforms: List[Dict[str, Any]] = []
-        self._fallback: Dict[str, Any] = {}
-
-    def _load_data(self) -> None:
-        if not self._platforms:
-            self._platforms = JsonConfigLoader.load("script_gen_platforms.json")
-        if not self._fallback:
-            self._fallback = JsonConfigLoader.load("script_gen_platform_fallback.json")
-
-    def _classify_volume(self, daily_log_volume: str) -> List[str]:
-        """Map volume string to supported volume categories."""
-        vol_lower = daily_log_volume.lower()
-        if any(v in vol_lower for v in ["tb", "large", "高"]):
-            return ["large", "medium"]
-        elif any(v in vol_lower for v in ["gb", "medium", "中"]):
-            return ["medium", "small"]
-        else:
-            return ["small"]
-
-    def _classify_budget(self, budget: str) -> List[str]:
-        """Map budget string to budget level categories."""
-        budget_lower = budget.lower()
-        if any(b in budget_lower for b in ["high", "高", "unlimited"]):
-            return ["high", "medium"]
-        elif any(b in budget_lower for b in ["medium", "中"]):
-            return ["medium", "low"]
-        else:
-            return ["low"]
-
-    def _classify_skill(self, team_skill: str) -> List[str]:
-        """Map team skill string to skill level categories."""
-        skill_lower = team_skill.lower()
-        if any(s in skill_lower for s in ["advanced", "high", "高", "expert"]):
-            return ["advanced", "intermediate"]
-        elif any(s in skill_lower for s in ["intermediate", "medium", "中"]):
-            return ["intermediate", "basic"]
-        else:
-            return ["basic"]
-
-    def generate(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Recommend log analysis platforms.
-
-        Args:
-            params: Must contain 'device_count' (int), 'daily_log_volume' (str),
-                    'budget' (str), 'team_skill' (str).
-                    Optional: 'requirements' (list of str).
-
-        Returns:
-            dict with keys: recommendations (list), comparison_table (list),
-                            choice (str).
-        """
-        self._load_data()
-
-        device_count = int(params.get("device_count", 10))
-        daily_log_volume = params.get("daily_log_volume", "small")
-        budget = params.get("budget", "medium")
-        team_skill = params.get("team_skill", "basic")
-        requirements = params.get("requirements", [])
-
-        volume_cats = self._classify_volume(daily_log_volume)
-        budget_cats = self._classify_budget(budget)
-        skill_cats = self._classify_skill(team_skill)
-
-        scored: List[tuple[float, Dict[str, Any]]] = []
-
-        for platform in self._platforms:
-            score = 0.0
-
-            # Device range match
-            dr = platform.get("device_range", {})
-            if dr.get("min", 0) <= device_count <= dr.get("max", 999999):
-                score += 3.0
-            elif device_count < dr.get("min", 0):
-                score += 1.0  # under-spec, still possible
-            else:
-                score -= 1.0  # over-spec
-
-            # Volume match
-            supported = platform.get("supported_volumes", [])
-            vol_match = sum(1 for v in volume_cats if v in supported)
-            score += vol_match * 2.0
-
-            # Budget match
-            budget_levels = platform.get("budget_level", [])
-            budget_match = sum(1 for b in budget_cats if b in budget_levels)
-            score += budget_match * 2.0
-
-            # Skill match
-            required_skill = platform.get("required_skill", [])
-            skill_match = sum(1 for s in skill_cats if s in required_skill)
-            score += skill_match * 1.5
-
-            # Requirement match
-            platform_features = set(platform.get("features", []))
-            user_reqs_lower = set(r.lower() for r in requirements)
-            feat_match = sum(
-                1 for f in platform_features if any(r in f.lower() for r in user_reqs_lower)
-            )
-            score += feat_match * 1.0
-
-            scored.append((score, platform))
-
-        # Sort by score descending
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        recommendations = []
-        comparison_table = []
-        for score, platform in scored:
-            entry = {
-                "name": platform.get("name", ""),
-                "type": platform.get("type", ""),
-                "score": round(score, 1),
-                "pros": platform.get("pros", []),
-                "cons": platform.get("cons", []),
-                "estimated_cost": platform.get("estimated_cost", ""),
-                "suitable_scenario": platform.get("suitable_scenario", ""),
-            }
-            recommendations.append(entry)
-            comparison_table.append({
-                "name": platform.get("name", ""),
-                "type": platform.get("type", ""),
-                "score": round(score, 1),
-                "features": ", ".join(platform.get("features", [])[:3]),
-            })
-
-        # Top recommendation
-        if recommendations:
-            best = recommendations[0]
-            choice = (
-                f"Recommended: {best['name']} "
-                f"(score: {best['score']}) — {best['suitable_scenario']}"
-            )
-        else:
-            # Fallback to default platform
-            fallback_name = self._fallback.get("name", "ELK Stack")
-            choice = (
-                f"Fallback recommendation: {fallback_name} — "
-                f"{self._fallback.get('suitable_scenario', '')}"
-            )
-            recommendations.append({
-                "name": fallback_name,
-                "type": self._fallback.get("type", ""),
-                "score": 0.0,
-                "pros": self._fallback.get("pros", []),
-                "cons": self._fallback.get("cons", []),
-                "estimated_cost": self._fallback.get("estimated_cost", ""),
-                "suitable_scenario": self._fallback.get("suitable_scenario", ""),
-            })
-
-        return {
-            "recommendations": recommendations,
-            "comparison_table": comparison_table,
-            "choice": choice,
-        }
-
-
-# ---------------------------------------------------------------------------
 # TraceStrategy
 # ---------------------------------------------------------------------------
 
@@ -622,7 +455,6 @@ def _register_default_strategies() -> ScriptStrategyFactory:
     factory = ScriptStrategyFactory()
     factory.register("regex", RegexGenStrategy)
     factory.register("es_query", EsQueryGenStrategy)
-    factory.register("platform", PlatformStrategy)
     factory.register("trace", TraceStrategy)
     return factory
 
@@ -802,50 +634,6 @@ class ScriptGenService:
         except Exception as e:
             logger.error(f"Batch ES query generation failed: {e}", exc_info=True)
             return Result.fail(msg=f"Batch ES query generation failed: {e}")
-
-    # ------------------------------------------------------------------
-    # recommend_platform
-    # ------------------------------------------------------------------
-
-    def recommend_platform(
-        self,
-        device_count: int,
-        daily_log_volume: str,
-        budget: str,
-        team_skill: str,
-        requirements: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Recommend log analysis platforms based on requirements.
-
-        Args:
-            device_count: Number of devices generating logs.
-            daily_log_volume: 'small', 'medium', or 'large'.
-            budget: 'low', 'medium', or 'high'.
-            team_skill: 'basic', 'intermediate', or 'advanced'.
-            requirements: Optional list of specific feature requirements.
-
-        Returns:
-            Result dict with platform recommendations.
-        """
-        try:
-            strategy = self.factory.get_strategy("platform")
-            params: Dict[str, Any] = {
-                "device_count": device_count,
-                "daily_log_volume": daily_log_volume,
-                "budget": budget,
-                "team_skill": team_skill,
-                "requirements": requirements or [],
-            }
-            result = strategy.generate(params)
-            recommendations = result.get("recommendations", [])
-            return Result.ok(
-                data=result,
-                msg=f"Found {len(recommendations)} platform recommendation(s)",
-            )
-        except Exception as e:
-            logger.error(f"Platform recommendation failed: {e}", exc_info=True)
-            return Result.fail(msg=f"Platform recommendation failed: {e}")
 
     # ------------------------------------------------------------------
     # trace_attack

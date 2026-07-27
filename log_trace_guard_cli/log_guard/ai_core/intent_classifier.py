@@ -12,7 +12,6 @@ INTENT_MODULES = {
     "collection": "log_collect",
     "compliance": "compliance",
     "script_gen": "script_gen",
-    "training": "training",
     "correlation": "log_correlate",
     "general": None,  # 通用问答，无需调业务模块
 }

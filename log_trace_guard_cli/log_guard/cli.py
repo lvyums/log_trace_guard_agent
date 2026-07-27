@@ -303,7 +303,6 @@ def _run_ai_mode():
                 "collection": "📡 采集架构",
                 "compliance": "📋 合规审计",
                 "script_gen": "📝 脚本规则",
-                "training": "🎓 实训答疑",
                 "general": "💡 通用问答",
             }
             label = intent_labels.get(intent, "💡 通用问答")
@@ -593,7 +592,6 @@ def _menu_script_gen(context: dict):
         {"label": "正则规则生成", "desc": "根据攻防场景生成正则检测规则"},
         {"label": "ES查询生成", "desc": "生成 Elasticsearch 检索语句"},
         {"label": "攻击溯源", "desc": "分析攻击链路"},
-        {"label": "平台选型", "desc": "推荐日志分析平台"},
         {"label": "脚本优化", "desc": "优化现有脚本（正则/ES查询）"},
     ]
 
@@ -627,14 +625,6 @@ def _menu_script_gen(context: dict):
         _print_collect_plan_natural(result)
 
     elif idx == 3:
-        count = _input_int("设备数量 (默认50): ", default=50)
-        volume = input("日日志量 [small/medium/large] (默认medium): ").strip() or "medium"
-        budget = input("预算 [low/medium/high] (默认medium): ").strip() or "medium"
-        skill = input("团队水平 [basic/intermediate/advanced] (默认basic): ").strip() or "basic"
-        result = _script_gen_svc.recommend_platform(count, volume, budget, skill)
-        _print_collect_arch_natural(result)
-
-    elif idx == 4:
         script = input("输入脚本内容: ").strip()
         stype = input("脚本类型 [regex/es_query] (默认regex): ").strip() or "regex"
         scenario = input("使用场景 (可选): ").strip() or None
@@ -1175,7 +1165,7 @@ def _print_collect_arch_natural(result):
         for r in reasoning:
             print(f"     • {r}")
 
-    # Support both log_collect and script_gen recommend_platform formats
+    # Handle architecture recommendation data
     recs = data.get("recommendations", [])
     if recs:
         print(f"\n  推荐平台:")
@@ -1407,14 +1397,6 @@ def run_command(args: argparse.Namespace):
             _print_qa_natural(result, question=args.qa)
         return
 
-    if args.train:
-        result = _training_svc.dispatch_tasks(category=args.train)
-        if args.json_output:
-            _print_json(result)
-        else:
-            _print_train_natural(result)
-        return
-
     if args.correlate is not None:
         if args.log_file:
             window = args.time_window or 5
@@ -1479,7 +1461,6 @@ def main():
         parser.add_argument("--baseline", nargs="?", const=10, type=int, help="合规基线生成（可选资产数量，默认10）")
         parser.add_argument("--optimize", nargs=2, metavar=("SCRIPT", "TYPE"), help="脚本优化（脚本内容 + 类型: regex/es_query）")
         parser.add_argument("--asset-type", help="资产类型")
-        parser.add_argument("--train", help="实训场景分类")
         parser.add_argument("--correlate", "-c", nargs="?", const="", help="联合日志审查（关联分析）")
         parser.add_argument("--time-window", "-w", type=int, default=5, help="关联时间窗口（分钟）")
 

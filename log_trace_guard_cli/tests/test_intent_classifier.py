@@ -113,7 +113,6 @@ class TestIntentClassifier(unittest.TestCase):
             "collection": "log_collect",
             "compliance": "compliance",
             "script_gen": "script_gen",
-            "training": "training",
             "correlation": "log_correlate",
             "general": None,
         }

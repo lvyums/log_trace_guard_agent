@@ -46,9 +46,6 @@ class AIOrchestrator:
             elif module_name == "compliance":
                 from log_guard.modules.compliance import ComplianceService
                 self._modules[module_name] = ComplianceService()
-            elif module_name == "training":
-                from log_guard.modules.training import TrainingService
-                self._modules[module_name] = TrainingService()
             elif module_name == "log_correlate":
                 from log_guard.modules.log_correlate import LogCorrelateService
                 self._modules[module_name] = LogCorrelateService()
@@ -118,14 +115,6 @@ class AIOrchestrator:
                 if "自查" in question or "检查" in question:
                     return {"check": svc.compliance_check(log_retention_days=180, has_backup=True, has_tamper_proof=True, device_count=50)}
                 return {"qa": svc.compliance_qa(question=question)}
-
-            elif intent.intent == "training":
-                svc = self._load_module("training")
-                if "报告" in question:
-                    return {"report": svc.generate_report(student_id="anonymous")}
-                if "答案" in question or "提交" in question:
-                    return {"note": "请使用菜单模式提交答案，或输入 '我要提交答案' 后按指引操作"}
-                return {"tasks": svc.dispatch_tasks(category="basic")}
 
             elif intent.intent == "correlation":
                 svc = self._load_module("log_correlate")
