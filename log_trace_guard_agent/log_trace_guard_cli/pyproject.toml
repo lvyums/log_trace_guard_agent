@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "log-guard"
+version = "2.0.0"
+description = "🔍 日志溯源卫士 CLI 智能体 — 终端日志分析 + AI 智能对话"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.25",
+]
+
+[project.scripts]
+log-guard = "log_guard.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["log_guard*"]
+
+[tool.setuptools.package-data]
+"log_guard" = ["data/rule_data/*.json"]

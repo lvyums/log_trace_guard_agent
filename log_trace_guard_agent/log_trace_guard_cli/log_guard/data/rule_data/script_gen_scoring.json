@@ -1,0 +1,32 @@
+{
+  "regex": {
+    "base_score": 50,
+    "compile_pass_bonus": 20,
+    "case_insensitive_suggest": "建议添加 (?i) 大小写不敏感标志，避免漏报",
+    "wildcard_excessive_issue": "包含过多 .* 或 .+，可能导致性能问题或误报",
+    "wildcard_excessive_threshold": 3,
+    "wildcard_excessive_penalty": 10,
+    "wildcard_reasonable_bonus": 5,
+    "capture_group_suggest": "建议使用捕获组 () 提取关键字段，便于后续分析",
+    "char_class_bonus": 5,
+    "length_long_issue": "正则表达式过长，建议拆分或简化",
+    "length_long_threshold": 200,
+    "length_long_penalty": 10,
+    "length_min_bonus": 10,
+    "length_min_threshold": 10,
+    "score_min": 0,
+    "score_max": 100
+  },
+  "es_query": {
+    "base_score": 50,
+    "json_parse_bonus": 20,
+    "query_field_bonus": 10,
+    "query_field_missing_issue": "缺少顶级 query 字段",
+    "size_limit_threshold": 10000,
+    "size_limit_issue": "size 超过 10000，建议使用滚动查询",
+    "size_limit_penalty": 10,
+    "aggs_bonus": 10,
+    "score_min": 0,
+    "score_max": 100
+  }
+}
