@@ -33,7 +33,7 @@ frontend/
 ├── src/
 │   ├── main.ts             # 应用入口（注册 Element Plus + 图标）
 │   ├── App.vue             # 根组件（导航 + 路由）
-│   ├── config.ts           # 全局配置 + 风险等级工具
+│   ├── config.ts           # 全局配置 + 风险等级工具 + 模块定义
 │   ├── api.ts              # API 请求层
 │   ├── utils.ts            # 通用工具函数
 │   ├── types.ts            # TypeScript 类型定义
@@ -47,15 +47,34 @@ frontend/
 │   │   ├── RiskCard.vue    # 风险研判卡片
 │   │   ├── CodeBlock.vue   # 代码展示
 │   │   ├── KnowledgePanel.vue # 知识点面板
-│   │   └── ConfirmBatch.vue # 批量确认弹窗
+│   │   ├── ConfirmBatch.vue # 批量确认弹窗
+│   │   └── CliDownloadBanner.vue # CLI下载横幅
 │   └── modules/            # 页面组件（按模块分组）
 │       ├── log-parse/      # 日志解析（4个页面）
-│       ├── log-collect/    # 日志采集（4个页面）
-│       ├── script-gen/     # 脚本生成（5个页面）
+│       ├── log-correlate/  # 日志联合审查（2个页面）
+│       ├── advisory/       # 规划咨询（4个页面）
+│       ├── log-collect/    # 故障诊断（13个页面，含采集方案子功能）
+│       ├── script-gen/     # 脚本生成（4个页面）
 │       ├── compliance/     # 合规审计（3个页面）
-│       └── training/       # 攻防实训（3个页面）
+│       └── training/       # 攻防实训（2个页面）
 └── dist/                   # 构建产出（gitignored）
 ```
+
+## 导航模块
+
+前端配置定义在 `src/config.ts` 的 `APP_CONFIG.modules` 数组中，共 **7 个模块、22 个子页面**：
+
+| 模块 key         | 导航名       | 子页面数 | 路由前缀                      |
+| ---------------- | ------------ | -------- | ----------------------------- |
+| `log-parse`      | 日志解析     | 4        | `/log-parse/`                 |
+| `log-correlate`  | 日志联合审查 | 2        | `/log-correlate/`             |
+| `advisory`       | 规划咨询     | 4        | `/advisory/`                  |
+| `fault`          | 故障诊断     | 1        | `/fault/`                     |
+| `script-gen`     | 脚本生成     | 4        | `/script-gen/`                |
+| `compliance`     | 合规审计     | 3        | `/compliance/`                |
+| `training`       | 攻防实训     | 2        | `/training/`（仅实训模式显示） |
+
+> 模块列表和路由映射在 `App.vue` 的 `ROUTE_MAP` 中定义。
 
 ## 迁移指南（CDN → Vite）
 
@@ -74,4 +93,5 @@ frontend/
 2. 在 `src/App.vue` 中：
    - `import` 新组件
    - 在 `ROUTE_MAP` 中添加路由映射
-3. `npm run build` 验证
+3. 在 `src/config.ts` 的 `APP_CONFIG.modules` 中注册模块/子页面
+4. `npm run build` 验证
