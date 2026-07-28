@@ -323,3 +323,10 @@ ES_MAX_RESULTS=100
 ### Q6: 保存到 .env 后需要重启吗？
 
 **需要**。保存到 `.env` 后，后端服务需要重启才能读取新的环境变量。但前端 localStorage 中的配置不受重启影响，重启前仍可使用临时配置。
+
+### Q7: 「保存到 .env」在服务器部署时能用吗？
+
+参考 `docs/生产部署指南.md`。简单说：
+- **Docker 部署** ❌ 容器内文件重启丢失，应通过 `docker-compose.yml` 的 `environment` 配置
+- **systemd 部署** ⚠️ 取决于文件权限，但建议改用 `Environment=` 配置
+- **多用户场景**：使用 **临时保存**（localStorage），各用户独立配置自己的 ES/Splunk 连接
