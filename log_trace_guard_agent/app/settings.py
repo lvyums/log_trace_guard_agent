@@ -108,6 +108,14 @@ class Settings(BaseSettings):
     splunk_search_timeout: int = 30    # 查询超时（秒）
     splunk_max_results: int = 100      # 最大返回条数
 
+    # ── ES 配置 ──
+    es_base_url: str = ""              # 如 http://localhost:9200
+    es_username: str = ""              # 用户名（可选）
+    es_password: str = ""              # 密码（可选）
+    es_verify_ssl: bool = True         # 是否验证 SSL 证书
+    es_search_timeout: int = 30        # 查询超时（秒）
+    es_max_results: int = 100          # 最大返回条数
+
     # ── 规则引擎配置 ──
     rule_data_dir: str = os.path.join(_PROJECT_ROOT, "data", "rule_data")
     rule_watcher_enabled: bool = True

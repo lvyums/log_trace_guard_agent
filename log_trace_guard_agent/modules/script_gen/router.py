@@ -9,6 +9,8 @@ from modules.script_gen.schemas import (
     TraceLinkReq,
     OptimizeReq,
     SplunkSearchReq,
+    ESSearchReq,
+    ESConfigSaveReq,
 )
 from core.context_manager import ContextManager
 from app.dependencies import get_context
@@ -115,4 +117,32 @@ async def splunk_test(req: SplunkSearchReq):
         spl_query=req.spl_query,
         splunk_config=req.splunk_config.model_dump() if req.splunk_config else None,
     )
+    return result
+
+
+@router.post("/es/search")
+async def es_search(req: ESSearchReq):
+    """执行 ES 搜索并返回结果"""
+    result = await ScriptGenService.es_search(
+        query_dsl=req.query_dsl,
+        index_pattern=req.index_pattern,
+        max_results=req.max_results,
+        es_config=req.es_config.model_dump() if req.es_config else None,
+    )
+    return result
+
+
+@router.post("/es/test")
+async def es_test(req: ESSearchReq):
+    """测试 ES 连接"""
+    result = await ScriptGenService.es_test(
+        es_config=req.es_config.model_dump() if req.es_config else None,
+    )
+    return result
+
+
+@router.post("/es/config")
+async def es_save_config(req: ESConfigSaveReq):
+    """保存 ES 配置到 .env 文件"""
+    result = await ScriptGenService.es_save_config(req.model_dump())
     return result

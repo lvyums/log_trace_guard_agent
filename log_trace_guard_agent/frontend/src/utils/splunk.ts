@@ -62,3 +62,48 @@ export function loadAiConfig(): AiConfig {
   } catch {}
   return { api_key: '', base_url: 'https://raytoken.com.cn/v1', model_name: 'deepseek-v4-flash' }
 }
+
+// ── ES 配置 ──
+
+const ES_CONFIG_KEY = 'lg-es-config'
+
+export interface EsConfig {
+  base_url: string
+  username?: string
+  password?: string
+  verify_ssl: boolean
+  max_results: number
+}
+
+export function getEsConfig(): EsConfig | null {
+  try {
+    const raw = localStorage.getItem(ES_CONFIG_KEY)
+    if (raw) {
+      const c = JSON.parse(raw)
+      if (c.base_url) return c
+    }
+  } catch {}
+  return null
+}
+
+export function saveEsConfig(config: Record<string, any>) {
+  localStorage.setItem(ES_CONFIG_KEY, JSON.stringify(config))
+}
+
+export function loadEsConfig(): EsConfig {
+  try {
+    const raw = localStorage.getItem(ES_CONFIG_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return esConfigDefaults()
+}
+
+export function esConfigDefaults(): EsConfig {
+  return {
+    base_url: '',
+    username: '',
+    password: '',
+    verify_ssl: true,
+    max_results: 100,
+  }
+}

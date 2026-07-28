@@ -124,6 +124,34 @@ class SplunkSearchResp(BaseModel):
     execution_time: float = Field(default=0.0, description="执行耗时（秒）")
 
 
+# ── ES 查询 ──
+
+class ESConfigParam(BaseModel):
+    """前端传入的 ES 连接配置"""
+    base_url: str = Field(..., description="ES 服务器地址，如 http://localhost:9200")
+    username: Optional[str] = Field(default=None, description="用户名")
+    password: Optional[str] = Field(default=None, description="密码")
+    verify_ssl: bool = Field(default=True, description="验证 SSL 证书")
+    max_results: int = Field(default=100, ge=1, le=10000, description="最大返回条数")
+
+
+class ESSearchReq(BaseModel):
+    """ES 查询请求"""
+    query_dsl: str = Field(..., max_length=20000, description="ES Query DSL JSON 字符串")
+    index_pattern: Optional[str] = Field(default=None, description="索引名称模式")
+    max_results: Optional[int] = Field(default=None, ge=1, le=10000, description="最大返回条数")
+    es_config: Optional[ESConfigParam] = Field(default=None, description="ES 连接配置（覆盖后端默认配置）")
+
+
+class ESConfigSaveReq(BaseModel):
+    """ES 配置保存请求（写入 .env）"""
+    es_base_url: str = Field(..., description="ES 地址")
+    es_username: Optional[str] = Field(default=None, description="用户名")
+    es_password: Optional[str] = Field(default=None, description="密码")
+    es_verify_ssl: bool = Field(default=True, description="验证 SSL")
+    es_max_results: int = Field(default=100, description="最大返回条数")
+
+
 # ── 批量请求 ──
 
 class BatchRegexGenReq(BaseModel):

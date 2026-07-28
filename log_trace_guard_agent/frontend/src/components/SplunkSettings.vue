@@ -1,5 +1,5 @@
 <template>
-  <el-dialog title="系统设置" width="520px" :model-value="visible" @update:model-value="$emit('update:visible', $event)" destroy-on-close>
+  <el-dialog title="系统设置" width="540px" :model-value="visible" @update:model-value="$emit('update:visible', $event)" destroy-on-close>
     <el-tabs v-model="activeTab">
       <!-- AI 设置 -->
       <el-tab-pane label="AI 模型" name="ai">
@@ -20,7 +20,7 @@
       <el-tab-pane label="Splunk" name="splunk">
         <el-form label-position="top" size="default">
           <el-form-item label="Splunk URL">
-            <el-input v-model="splunkForm.base_url" placeholder="如 https://splunk.example.com" />
+            <el-input v-model="splunkForm.base_url" placeholder="如 https://splunk.example.com:8089" />
           </el-form-item>
           <el-form-item label="认证方式">
             <el-radio-group v-model="splunkForm.auth_mode">
@@ -47,11 +47,48 @@
           </el-form-item>
         </el-form>
       </el-tab-pane>
+
+      <!-- ES 设置 -->
+      <el-tab-pane label="Elasticsearch" name="es">
+        <el-form label-position="top" size="default">
+          <el-form-item label="ES URL">
+            <el-input v-model="esForm.base_url" placeholder="如 http://localhost:9200" />
+          </el-form-item>
+          <el-form-item label="用户名（可选）">
+            <el-input v-model="esForm.username" placeholder="如 elastic" />
+          </el-form-item>
+          <el-form-item label="密码（可选）">
+            <el-input v-model="esForm.password" placeholder="密码" show-password />
+          </el-form-item>
+          <el-form-item label="最大返回条数">
+            <el-input-number v-model="esForm.max_results" :min="1" :max="10000" />
+          </el-form-item>
+          <el-form-item>
+            <el-checkbox v-model="esForm.verify_ssl">验证 SSL 证书</el-checkbox>
+          </el-form-item>
+          <el-divider />
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom:12px">
+            <template #title>
+              保存到 .env 后重启后端服务即可永久生效。若不清除，每次请求自动携带当前配置。
+            </template>
+          </el-alert>
+        </el-form>
+      </el-tab-pane>
     </el-tabs>
 
     <template #footer>
-      <el-button v-if="activeTab === 'splunk'" @click="testConnection" :loading="testing">测试连接</el-button>
-      <el-button type="primary" @click="save">保存</el-button>
+      <template v-if="activeTab === 'splunk'">
+        <el-button @click="testSplunkConnection" :loading="testingSplunk">测试连接</el-button>
+        <el-button type="primary" @click="saveSplunk">保存</el-button>
+      </template>
+      <template v-else-if="activeTab === 'es'">
+        <el-button @click="testEsConnection" :loading="testingEs">测试连接</el-button>
+        <el-button @click="saveEsToLocal">临时保存</el-button>
+        <el-button type="primary" @click="saveEsToEnv">保存到 .env</el-button>
+      </template>
+      <template v-else>
+        <el-button type="primary" @click="saveAi">保存</el-button>
+      </template>
     </template>
   </el-dialog>
 </template>
@@ -60,15 +97,23 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Api } from '../api'
-import { loadSplunkConfig, saveSplunkConfig, loadAiConfig, saveAiConfig } from '../utils/splunk'
+import {
+  loadSplunkConfig, saveSplunkConfig,
+  loadAiConfig, saveAiConfig,
+  loadEsConfig, saveEsConfig, esConfigDefaults,
+} from '../utils/splunk'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [v: boolean] }>()
 
 const activeTab = ref('ai')
-const testing = ref(false)
+const testingSplunk = ref(false)
+const testingEs = ref(false)
+const savingEnv = ref(false)
+
 const aiForm = ref(loadAiConfig())
 const splunkForm = ref(loadSplunkDefaults())
+const esForm = ref(loadEsConfig())
 
 function loadSplunkDefaults() {
   return { ...splunkDefaults(), ...((loadSplunkConfig() as any) || {}) }
@@ -90,25 +135,27 @@ watch(() => props.visible, (v) => {
   if (v) {
     aiForm.value = loadAiConfig()
     splunkForm.value = loadSplunkDefaults()
+    esForm.value = loadEsConfig()
   }
 })
 
-function save() {
-  if (activeTab.value === 'ai') {
-    if (!aiForm.value.api_key.trim()) { ElMessage.warning('请输入 API Key'); return }
-    saveAiConfig(aiForm.value)
-    ElMessage.success('AI 配置已保存')
-  } else {
-    if (!splunkForm.value.base_url.trim()) { ElMessage.warning('请输入 Splunk URL'); return }
-    saveSplunkConfig(splunkForm.value)
-    ElMessage.success('Splunk 配置已保存')
-  }
+function saveAi() {
+  if (!aiForm.value.api_key.trim()) { ElMessage.warning('请输入 API Key'); return }
+  saveAiConfig(aiForm.value)
+  ElMessage.success('AI 配置已保存')
   emit('update:visible', false)
 }
 
-async function testConnection() {
+function saveSplunk() {
+  if (!splunkForm.value.base_url.trim()) { ElMessage.warning('请输入 Splunk URL'); return }
+  saveSplunkConfig(splunkForm.value)
+  ElMessage.success('Splunk 配置已保存')
+  emit('update:visible', false)
+}
+
+async function testSplunkConnection() {
   if (!splunkForm.value.base_url.trim()) { ElMessage.warning('请先填写 Splunk URL'); return }
-  testing.value = true
+  testingSplunk.value = true
   try {
     const r = await Api.scriptGen.splunkTest({
       spl_query: 'search index=_internal | head 1',
@@ -123,6 +170,57 @@ async function testConnection() {
     if (r.success) ElMessage.success('连接成功')
     else ElMessage.error(r.msg || '连接失败')
   } catch { ElMessage.error('请求失败') }
-  finally { testing.value = false }
+  finally { testingSplunk.value = false }
+}
+
+function saveEsToLocal() {
+  if (!esForm.value.base_url.trim()) { ElMessage.warning('请输入 ES URL'); return }
+  saveEsConfig(esForm.value)
+  ElMessage.success('ES 配置已保存到本地，关闭对话框后仍然有效')
+}
+
+async function testEsConnection() {
+  if (!esForm.value.base_url.trim()) { ElMessage.warning('请先填写 ES URL'); return }
+  testingEs.value = true
+  try {
+    const r = await Api.scriptGen.esTest({
+      query_dsl: '',
+      es_config: {
+        base_url: esForm.value.base_url,
+        username: esForm.value.username || undefined,
+        password: esForm.value.password || undefined,
+        verify_ssl: esForm.value.verify_ssl,
+      },
+    })
+    if (r.success) {
+      const d = r.data as any
+      ElMessage.success(`连接成功 — 集群: ${d.cluster_name || 'N/A'}, 版本: ${d.version || 'N/A'}`)
+    } else {
+      ElMessage.error(r.msg || '连接失败')
+    }
+  } catch { ElMessage.error('请求失败') }
+  finally { testingEs.value = false }
+}
+
+async function saveEsToEnv() {
+  if (!esForm.value.base_url.trim()) { ElMessage.warning('请输入 ES URL'); return }
+  savingEnv.value = true
+  try {
+    const r = await Api.scriptGen.esSaveConfig({
+      es_base_url: esForm.value.base_url,
+      es_username: esForm.value.username || '',
+      es_password: esForm.value.password || '',
+      es_verify_ssl: esForm.value.verify_ssl,
+      es_max_results: esForm.value.max_results,
+    })
+    if (r.success) {
+      ElMessage.success((r.data as any)?.message || 'ES 配置已保存到 .env')
+      // 同时写入 localStorage 作为临时配置
+      saveEsConfig(esForm.value)
+    } else {
+      ElMessage.error(r.msg || '保存失败')
+    }
+  } catch { ElMessage.error('请求失败') }
+  finally { savingEnv.value = false }
 }
 </script>

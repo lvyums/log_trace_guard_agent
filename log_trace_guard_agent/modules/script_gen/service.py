@@ -1,10 +1,12 @@
 """模块四：技术赋能脚本生成 — 业务编排"""
 
 import json
+import os
 import re
 from typing import Optional
 
 from common.splunk_client import SplunkClient
+from common.es_client import ESClient
 from modules.script_gen.script_strategy import ScriptStrategyFactory
 from core.context_manager import ContextManager, ModuleContext
 from app.schemas.context_schema import ModuleStatus
@@ -252,6 +254,127 @@ class ScriptGenService:
         if results.get("error"):
             return Result.fail(results["error"])
         return Result.ok({"message": "Splunk 连接成功", "event_count": results.get("event_count", 0)})
+
+    # ── ES 查询 ──
+
+    @staticmethod
+    def _get_es_client(config: Optional[dict] = None) -> ESClient:
+        """获取 ES 客户端实例，优先使用前端传入的配置"""
+        if config and config.get("base_url"):
+            return ESClient(
+                base_url=config["base_url"],
+                username=config.get("username", ""),
+                password=config.get("password", ""),
+                verify_ssl=config.get("verify_ssl", True),
+            )
+        return ESClient(
+            base_url=settings.es_base_url,
+            username=settings.es_username,
+            password=settings.es_password,
+            verify_ssl=settings.es_verify_ssl,
+        )
+
+    @staticmethod
+    def _has_es_config(config: Optional[dict] = None) -> bool:
+        """检查是否有可用的 ES 配置"""
+        if config and config.get("base_url"):
+            return True
+        return bool(settings.es_base_url)
+
+    @staticmethod
+    async def es_search(query_dsl: str, index_pattern: Optional[str] = None, max_results: Optional[int] = None, es_config: Optional[dict] = None) -> Result:
+        """执行 ES 搜索"""
+        if not ScriptGenService._has_es_config(es_config):
+            return Result.fail("ES 未配置，请在系统设置中配置 ES 连接信息")
+
+        client = ScriptGenService._get_es_client(es_config)
+        results = client.search(
+            query_dsl=query_dsl,
+            index_pattern=index_pattern or "",
+            max_results=max_results or settings.es_max_results,
+            timeout=settings.es_search_timeout,
+        )
+
+        if results.get("error"):
+            return Result.fail(results["error"])
+
+        return Result.ok(results)
+
+    @staticmethod
+    async def es_test(es_config: Optional[dict] = None) -> Result:
+        """测试 ES 连接"""
+        if not es_config or not es_config.get("base_url"):
+            return Result.fail("请提供 ES 连接配置")
+
+        client = ScriptGenService._get_es_client(es_config)
+        info = client.test_connection(timeout=10)
+
+        if info.get("success"):
+            return Result.ok({
+                "message": "ES 连接成功",
+                "cluster_name": info.get("cluster_name", ""),
+                "version": info.get("version", ""),
+            })
+        return Result.fail(info.get("error", "ES 连接失败"))
+
+    @staticmethod
+    async def es_save_config(config: dict) -> Result:
+        """保存 ES 配置到 .env 文件"""
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+
+        if not os.path.exists(env_path):
+            return Result.fail(f".env 文件不存在: {env_path}")
+
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            # 更新 ES_* 变量
+            var_map = {
+                "ES_BASE_URL": config.get("es_base_url", ""),
+                "ES_USERNAME": config.get("es_username", ""),
+                "ES_PASSWORD": config.get("es_password", ""),
+                "ES_VERIFY_SSL": str(config.get("es_verify_ssl", True)).lower(),
+                "ES_SEARCH_TIMEOUT": str(config.get("es_search_timeout", 30)),
+                "ES_MAX_RESULTS": str(config.get("es_max_results", 100)),
+            }
+
+            updated_lines = []
+            found_keys = set()
+            for line in lines:
+                stripped = line.strip()
+                matched = False
+                for key in var_map:
+                    if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
+                        updated_lines.append(f"{key}={var_map[key]}\n")
+                        found_keys.add(key)
+                        matched = True
+                        break
+                if not matched:
+                    updated_lines.append(line)
+
+            # 补充缺失的变量
+            for key, val in var_map.items():
+                if key not in found_keys:
+                    # 在 Splunk 配置块后插入
+                    inserted = False
+                    for i, line in enumerate(updated_lines):
+                        if line.strip().startswith("# ── 规则引擎配置"):
+                            updated_lines.insert(i, f"{key}={val}\n")
+                            inserted = True
+                            break
+                    if not inserted:
+                        updated_lines.append(f"\n# ── ES 配置 ──\n{key}={val}\n")
+
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.writelines(updated_lines)
+
+            logger.info(f"ES 配置已保存到 .env: {env_path}")
+            return Result.ok({"message": "ES 配置已保存到 .env，重启后端服务后生效"})
+
+        except Exception as e:
+            logger.warning(f"ES 配置保存失败: {e}")
+            return Result.fail(f"保存配置失败: {str(e)}")
 
     @staticmethod
     async def optimize_script(script: str, script_type: str = "regex", scenario: Optional[str] = None, context: Optional[ContextManager] = None) -> Result:
