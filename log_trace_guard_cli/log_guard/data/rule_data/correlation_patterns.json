@@ -46,7 +46,7 @@
       "type": "sequence",
       "severity": "critical",
       "patterns": [
-        {"keyword": "404|403|400|301|扫描|probe|scan|dir busting|dirsearch|gobuster|admin|phpinfo|test|路径遍历|目录扫描|..\\/", "source": "web|nginx|http|waf|.*"},
+        {"keyword": "404|403|400|301|扫描|probe|scan|dir busting|dirsearch|gobuster|admin|phpinfo|路径遍历|目录扫描|../", "source": "web|nginx|http|waf|.*"},
         {"keyword": "eval|exec|system|cmd|passthru|shell_exec|webshell|木马|后门|RCE|命令执行|远程代码", "source": "web|waf|.*"},
         {"keyword": "200.*(eval|shell|cmd|exec|whoami|cat|flag|admin/login|success)|200.*(木马|后门|webshell)|200.*(phpinfo|phpmyadmin)", "source": "web|nginx|http|.*"}
       ],

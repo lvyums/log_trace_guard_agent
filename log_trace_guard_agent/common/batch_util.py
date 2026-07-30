@@ -25,7 +25,7 @@ class BatchStats:
         self.dst_ip_counts = Counter()
         self.user_counts = Counter()
         self.status_counts = Counter()
-        self.timestamps: list[datetime] = []
+        self.timestamps: list[str] = []
         self.errors: list[str] = []
 
     def record_success(self, parse_result: dict, risk_result: Optional[dict] = None):
@@ -102,11 +102,9 @@ class BatchStats:
 
         # 时间范围
         if self.timestamps:
-            min_ts = min(self.timestamps)
-            max_ts = max(self.timestamps)
             summary["time_range"] = {
-                "start": min_ts.isoformat() if min_ts else None,
-                "end": max_ts.isoformat() if max_ts else None,
+                "start": min(self.timestamps) if self.timestamps else None,
+                "end": max(self.timestamps) if self.timestamps else None,
             }
 
         # 风险统计

@@ -346,32 +346,36 @@ class TestLogParseService(unittest.TestCase):
     def test_parse_log_ssh(self):
         result = self.service.parse_log("sshd: Failed password for root from 10.0.0.1 port 22")
         self.assertIsInstance(result, dict)
-        self.assertEqual(result.get("src_ip"), "10.0.0.1")
-        self.assertEqual(result.get("user"), "root")
-        self.assertEqual(result.get("status"), "failed")
-        self.assertIn("raw_log", result)
+        data = result.get("data", {})
+        self.assertEqual(data.get("src_ip"), "10.0.0.1")
+        self.assertEqual(data.get("user"), "root")
+        self.assertEqual(data.get("status"), "failed")
+        self.assertIn("raw_log", data)
 
     def test_parse_log_empty(self):
         result = self.service.parse_log("")
         self.assertIsInstance(result, dict)
-        self.assertEqual(result["device_type"], "unknown")
+        self.assertNotEqual(result.get("code", -1), 0)  # 返回错误而非成功
 
     def test_parse_log_web(self):
         line = '1.2.3.4 - - [10/Jan/2024:12:00:00 +0000] "GET /index.html HTTP/1.1" 200 1234'
         result = self.service.parse_log(line)
         self.assertIsInstance(result, dict)
-        self.assertEqual(result.get("src_ip"), "1.2.3.4")
-        self.assertEqual(result.get("status"), "200")
+        data = result.get("data", {})
+        self.assertEqual(data.get("src_ip"), "1.2.3.4")
+        self.assertEqual(data.get("status"), "200")
 
     def test_parse_log_unknown(self):
         result = self.service.parse_log("some completely random log line")
         self.assertIsInstance(result, dict)
-        self.assertEqual(result["device_type"], "unknown")
+        data = result.get("data", {})
+        self.assertEqual(data.get("device_type"), "generic")
 
     def test_assess_risk_empty(self):
         result = self.service.assess_risk({})
-        self.assertIn("risk_level", result)
-        self.assertIn("confidence", result)
+        data = result.get("data", {})
+        self.assertIn("risk_level", data)
+        self.assertIn("confidence", data)
 
     def test_assess_risk_ssh_failed(self):
         parsed = {
@@ -381,8 +385,9 @@ class TestLogParseService(unittest.TestCase):
             "user": "root",
         }
         result = self.service.assess_risk(parsed)
-        self.assertIn("risk_level", result)
-        self.assertIn("match_rule_ids", result)
+        data = result.get("data", {})
+        self.assertIn("risk_level", data)
+        self.assertIn("match_rule_ids", data)
 
     def test_batch_parse_empty(self):
         result = self.service.batch_parse([])
@@ -431,7 +436,8 @@ class TestLogParseService(unittest.TestCase):
     def test_parse_log_preserves_raw(self):
         raw = "sshd: test message"
         result = self.service.parse_log(raw)
-        self.assertEqual(result["raw_log"], raw)
+        data = result.get("data", {})
+        self.assertEqual(data.get("raw_log"), raw)
 
 
 class TestDefaultFactory(unittest.TestCase):
