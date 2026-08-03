@@ -1,8 +1,0 @@
-{
-  "last_1h": "now-1h",
-  "last_6h": "now-6h",
-  "last_24h": "now-24h",
-  "last_7d": "now-7d",
-  "last_30d": "now-30d",
-  "default": "now-24h"
-}

@@ -54,7 +54,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ### 4. CLI 工具
 
 ```bash
-cd log_trace_guard_agent/log_trace_guard_cli
+cd ../log_trace_guard_cli
 
 # 安装依赖
 pip install -r requirements.txt
