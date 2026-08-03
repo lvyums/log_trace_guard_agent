@@ -110,7 +110,7 @@ class SplunkConfigParam(BaseModel):
 
 class SplunkSearchReq(BaseModel):
     """Splunk 查询请求"""
-    spl_query: str = Field(..., max_length=5000, description="Splunk SPL 查询语句")
+    spl_query: str = Field(default="", max_length=5000, description="Splunk SPL 查询语句（测试连接时可为空）")
     max_results: Optional[int] = Field(default=None, ge=1, le=1000, description="最大返回条数")
     splunk_config: Optional[SplunkConfigParam] = Field(default=None, description="Splunk 连接配置（有值时覆盖后端默认配置）")
 
@@ -137,7 +137,7 @@ class ESConfigParam(BaseModel):
 
 class ESSearchReq(BaseModel):
     """ES 查询请求"""
-    query_dsl: str = Field(..., max_length=20000, description="ES Query DSL JSON 字符串")
+    query_dsl: str = Field(default="", max_length=20000, description="ES Query DSL JSON 字符串（测试连接时可为空）")
     index_pattern: Optional[str] = Field(default=None, description="索引名称模式")
     max_results: Optional[int] = Field(default=None, ge=1, le=10000, description="最大返回条数")
     es_config: Optional[ESConfigParam] = Field(default=None, description="ES 连接配置（覆盖后端默认配置）")
