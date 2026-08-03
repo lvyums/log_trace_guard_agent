@@ -38,7 +38,12 @@ class SplunkClient:
         session.verify = self._verify_ssl
 
         if self._auth_token:
-            session.headers["Authorization"] = f"Splunk {self._auth_token}"
+            token = self._auth_token.strip()
+            # 兼容用户直接粘贴带前缀的 token
+            if token.lower().startswith("bearer "):
+                session.headers["Authorization"] = token
+            else:
+                session.headers["Authorization"] = f"Bearer {token}"
         elif self._username and self._password:
             session.auth = (self._username, self._password)
 
