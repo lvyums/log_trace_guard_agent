@@ -163,5 +163,28 @@ class Settings(BaseSettings):
         self.training_scenarios_data_path = _resolve(self.training_scenarios_data_path)
         self.training_standard_answers_data_path = _resolve(self.training_standard_answers_data_path)
 
+    def reload_from_env(self) -> dict:
+        """重新读取 .env 并原地更新当前单例。
+
+        各模块通过 `from app.settings import settings` 引用同一对象,
+        原地更新字段即可让后续请求读到新值,无需重启进程。
+
+        返回变更字段清单(敏感字段脱敏)。
+        """
+        fresh = Settings()
+        changed = []
+        for field_name in fresh.model_fields:
+            old_val = getattr(self, field_name, None)
+            new_val = getattr(fresh, field_name)
+            if old_val != new_val:
+                setattr(self, field_name, new_val)
+                # 敏感字段脱敏展示
+                if any(k in field_name for k in ("api_key", "password", "token", "secret")):
+                    display = "******" if new_val else ""
+                else:
+                    display = str(new_val)
+                changed.append({"field": field_name, "old": str(old_val)[:30], "new": display})
+        return {"changed_count": len(changed), "changed": changed}
+
 
 settings = Settings()

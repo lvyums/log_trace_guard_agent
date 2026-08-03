@@ -1740,13 +1740,13 @@ def _print_qa_natural(result, question: str = ""):
         print()
 
 
-def run_command(args: argparse.Namespace):
-    """命令行模式（无交互）"""
+def run_command(args: argparse.Namespace) -> int:
+    """命令行模式（无交互）— 返回退出码: 0成功 1业务失败 2参数错误"""
     log_reader = LogReader()
 
     if args.log_file and not os.path.exists(args.log_file):
         print(f"  ❌ 文件不存在: {args.log_file}")
-        return
+        return 2
 
     if args.list_logs:
         files = log_reader.list_log_files(args.log_dir)
@@ -1754,18 +1754,18 @@ def run_command(args: argparse.Namespace):
             _print_json(files)
         else:
             _print_list_logs_natural(files)
-        return
+        return 0
 
     if args.sample:
         if not args.log_file:
             print("  请指定 --log-file")
-            return
+            return 2
         preview = log_reader.sample_log(args.log_file, n=args.sample)
         if args.json_output:
             _print_json(preview)
         else:
             _print_sample_natural(preview)
-        return
+        return 0
 
     if args.parse is not None:
         if args.log_file:
@@ -1794,12 +1794,12 @@ def run_command(args: argparse.Namespace):
                     _print_parse_single_natural(result)
             else:
                 print("  请指定日志行字符串，例如: --parse \"Failed password for root from 192.168.1.100\"")
-        return
+                return 2
 
     if args.batch_parse:
         if not args.log_file:
             print("  请指定 --log-file")
-            return
+            return 2
         result = log_reader.read_log(args.log_file, line_limit=args.lines or 200, grep=args.grep)
         lines = result.get("lines", [])
         batch = _log_parse_svc.batch_parse(lines, do_assess=args.assess)
@@ -1807,12 +1807,12 @@ def run_command(args: argparse.Namespace):
             _print_json(batch)
         else:
             _print_parse_batch_natural(batch)
-        return
+        return 0
 
     if args.diagnose:
         if _log_collect_svc is None:
             print("  采集模块未加载")
-            return
+            return 1
         result = _log_collect_svc.diagnose_fault(
             symptom=args.diagnose, device_type=args.device_type,
             protocol=args.protocol, error_log=args.error_log
@@ -1821,7 +1821,7 @@ def run_command(args: argparse.Namespace):
             _print_json(result)
         else:
             _print_diagnose_natural(result)
-        return
+        return 0
 
     if args.regex:
         result = _script_gen_svc.generate_regex(args.regex, args.log_sample, args.device_type)
@@ -1829,7 +1829,7 @@ def run_command(args: argparse.Namespace):
             _print_json(result)
         else:
             _print_regex_natural(result)
-        return
+        return 0
 
     if args.es_query:
         result = _script_gen_svc.generate_es_query(search_scenario=args.es_query)
@@ -1837,7 +1837,7 @@ def run_command(args: argparse.Namespace):
             _print_json(result)
         else:
             _print_es_query_natural(result)
-        return
+        return 0
 
     if args.baseline is not None:
         result = _compliance_svc.generate_baseline(asset_count=args.baseline)
@@ -1845,7 +1845,7 @@ def run_command(args: argparse.Namespace):
             _print_json(result)
         else:
             _print_baseline_natural(result)
-        return
+        return 0
 
     if args.optimize:
         script, script_type = args.optimize
@@ -1854,7 +1854,7 @@ def run_command(args: argparse.Namespace):
             _print_json(result)
         else:
             _print_optimize_natural(result)
-        return
+        return 0
 
     if args.qa:
         result = _compliance_svc.compliance_qa(args.qa, args.asset_type)
@@ -1862,7 +1862,7 @@ def run_command(args: argparse.Namespace):
             _print_json(result)
         else:
             _print_qa_natural(result, question=args.qa)
-        return
+        return 0
 
     if args.correlate is not None:
         if args.log_file:
@@ -1883,7 +1883,7 @@ def run_command(args: argparse.Namespace):
             _print_json(result)
         else:
             _print_correlation_result(result)
-        return
+        return 0
 
 
 def main():
@@ -1962,12 +1962,11 @@ def main():
         has_command = any([
             args.list_logs, args.sample, args.parse, args.batch_parse,
             args.diagnose, args.regex, args.es_query, args.baseline is not None,
-            args.optimize, args.qa, args.train, args.correlate,
+            args.optimize, args.qa, args.correlate,
         ])
 
         if has_command or args.log_file:
-            run_command(args)
-            return
+            sys.exit(run_command(args))
 
     # 交互模式（无参数或终端交互）
     try:

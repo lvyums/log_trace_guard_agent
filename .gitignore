@@ -33,6 +33,9 @@ logs/
 *.pptx
 *汇报材料*
 *项目汇报*
+# 数据备份
+backups/
+*.tar.gz
 *~
 
 # OS

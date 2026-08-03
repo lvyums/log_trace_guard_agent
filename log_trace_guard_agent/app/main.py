@@ -34,6 +34,8 @@ from modules.log_correlate.router import router as log_correlate_router
 from modules.advisory.router import router as advisory_router
 from app.exceptions import AppException, global_exception_handler, make_response
 from app.settings import settings
+from app.admin import router as admin_router
+from app.admin import record_request, audit_middleware
 
 logger = LogManager.get_logger()
 
@@ -122,10 +124,16 @@ async def global_middleware(request: Request, call_next):
 
     duration = int((time.time() - start_time) * 1000)
     logger.info(f"[RESP] {request.method} {request.url.path} status={response.status_code} {duration}ms")
+    record_request(request.url.path, response.status_code, duration)
     return response
 
 
+# 审计中间件(记录 API 调用元数据,写入独立 audit.log)
+app.middleware("http")(audit_middleware)
+
+
 # 路由注册
+app.include_router(admin_router)
 app.include_router(log_parse_router)
 app.include_router(log_collect_router)
 app.include_router(script_gen_router)

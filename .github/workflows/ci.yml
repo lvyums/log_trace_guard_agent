@@ -19,4 +19,29 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -m pytest tests/ -v
+      - name: CLI 单元测试(含覆盖率门槛 35%)
+        # 排除交互菜单层 cli.py(1409行,UI代码不纳入覆盖率统计)与可选采集模块
+        run: python -m pytest tests/ -v --cov=log_guard --cov-fail-under=35 --cov-ignore-errors
+
+  agent-tests:
+    name: Agent Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: log_trace_guard_agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          pip install pytest-cov
+      - name: Agent 单元测试(含覆盖率门槛 50%)
+        run: python -m pytest tests/ -v --cov=app --cov-fail-under=50
+        env:
+          # CI 环境无真实 LLM/外部服务, 测试走 mock
+          LLM_API_KEY: ""
+          SPLUNK_BASE_URL: ""
+          ES_BASE_URL: ""

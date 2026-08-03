@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional
+import time
 
 from openai import AsyncOpenAI
 
@@ -48,6 +49,8 @@ class DeepSeekClient(BaseLLMClient):
     async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None) -> dict:
         temp = temperature if temperature is not None else self.temperature
         t = timeout if timeout is not None else self.timeout
+        start = time.monotonic()
+        success = True
         try:
             self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
             response = await self.client.chat.completions.create(
@@ -58,8 +61,12 @@ class DeepSeekClient(BaseLLMClient):
             content = response.choices[0].message.content or ""
             return {"content": content, "success": True, "error": None}
         except Exception as e:
+            success = False
             logger.error(f"LLM 调用失败: {e}")
             return {"content": None, "success": False, "error": str(e)}
+        finally:
+            from app.admin import record_llm_call
+            record_llm_call(success, int((time.monotonic() - start) * 1000))
 
     async def chat_stream(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None):
         """流式调用 DeepSeek，逐个 yield token"""
@@ -88,6 +95,8 @@ class LightweightClient(BaseLLMClient):
     async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None) -> dict:
         temp = temperature if temperature is not None else self.temperature
         t = timeout if timeout is not None else self.timeout
+        start = time.monotonic()
+        success = True
         try:
             self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
             response = await self.client.chat.completions.create(
@@ -99,8 +108,12 @@ class LightweightClient(BaseLLMClient):
             content = response.choices[0].message.content or ""
             return {"content": content, "success": True, "error": None}
         except Exception as e:
+            success = False
             logger.error(f"轻量 LLM 调用失败: {e}")
             return {"content": None, "success": False, "error": str(e)}
+        finally:
+            from app.admin import record_llm_call
+            record_llm_call(success, int((time.monotonic() - start) * 1000))
 
     async def chat_stream(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None):
         """轻量模型流式调用"""
