@@ -17,6 +17,9 @@ from common.result_util import Result
 
 logger = LogManager.get_logger()
 
+# 项目根目录：service.py 在 log_trace_guard_agent/modules/script_gen/ 下，上溯 3 层
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 class ScriptGenService:
     """技术赋能脚本生成 — 业务编排"""
@@ -320,7 +323,7 @@ class ScriptGenService:
     @staticmethod
     async def es_save_config(config: dict) -> Result:
         """保存 ES 配置到 .env 文件"""
-        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+        env_path = os.path.join(_PROJECT_ROOT, ".env")
 
         if not os.path.exists(env_path):
             return Result.fail(f".env 文件不存在: {env_path}")
@@ -329,11 +332,11 @@ class ScriptGenService:
             with open(env_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
-            # 更新 ES_* 变量
+            # 更新 ES_* 变量（None 值写空串，避免 .env 中出现字面量 "None"）
             var_map = {
-                "ES_BASE_URL": config.get("es_base_url", ""),
-                "ES_USERNAME": config.get("es_username", ""),
-                "ES_PASSWORD": config.get("es_password", ""),
+                "ES_BASE_URL": config.get("es_base_url") or "",
+                "ES_USERNAME": config.get("es_username") or "",
+                "ES_PASSWORD": config.get("es_password") or "",
                 "ES_VERIFY_SSL": str(config.get("es_verify_ssl", True)).lower(),
                 "ES_SEARCH_TIMEOUT": str(config.get("es_search_timeout", 30)),
                 "ES_MAX_RESULTS": str(config.get("es_max_results", 100)),
@@ -374,6 +377,68 @@ class ScriptGenService:
 
         except Exception as e:
             logger.warning(f"ES 配置保存失败: {e}")
+            return Result.fail(f"保存配置失败: {str(e)}")
+
+    @staticmethod
+    async def splunk_save_config(config: dict) -> Result:
+        """保存 Splunk 配置到 .env 文件（与 ES 配置保存对称）"""
+        env_path = os.path.join(_PROJECT_ROOT, ".env")
+
+        if not os.path.exists(env_path):
+            return Result.fail(f".env 文件不存在: {env_path}")
+
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            # 更新 SPLUNK_* 变量（None 值写空串，避免 .env 中出现字面量 "None"）
+            var_map = {
+                "SPLUNK_BASE_URL": config.get("splunk_base_url") or "",
+                "SPLUNK_USERNAME": config.get("splunk_username") or "",
+                "SPLUNK_PASSWORD": config.get("splunk_password") or "",
+                "SPLUNK_AUTH_TOKEN": config.get("splunk_auth_token") or "",
+                "SPLUNK_VERIFY_SSL": str(config.get("splunk_verify_ssl", True)).lower(),
+                "SPLUNK_MAX_RESULTS": str(config.get("splunk_max_results", 100)),
+            }
+
+            updated_lines = []
+            found_keys = set()
+            for line in lines:
+                stripped = line.strip()
+                matched = False
+                for key in var_map:
+                    if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
+                        updated_lines.append(f"{key}={var_map[key]}\n")
+                        found_keys.add(key)
+                        matched = True
+                        break
+                if not matched:
+                    updated_lines.append(line)
+
+            # 补充缺失的变量
+            for key, val in var_map.items():
+                if key not in found_keys:
+                    inserted = False
+                    for i, line in enumerate(updated_lines):
+                        if line.strip().startswith("# ── Splunk 配置"):
+                            # 在 Splunk 配置块标题后插入
+                            j = i + 1
+                            while j < len(updated_lines) and updated_lines[j].strip().startswith("#"):
+                                j += 1
+                            updated_lines.insert(j, f"{key}={val}\n")
+                            inserted = True
+                            break
+                    if not inserted:
+                        updated_lines.append(f"\n# ── Splunk 配置 ──\n{key}={val}\n")
+
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.writelines(updated_lines)
+
+            logger.info(f"Splunk 配置已保存到 .env: {env_path}")
+            return Result.ok({"message": "Splunk 配置已保存到 .env，重启后端服务后生效"})
+
+        except Exception as e:
+            logger.warning(f"Splunk 配置保存失败: {e}")
             return Result.fail(f"保存配置失败: {str(e)}")
 
     @staticmethod

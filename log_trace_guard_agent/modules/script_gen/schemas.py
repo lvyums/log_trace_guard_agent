@@ -108,6 +108,16 @@ class SplunkConfigParam(BaseModel):
     verify_ssl: bool = Field(default=True, description="验证 SSL 证书")
 
 
+class SplunkConfigSaveReq(BaseModel):
+    """Splunk 配置保存请求（写入 .env）"""
+    splunk_base_url: str = Field(..., description="Splunk 地址")
+    splunk_auth_token: Optional[str] = Field(default=None, description="Bearer Token")
+    splunk_username: Optional[str] = Field(default=None, description="用户名")
+    splunk_password: Optional[str] = Field(default=None, description="密码")
+    splunk_verify_ssl: bool = Field(default=True, description="验证 SSL")
+    splunk_max_results: int = Field(default=100, description="最大返回条数")
+
+
 class SplunkSearchReq(BaseModel):
     """Splunk 查询请求"""
     spl_query: str = Field(default="", max_length=5000, description="Splunk SPL 查询语句（测试连接时可为空）")

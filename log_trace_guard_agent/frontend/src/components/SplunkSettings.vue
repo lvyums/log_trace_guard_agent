@@ -79,7 +79,8 @@
     <template #footer>
       <template v-if="activeTab === 'splunk'">
         <el-button @click="testSplunkConnection" :loading="testingSplunk">测试连接</el-button>
-        <el-button type="primary" @click="saveSplunk">保存</el-button>
+        <el-button @click="saveSplunk">临时保存</el-button>
+        <el-button type="primary" @click="saveSplunkToEnv" :loading="savingEnv">保存到 .env</el-button>
       </template>
       <template v-else-if="activeTab === 'es'">
         <el-button @click="testEsConnection" :loading="testingEs">测试连接</el-button>
@@ -149,8 +150,30 @@ function saveAi() {
 function saveSplunk() {
   if (!splunkForm.value.base_url.trim()) { ElMessage.warning('请输入 Splunk URL'); return }
   saveSplunkConfig(splunkForm.value)
-  ElMessage.success('Splunk 配置已保存')
-  emit('update:visible', false)
+  ElMessage.success('Splunk 配置已保存到本地')
+}
+
+async function saveSplunkToEnv() {
+  if (!splunkForm.value.base_url.trim()) { ElMessage.warning('请输入 Splunk URL'); return }
+  savingEnv.value = true
+  try {
+    const r = await Api.scriptGen.splunkSaveConfig({
+      splunk_base_url: splunkForm.value.base_url,
+      splunk_auth_token: splunkForm.value.auth_mode === 'token' ? splunkForm.value.auth_token || '' : '',
+      splunk_username: splunkForm.value.auth_mode === 'basic' ? splunkForm.value.username || '' : '',
+      splunk_password: splunkForm.value.auth_mode === 'basic' ? splunkForm.value.password || '' : '',
+      splunk_verify_ssl: splunkForm.value.verify_ssl,
+      splunk_max_results: splunkForm.value.max_results,
+    })
+    if (r.success) {
+      ElMessage.success((r.data as any)?.message || 'Splunk 配置已保存到 .env')
+      // 同时写入 localStorage 作为临时配置
+      saveSplunkConfig(splunkForm.value)
+    } else {
+      ElMessage.error(r.msg || '保存失败')
+    }
+  } catch { ElMessage.error('请求失败') }
+  finally { savingEnv.value = false }
 }
 
 async function testSplunkConnection() {

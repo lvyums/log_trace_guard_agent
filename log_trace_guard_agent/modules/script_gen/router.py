@@ -9,6 +9,7 @@ from modules.script_gen.schemas import (
     TraceLinkReq,
     OptimizeReq,
     SplunkSearchReq,
+    SplunkConfigSaveReq,
     ESSearchReq,
     ESConfigSaveReq,
 )
@@ -117,6 +118,13 @@ async def splunk_test(req: SplunkSearchReq):
         spl_query=req.spl_query,
         splunk_config=req.splunk_config.model_dump() if req.splunk_config else None,
     )
+    return result
+
+
+@router.post("/splunk/config")
+async def splunk_save_config(req: SplunkConfigSaveReq):
+    """保存 Splunk 配置到 .env 文件"""
+    result = await ScriptGenService.splunk_save_config(req.model_dump())
     return result
 
 
