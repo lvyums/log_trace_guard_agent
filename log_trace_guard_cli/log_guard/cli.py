@@ -1809,6 +1809,59 @@ def run_command(args: argparse.Namespace) -> int:
             _print_parse_batch_natural(batch)
         return 0
 
+    if args.splunk_test:
+        result = execute_splunk_query("search index=* | head 1", max_results=1)
+        if args.json_output:
+            _print_json(result)
+        else:
+            if result.get("success"):
+                print(f"  ✅ Splunk 连接成功, 返回 {result.get('event_count', 0)} 条")
+            else:
+                print(f"  ❌ Splunk 连接失败: {result.get('error', '未知错误')}")
+        return 0 if result.get("success") else 1
+
+    if args.splunk_search:
+        result = execute_splunk_query(args.splunk_search)
+        if args.json_output:
+            _print_json(result)
+        else:
+            if result.get("success"):
+                print(f"  ✅ Splunk 搜索完成, 命中 {result.get('event_count', 0)} 条")
+                for ev in (result.get("results") or [])[:5]:
+                    print(f"    - {ev.get('_time', '')} {str(ev.get('event', ''))[:100]}")
+            else:
+                print(f"  ❌ Splunk 搜索失败: {result.get('error', '未知错误')}")
+        return 0 if result.get("success") else 1
+
+    if args.es_test:
+        result = execute_es_query({"query": {"match_all": {}}}, size=1)
+        if args.json_output:
+            _print_json(result)
+        else:
+            if result.get("success"):
+                print(f"  ✅ ES 连接成功, 命中 {result.get('total', 0)} 条")
+            else:
+                print(f"  ❌ ES 连接失败: {result.get('error', '未知错误')}")
+        return 0 if result.get("success") else 1
+
+    if args.es_search:
+        try:
+            dsl = json.loads(args.es_search)
+        except json.JSONDecodeError as e:
+            print(f"  ❌ DSL JSON 解析失败: {e}")
+            return 2
+        result = execute_es_query(dsl)
+        if args.json_output:
+            _print_json(result)
+        else:
+            if result.get("success"):
+                print(f"  ✅ ES 搜索完成, 命中 {result.get('total', 0)} 条 (耗时 {result.get('took_ms', 0)}ms)")
+                for s in (result.get("samples") or [])[:5]:
+                    print(f"    - {s.get('index', '')}: {s.get('preview', '')[:100]}")
+            else:
+                print(f"  ❌ ES 搜索失败: {result.get('error', '未知错误')}")
+        return 0 if result.get("success") else 1
+
     if args.diagnose:
         if _log_collect_svc is None:
             print("  采集模块未加载")
@@ -1930,6 +1983,10 @@ def main():
         parser.add_argument("--asset-type", help="资产类型")
         parser.add_argument("--correlate", "-c", nargs="?", const="", help="联合日志审查（关联分析）")
         parser.add_argument("--time-window", "-w", type=int, default=5, help="关联时间窗口（分钟）")
+        parser.add_argument("--splunk-test", action="store_true", help="测试 Splunk 连接")
+        parser.add_argument("--splunk-search", help="执行 Splunk 搜索（传入 SPL 查询）")
+        parser.add_argument("--es-test", action="store_true", help="测试 ES 连接")
+        parser.add_argument("--es-search", help="执行 ES 搜索（传入 DSL JSON）")
 
         args = parser.parse_args()
 
@@ -1963,6 +2020,7 @@ def main():
             args.list_logs, args.sample, args.parse, args.batch_parse,
             args.diagnose, args.regex, args.es_query, args.baseline is not None,
             args.optimize, args.qa, args.correlate,
+            args.splunk_test, args.splunk_search, args.es_test, args.es_search,
         ])
 
         if has_command or args.log_file:
