@@ -4,6 +4,47 @@
 
 ---
 
+## [v3.2.0] - 2026-08-04
+
+### 新增功能
+
+- **Splunk / ES 实际执行接入** — 不再只是生成脚本，可真实查询：
+  - Splunk：搜索执行（SPL 轮询任务）、连接测试、Splunk Web UI 跳转链接
+  - ES：Query DSL 搜索执行、连接测试（返回集群名 + 版本号）
+  - Web 端系统设置新增 Splunk / Elasticsearch 配置面板（测试连接 / 临时保存 / 保存到 .env）
+- **Splunk/ES 配置持久化对称** — 新增 `POST /api/v1/script-gen/splunk/config` 与 `/es/config`，前端「保存到 .env」写入后端 `.env` 全局生效
+- **CLI 命令行模式扩展** — 新增 `--splunk-test` / `--splunk-search` / `--es-test` / `--es-search`，支持 `--json`，退出码契约 0=成功 / 1=连接失败 / 2=DSL 非法，可脚本集成
+- **攻击链 → 实训场景一键转化** — 新增 `POST /api/v1/log-correlate/to-scenario`：关联分析结果一键下发为实战实训场景（LLM 动态生成场景 + 任务 + 标准答案），前端弹窗区分场景/溯源模式，支持「立即进入实训」跳转
+- **script-gen 四大增强** — 溯源报告导出（Markdown/JSON，`~/.log-guard/reports/`）、ES 查询模板管理（内置 SSH 爆破/SQL 注入模板）、溯源 → 监控规则闭环（自动生成 ES DSL + 正则）、Splunk SPL 生成 + REST API 一键执行（5 大中文场景模板）
+- **ES 查询执行入口** — 前端 EsQuery.vue 新增「执行查询」按钮，生成 DSL 后直接查库
+- **本地联调环境** — `scripts/dev/mock_services.py`（mock Splunk :18089 + mock ES :19200）+ `test_api_connect.py`（18 项）/ `test_cli_connect.py`（16 项）回归脚本
+
+### 修复
+
+- **es_save_config 路径 bug** — 修复 .env 写入路径多嵌套 3 层 + None 值污染配置文件问题
+- **Splunk Bearer Token 兼容** — Token 自动补 `Bearer ` 前缀，带前缀粘贴也不出错
+- **CI 测试修复** — Agent（145）与 CLI（243）全部通过，覆盖修复回归
+- **CLI 双副本收敛** — 删除历史嵌套僵尸快照，统一为仓库根 `log_trace_guard_cli/`
+
+### 文档
+
+- 新增 `docs/splunk-es配置说明.md` — Splunk/ES 全量接入说明（Web + CLI + 联调验证）
+- 更新 `docs/生产部署指南.md` — 生产环境 ES/Splunk 配置策略（Docker / systemd / 多用户）
+- 仓库根 README 更新至 v3.2（7 大模块、CLI 命令行模式、Splunk/ES 接入）
+
+### 变更文件
+
+- `modules/script_gen/` — Splunk/ES 搜索、测试、配置持久化路由与服务
+- `modules/log_correlate/` — to-scenario 实训转化接口（temporal.py 场景生成）
+- `modules/training/` — TaskEngine.inject_scenario() 动态场景注入
+- `frontend/src/modules/log-correlate/Analyze.vue` — 场景/溯源模式弹窗
+- `frontend/src/modules/script-gen/EsQuery.vue` — 执行查询入口
+- `log_trace_guard_cli/log_guard/cli.py` — Splunk/ES 命令行模式
+- `scripts/dev/` — mock 服务 + 联调回归脚本
+- `app/main.py` — 版本号更新至 3.2.0
+
+---
+
 ## [v3.1.0] - 2026-07-25
 
 ### 新增功能
@@ -162,6 +203,7 @@
 
 | 版本 | 发布日期 | 主要变更 |
 |------|----------|----------|
+| v3.2.0 | 2026-08-04 | Splunk/ES 实际执行接入、CLI 连接命令、攻击链转实训、script-gen 四大增强 |
 | v3.1.0 | 2026-07-25 | 规划咨询模块、基线报告下载、模块职责分离 |
 | v3.0.0 | 2026-07-24 | 安全威胁狩猎模块、多文件关联分析、LLM 容错 |
 | v2.1.0 | 2026-07-24 | 性能优化、交互完善、bug 修复 |

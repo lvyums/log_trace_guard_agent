@@ -37,7 +37,7 @@ pip install httpx          # 测试依赖（可选）
 bash .claude/skills/run-log-trace-guard-agent/driver.sh
 ```
 
-该脚本会自动：启动服务 → 等待就绪 → 测试所有 7 个 API 端点 → 输出汇总结果 → 清理。
+该脚本会自动：启动服务 → 等待就绪 → 冒烟测试核心 API（根路径 / 健康检查 / 日志识别 / 解析 / 研判 / 释义）→ 输出汇总结果 → 清理。
 
 ### 方式二：手动控制
 
@@ -58,10 +58,10 @@ done
 **验证：**
 ```bash
 curl http://localhost:8000/
-# → {"service":"日志溯源卫士智能体","version":"2.0.0","status":"running"}
+# → {"service":"日志溯源卫士智能体","version":"3.2.0","status":"running"}
 
 curl http://localhost:8000/health
-# → {"status":"healthy"}
+# → {"code":200,"data":{"status":"healthy"},"msg":"success"}
 ```
 
 **停止：**
@@ -87,16 +87,23 @@ python -m pytest tests/test_rules/ -v
 # → 13 passed in 0.14s
 ```
 
-## API 端点
+## API 端点（核心，共 46 个业务端点）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/` | 根路径 / 健康检查 |
+| GET | `/` | 根路径 / 服务状态（含版本号） |
 | GET | `/health` | 健康检查 |
-| POST | `/api/v1/log-parse/identify` | 识别日志类型（SSH/Web） |
+| POST | `/api/v1/log-parse/identify` | 识别日志类型（SSH/Web/WAF/Firewall/DB） |
 | POST | `/api/v1/log-parse/parse` | 结构化解析日志 |
 | POST | `/api/v1/log-parse/assess` | 异常行为研判 |
 | POST | `/api/v1/log-parse/explain` | 字段释义 |
+| POST | `/api/v1/log-correlate/correlate` | 多源日志关联分析（攻击链检测） |
+| POST | `/api/v1/log-correlate/to-scenario` | 攻击链 → 实训场景 |
+| POST | `/api/v1/script-gen/es/search` | ES 搜索执行 |
+| POST | `/api/v1/script-gen/splunk/search` | Splunk 搜索执行 |
+| POST | `/api/v1/training/dispatch` | 下发实训场景 |
+
+完整端点清单见 `tests/test_api.py` 与 `docs/splunk-es配置说明.md`。
 
 ## 常见问题
 

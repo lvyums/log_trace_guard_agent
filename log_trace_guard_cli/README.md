@@ -64,15 +64,15 @@ log_guard/
 │   ├── polisher.py           # 结果润色器
 │   ├── orchestrator.py       # 总调度器
 │   └── settings.py           # 配置管理（.env / ~/.log-guard/config.json）
-├── modules/                  # 6个业务模块（零侵入）
+├── modules/                  # 5个业务模块（零侵入）
 │   ├── log_parse.py          # 日志解析
-│   ├── log_collect/          # 日志采集
+│   ├── log_collect.py        # 日志采集
 │   ├── script_gen.py         # 脚本生成（正则/ES/Splunk/溯源/优化）
 │   ├── compliance.py         # 合规审计
 │   └── log_correlate.py      # 联合日志审查
 ├── core/                     # 日志读取
 ├── common/                   # 工具类
-└── data/rule_data/           # 21个 JSON 规则文件
+└── data/rule_data/           # 16个 JSON 规则文件
 ```
 
 ## 核心设计原则
@@ -195,6 +195,12 @@ log-guard --qa "日志保留要求"                      # 合规问答
 
 # 输出控制
 log-guard -f auth.log -c --json                  # 关联分析（JSON 输出）
+
+# Splunk / ES 连接测试与搜索（脚本可集成，退出码 0=成功 / 1=失败 / 2=DSL 非法）
+log-guard --splunk-test --json                   # 测试 Splunk 连接
+log-guard --splunk-search 'search index=* | head 5' --json   # 执行 SPL 搜索
+log-guard --es-test --json                       # 测试 ES 连接（返回集群名/版本）
+log-guard --es-search '{"query":{"match_all":{}},"size":5}' --json   # 执行 ES 查询
 ```
 
 ## 持久化文件说明

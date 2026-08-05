@@ -151,7 +151,7 @@ async def root():
         return FileResponse(frontend_index)
     return make_response(data={
         "service": "日志溯源卫士智能体",
-        "version": "3.1.0",
+        "version": "3.2.0",
         "status": "running",
     })
 
