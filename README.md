@@ -94,6 +94,7 @@
 
 - **双模式交互**：传统菜单（6 大业务模块：解析/采集/脚本/合规/联合审查/AI对话 + 文件选择 + 退出）+ AI 智能对话（6 类意图识别）
 - **脚本生成增强**：溯源报告导出（Markdown/JSON）、ES 查询模板管理、溯源→监控规则闭环、Splunk SPL 一键执行
+- **联合日志审查增强**：关联分析检出 16 种攻击链后一键生成溯源脚本（攻击链→溯源类型自动推断），复用报告导出 + 监控规则闭环
 - **命令行模式**：`--splunk-search` / `--es-search` 等，退出码契约（0/1/2），支持 `--json`，适合脚本集成
 
 ### Splunk / ES 集成
@@ -521,6 +522,19 @@ python log_trace_guard_agent/scripts/dev/test_cli_connect.py    # 16 项 CLI 联
 - **业务零侵入**：AI Core 不修改 `modules/` 代码
 - **规则引擎优先**：精确操作走规则引擎，LLM 仅做意图识别 + 结果润色
 - **LLM 优雅降级**：API 不可用时自动回退到纯菜单模式
+
+### 代码质量工具（pre-commit + CHANGELOG）
+
+```bash
+# 安装本地 pre-commit 钩子（提交前自动检查，换机器/他人 clone 后需重装）
+bash scripts/git-hooks/install-hooks.sh
+# 跳过检查: git commit --no-verify
+
+# 本地预览 CHANGELOG 自动生成效果（release 流程会自动执行并提交）
+python3 scripts/dev/generate_changelog.py --dry-run
+```
+
+pre-commit 钩子检查项：禁止提交 `test_validate_*.py` / 缓存 / 密钥文件、Python 语法（py_compile）、JSON 语法（json.load）、空白错误（行尾空格/缺末尾换行）。
 
 ### 模块开发规范
 

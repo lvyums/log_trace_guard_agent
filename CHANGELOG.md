@@ -4,6 +4,31 @@
 
 ---
 
+## [v3.2.1] - 2026-08-05
+
+### 新增功能
+
+- **CLI 攻击链 → 溯源脚本联动** — 关联分析检出攻击链后一键生成溯源脚本（`LogCorrelateService.to_trace_script`），打通「分析 → 处置」闭环：
+  - 16 种攻击链名 → 7 种溯源类型自动推断（SSH暴力破解后提权→brute_force、SQL注入→sql_injection、数据窃取→data_exfil 等），推断不到回退 brute_force
+  - 复用既有闭环：导出溯源报告（Markdown/JSON）+ 生成监控规则（ES DSL + 正则）
+  - 联合日志审查子菜单扩展为 4 项：关联分析 / 大文件分片 / 攻击链列表 / 攻击链→溯源脚本
+
+### 工程化
+
+- **Release 自动生成变更说明** — release-cli.yml 启用 `generate_release_notes: true`，发布时 GitHub 自动列出变更
+- **CHANGELOG 自动生成** — 新增 `scripts/dev/generate_changelog.py`（零依赖，从 git log 按 conventional 前缀分组），release 流程自动执行并由 github-actions[bot] 提交回 main（带 [skip ci] 防循环）
+- **本地 pre-commit 钩子** — 新增 `scripts/git-hooks/pre-commit` + `install-hooks.sh`（零依赖：git + python3），5 项检查：禁止提交 `test_validate_*.py` / 缓存 / 密钥文件、Python 语法、JSON 语法、空白错误；安装：`bash scripts/git-hooks/install-hooks.sh`
+- **release 版本号自动读取** — release-cli.yml 从 `pyproject.toml` 自动提取版本号（`grep -m1 '^version'`），不再硬编码，tag 与代码版本保持一致
+
+### 变更文件
+
+- `log_trace_guard_cli/log_guard/modules/log_correlate.py` — `to_trace_script()` / `_infer_attack_type()`（+71 行）
+- `log_trace_guard_cli/log_guard/cli.py` — 联合日志审查菜单第 4 项（+77 行）
+- `.github/workflows/release-cli.yml` — 版本号自动读取 + fetch-depth: 0 + CHANGELOG 自动提交 + generate_release_notes
+- `scripts/dev/generate_changelog.py`、`scripts/git-hooks/pre-commit`、`scripts/git-hooks/install-hooks.sh` — 新增
+
+---
+
 ## [v3.2.0] - 2026-08-04
 
 ### 新增功能
