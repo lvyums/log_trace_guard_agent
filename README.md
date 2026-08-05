@@ -202,7 +202,7 @@ Web 端与 CLI 端均支持 **实际执行查询**（Splunk SPL 搜索 / ES Quer
 ## 测试
 
 ```bash
-# Agent 单元测试（145 个）
+# Agent 单元测试（161 个）
 python -m pytest log_trace_guard_agent/tests/ -v
 
 # CLI 单元测试（243 通过 + 1 跳过）
@@ -215,7 +215,7 @@ python log_trace_guard_agent/scripts/dev/test_cli_connect.py    # 16 项 CLI 联
 ```
 
 ```
-测试结果: Agent 145/145 + CLI 243/244（1 跳过，Splunk 连通性需外部服务）全部通过 ✅
+测试结果: Agent 161/161 + CLI 243/244（1 跳过，Splunk 连通性需外部服务）全部通过 ✅
 ```
 
 ### CLI 全功能自动测试

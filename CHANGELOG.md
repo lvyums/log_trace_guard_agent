@@ -23,7 +23,7 @@
 
 - **es_save_config 路径 bug** — 修复 .env 写入路径多嵌套 3 层 + None 值污染配置文件问题
 - **Splunk Bearer Token 兼容** — Token 自动补 `Bearer ` 前缀，带前缀粘贴也不出错
-- **CI 测试修复** — Agent（145）与 CLI（243）全部通过，覆盖修复回归
+- **CI 测试修复** — Agent（161）与 CLI（243）全部通过，覆盖修复回归
 - **CLI 双副本收敛** — 删除历史嵌套僵尸快照，统一为仓库根 `log_trace_guard_cli/`
 
 ### 文档
@@ -31,6 +31,8 @@
 - 新增 `docs/splunk-es配置说明.md` — Splunk/ES 全量接入说明（Web + CLI + 联调验证）
 - 更新 `docs/生产部署指南.md` — 生产环境 ES/Splunk 配置策略（Docker / systemd / 多用户）
 - 仓库根 README 更新至 v3.2（7 大模块、CLI 命令行模式、Splunk/ES 接入）
+- 新增 `tests/test_rules/test_to_scenario.py` — 攻击链→实训场景链路 16 个自动化测试（Agent 145 → 161）
+- 全量重写两份设计长文 — 源码级完整项目说明 / 详细设计 升级至 v3.2.0（替代 v2.0 历史版本）
 
 ### 变更文件
 
