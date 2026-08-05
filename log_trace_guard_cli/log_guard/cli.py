@@ -1062,6 +1062,7 @@ def _menu_log_correlate(context: dict):
         {"label": "从当前日志文件分析", "desc": "对选中的日志文件做跨源关联分析"},
         {"label": "手动输入日志行", "desc": "多行日志粘贴分析（每条一行）"},
         {"label": "查看攻击链模式", "desc": "查看系统支持的攻击链检测模式"},
+        {"label": "攻击链→溯源脚本", "desc": "检测到攻击链后自动生成溯源脚本（分析→处置闭环）"},
     ]
 
     idx = _show_nav_menu(items)
@@ -1127,6 +1128,70 @@ def _menu_log_correlate(context: dict):
             print(f"     风险等级: {p.get('risk_level', '?')}")
             print(f"     阶段链路: {stages}")
             print()
+
+    elif idx == 3:
+        # 攻击链→溯源脚本（分析→处置闭环）
+        file_path = context.get("log_file")
+        if not file_path or not os.path.exists(file_path):
+            print("\n  ⚠️ 请先选择日志文件")
+            input("  按 Enter 继续...")
+            return
+
+        line_limit = _input_int("\n  读取行数 [默认500]: ", default=500, max_val=10000)
+        grep = input("  关键词过滤（可选）: ").strip() or None
+        window = _input_int("  关联时间窗口(分钟) [默认5]: ", default=5, max_val=60)
+        use_llm_opt = input("  LLM增强分析 [y/N]: ").strip().lower() == 'y'
+
+        _show_status_bar(f"正在对 {os.path.basename(file_path)} 进行关联分析...")
+        result = _log_correlate_svc.correlate_logs_from_file(
+            file_path, line_limit=line_limit, grep=grep,
+            time_window_minutes=window, detailed=True, use_llm=use_llm_opt,
+        )
+        _print_correlation_result(result)
+
+        # 若检测到攻击链，询问是否生成溯源脚本
+        chains = []
+        if result.get("code") == 0:
+            chains = result.get("data", {}).get("chains", [])
+        if chains:
+            print(f"\n  🔀 检测到 {len(chains)} 条攻击链，可生成溯源脚本（分析→处置闭环）")
+            gen = input("  是否生成溯源脚本？[y/N]: ").strip().lower() == 'y'
+            if gen:
+                print("\n  选择攻击链:")
+                for i, c in enumerate(chains, 1):
+                    print(f"    {i}. {c.get('chain_name', '?')} [{c.get('risk_level', '?')}]")
+                sel = _input_int("  选择序号 [默认1]: ", default=1, max_val=len(chains))
+                chain = chains[sel - 1]
+                chain_name = chain.get("chain_name", "")
+                attack_type = input(f"  攻击类型 [默认自动推断]: ").strip()
+
+                lines = LogReader().read_log(file_path, line_limit=line_limit, grep=grep).get("lines", [])
+                _show_status_bar(f"正在为攻击链 {chain_name} 生成溯源脚本...")
+                trace_result = _log_correlate_svc.to_trace_script(
+                    log_lines=lines,
+                    chain_name=chain_name,
+                    attack_type=attack_type,
+                )
+                _print_trace_natural(trace_result)
+
+                # 复用 script_gen 的闭环：导出报告 + 生成监控规则
+                if trace_result.get("code") == 0:
+                    trace_data = trace_result.get("data", {})
+                    if trace_data.get("attack_chain"):
+                        exp = input("\n  📄 是否导出溯源报告？[y/N]: ").strip().lower()
+                        if exp == "y":
+                            from log_guard.modules.script_gen import export_trace_report
+                            fmt = input("  格式 [markdown/json] (默认markdown): ").strip() or "markdown"
+                            rpt = export_trace_report(trace_data, fmt=fmt)
+                            print(f"  ✅ 报告已导出: {rpt['path']} ({rpt['size']} 字节)")
+
+                        mon = input("\n  🔄 是否基于溯源结果生成持续监控规则？[y/N]: ").strip().lower()
+                        if mon == "y":
+                            from log_guard.modules.script_gen import trace_to_monitoring_rules
+                            rules = trace_to_monitoring_rules(trace_data)
+                            _print_monitoring_rules(rules)
+        else:
+            print("\n  ℹ️ 未检测到攻击链，无需生成溯源脚本。")
 
     input("  按 Enter 继续...")
 

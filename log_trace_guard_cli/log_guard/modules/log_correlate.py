@@ -955,6 +955,77 @@ class LogCorrelateService:
             data["file_total_lines"] = result.get("total_lines", 0) if not file_paths else len(lines)
         return correlation
 
+    @classmethod
+    def to_trace_script(
+        cls,
+        log_lines: List[str],
+        chain_name: str = "",
+        attack_type: str = "",
+    ) -> Dict[str, Any]:
+        """攻击链 → 攻击溯源脚本（联动 script-gen/trace）。
+
+        与 Agent 版 to_trace_script 对齐：检测到攻击链后，自动把相关日志
+        交给 script_gen 的 TraceStrategy 生成溯源脚本，打通"分析→处置"闭环。
+
+        Args:
+            log_lines: 参与关联分析的原始日志行（自动截取前100条）。
+            chain_name: 攻击链名称（如 ssh_brute_to_privesc），用于推断攻击类型。
+            attack_type: 显式指定攻击类型（如 brute_force）；为空时从 chain_name 推断。
+
+        Returns:
+            Result dict（code==0 时 data 含 attack_chain/timeline/summary）。
+        """
+        from log_guard.modules.script_gen import ScriptGenService
+
+        if not log_lines:
+            return Result.fail(msg="日志列表不能为空")
+
+        effective_type = attack_type.strip() or cls._infer_attack_type(chain_name)
+
+        try:
+            svc = ScriptGenService()
+            result = svc.trace_attack(logs=log_lines[:100], attack_type=effective_type)
+            if isinstance(result, dict) and result.get("code") == 0:
+                data = result["data"]
+                data["chain_name"] = chain_name
+                data["attack_type"] = effective_type
+                data["source"] = "correlation"
+            return result
+        except Exception as e:
+            logger.error(f"生成溯源脚本失败: {e}", exc_info=True)
+            return Result.fail(msg=f"生成溯源脚本失败: {e}")
+
+    @staticmethod
+    def _infer_attack_type(chain_name: str) -> str:
+        """从攻击链名称推断 trace 攻击类型（与 script_gen_trace_patterns.json 的 key 对齐）。
+
+        CLI trace 支持 7 种: port_scan / brute_force / sql_injection / xss /
+        webshell / data_exfil / lateral_move。推断不到时回退 brute_force。
+        """
+        name = (chain_name or "").lower()
+        mapping = {
+            "brute": "brute_force",
+            "ssh": "brute_force",
+            "auth_failure": "brute_force",
+            "sql": "sql_injection",
+            "web_scan": "port_scan",
+            "scan": "port_scan",
+            "recon": "port_scan",
+            "lateral": "lateral_move",
+            "privilege": "lateral_move",
+            "c2": "lateral_move",
+            "exfil": "data_exfil",
+            "data_theft": "data_exfil",
+            "ransom": "data_exfil",
+            "webshell": "webshell",
+            "dns_tunnel": "data_exfil",
+            "xss": "xss",
+        }
+        for key, attack in mapping.items():
+            if key in name:
+                return attack
+        return "brute_force"
+
     @property
     def available_patterns(self) -> List[dict]:
         """Return list of available attack chain patterns (for display)."""
