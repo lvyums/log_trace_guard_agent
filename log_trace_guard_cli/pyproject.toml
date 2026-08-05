@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "log-guard"
-version = "2.0.0"
+version = "3.2.0"
 description = "🔍 日志溯源卫士 CLI 智能体 — 终端日志分析 + AI 智能对话"
 readme = "README.md"
 license = {text = "MIT"}

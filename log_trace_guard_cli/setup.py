@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="log-guard",
-    version="3.0.0",
+    version="3.2.0",
     description="🔍 日志溯源卫士 CLI 智能体 — 终端日志分析 + AI 智能对话",
     packages=find_packages(include=["log_guard*"]),
     package_data={"log_guard": ["data/rule_data/*.json"]},
