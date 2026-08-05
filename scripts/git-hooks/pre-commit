@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Git pre-commit 钩子 — 日志溯源卫士智能体仓库
+# 零依赖：只用 git/python3，无需安装 pre-commit 框架
+# 安装: bash scripts/git-hooks/install-hooks.sh
+# 跳过: git commit --no-verify
+
+set -u
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT" || exit 1
+
+FAILED=0
+
+say_ok()   { printf "  \033[32m✔\033[0m %s\n" "$1"; }
+say_fail() { printf "  \033[31m✘\033[0m %s\n" "$1"; FAILED=1; }
+
+# 收集暂存区文件（排除已删除的）
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -z "$STAGED" ]; then
+  say_ok "无暂存文件"
+  exit 0
+fi
+
+echo "==> 检查暂存文件 ($(echo "$STAGED" | wc -l | tr -d ' ') 个)"
+
+# ── 1. 禁止提交测试验证脚本 (test_validate_*.py) ─────────────────────────
+BAD=$(echo "$STAGED" | grep -E 'test_validate_[^/]*\.py$' || true)
+if [ -n "$BAD" ]; then
+  say_fail "禁止提交独立验证脚本 test_validate_*.py（跑完即删，用 pytest tests/ 覆盖）:"
+  echo "$BAD" | sed 's/^/      /'
+fi
+
+# ── 2. 禁止提交缓存/产物/密钥文件 ────────────────────────────────────────
+BAD=$(echo "$STAGED" | grep -E '(^|/)(__pycache__|\.pytest_cache|node_modules|dist|build)/|\.pyc$|\.pyo$|\.env$|\.log$|\.pptx$' || true)
+if [ -n "$BAD" ]; then
+  say_fail "禁止提交缓存/产物/密钥文件:"
+  echo "$BAD" | sed 's/^/      /'
+fi
+
+# ── 3. Python 语法检查（暂存的 .py 文件）────────────────────────────────
+PYFILES=$(echo "$STAGED" | grep '\.py$' || true)
+if [ -n "$PYFILES" ]; then
+  PY_OK=1
+  for f in $PYFILES; do
+    if [ -f "$f" ]; then
+      if ! python3 -m py_compile "$f" 2>/dev/null; then
+        say_fail "Python 语法错误: $f"
+        PY_OK=0
+      fi
+    fi
+  done
+  [ "$PY_OK" -eq 1 ] && say_ok "Python 语法检查通过 ($(echo "$PYFILES" | wc -l | tr -d ' ') 个文件)"
+fi
+
+# ── 4. JSON 语法检查（暂存的 .json 文件）────────────────────────────────
+JSONFILES=$(echo "$STAGED" | grep '\.json$' || true)
+if [ -n "$JSONFILES" ]; then
+  JSON_OK=1
+  for f in $JSONFILES; do
+    if [ -f "$f" ]; then
+      if ! python3 -c "import json,sys; json.load(open('$f'))" 2>/dev/null; then
+        say_fail "JSON 语法错误: $f"
+        JSON_OK=0
+      fi
+    fi
+  done
+  [ "$JSON_OK" -eq 1 ] && say_ok "JSON 语法检查通过 ($(echo "$JSONFILES" | wc -l | tr -d ' ') 个文件)"
+fi
+
+# ── 5. 空白错误检查（行尾空格 / 末尾无换行，仅检查新增行）──────────────
+# 注意: 不能用 --quiet！git diff --cached --quiet 返回的是"是否有差异"，
+#       暂存区有任何变更都返回 1，导致永远误报。--check 单独用时才返回
+#       "是否有空白错误"（无错误=0）。
+if ! git diff --cached --check 2>/dev/null; then
+  say_fail "空白错误（行尾空格或末尾缺换行）:"
+  git diff --cached --check 2>/dev/null | sed 's/^/      /' | head -10
+else
+  say_ok "空白检查通过"
+fi
+
+# ── 6. 禁止提交 test_*.py 与 __init__.py 之外的临时测试痕迹 ─────────────
+# （此条由 git diff --check 和规则 1 覆盖，无需重复）
+
+echo ""
+if [ "$FAILED" -eq 1 ]; then
+  echo "❌ 提交被拦截，修复后重试（或 git commit --no-verify 强制跳过）"
+  exit 1
+fi
+echo "✅ 全部检查通过"
+exit 0
