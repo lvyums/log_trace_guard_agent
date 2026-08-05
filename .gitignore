@@ -48,6 +48,9 @@ Thumbs.db
 # Claude
 .claude/
 
+# 智能体记忆归档（本地交接用，不入库）
+docs/agent-memory/
+
 # Data (runtime, not source)
 data/chroma_db/
 data/upload_temp/
