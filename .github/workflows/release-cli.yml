@@ -50,28 +50,13 @@ jobs:
           echo "tag=v${VERSION}-$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "CLI ${{ steps.version.outputs.tag }}"
-          body: |
-            ## 日志溯源卫士 CLI v${{ steps.version.outputs.version }}
-
-            ### 功能
-            - 6 大业务模块：日志解析 / 日志采集 / 脚本生成 / 合规审计 / 联合日志审查 / AI 对话
-            - script-gen 增强：溯源报告导出、ES 查询模板管理、溯源→监控规则、Splunk SPL 一键执行
-            - Splunk/ES 连接测试与搜索（--splunk-test / --splunk-search / --es-test / --es-search，退出码 0/1/2）
-
-            ### 安装
-            ```bash
-            # 下载解压后
-            cd log_trace_guard_cli
-            pip install -e .
-
-            # 运行
-            log-guard
-            ```
-          files: log-guard-cli.zip
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 用 gh CLI 创建 release（runner 预装，不依赖 Node runtime，无 Node20 弃用告警）
+          # --generate-notes: GitHub 自动从 commits 生成变更说明，无需手写 body
+          gh release create "${{ steps.version.outputs.tag }}" log-guard-cli.zip \
+            --title "CLI ${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            --draft=false \
+            --prerelease=false
