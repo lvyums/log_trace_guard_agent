@@ -28,7 +28,7 @@
       <div style="margin-bottom:16px">
         <el-descriptions :column="3" border size="small">
           <el-descriptions-item label="故障类型">
-            <el-tag size="small" :type="result.fault_type ? '' : 'info'">{{ result.fault_type || '未识别' }}</el-tag>
+            <el-tag size="small" :type="result.fault_type ? 'warning' : 'info'">{{ result.fault_type || '未识别' }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="匹配度">
             <span :style="{color: result.match_score >= 70 ? 'var(--el-color-success)' : result.match_score >= 30 ? 'var(--el-color-warning)' : 'var(--el-color-danger)'}">

@@ -448,7 +448,7 @@ function getPhaseTagType(phase: string): string {
   if (phase.includes('提升') || phase.includes('入侵')) return 'danger'
   if (phase.includes('初始')) return 'warning'
   if (phase.includes('侦查')) return 'info'
-  return ''
+  return 'info'
 }
 function getRiskColor(level: string): string {
   const key = level?.toLowerCase()
