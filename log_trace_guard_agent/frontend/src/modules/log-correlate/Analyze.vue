@@ -463,6 +463,9 @@ function riskCardClass(level: string): string {
   if (key?.startsWith('p1') || key === 'medium' || key === 'major') return 'tl-card--med'
   return ''
 }
+function diffLevel(d: string): string {
+  return d === '高级' ? 'P0' : d === '中级' ? 'P1' : 'P3'
+}
 
 defineProps<{ mode?: string }>()
 
