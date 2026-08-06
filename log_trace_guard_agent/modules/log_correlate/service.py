@@ -34,6 +34,149 @@ logger = LogManager.get_logger()
 CORRELATION_PATTERNS_PATH = os.path.join(settings.rule_data_dir, "correlation_patterns.json")
 
 # ---------------------------------------------------------------------------
+# 辅助：动态场景标准答案适配（LLM 简版 → 校验策略期望结构）
+# ---------------------------------------------------------------------------
+# 校验策略（modules/training/check_strategy.py）期望的标准答案结构：
+#   {
+#     "key_fields": {field: [关键词, ...]},      # 学员答案须命中关键词
+#     "scoring_rules": {"required_fields": [...], "min_match_rate": 0.6, "weight": 1.0},
+#     "correct_answer": {field: 标准值},          # 用于展示与 LLM 语义评分
+#   }
+# 而动态场景 LLM 生成的是简版结构（temporal.generate_training 的 prompt）：
+#   {"attack_type": "...", "risk_level": "...", "key_indicators": ["..."]}
+# 这里把简版结构适配为校验策略结构，否则 key_fields 为空 → 永远 0 分。
+
+# 常用关键词拆分表（把标准答案长文本切成学员可能写出的关键词）
+_ANSWER_KEYWORD_SPLITS = {
+    "attack_type": ["暴力破解", "爆破", "口令猜测", "提权", "权限提升", "SQL注入", "注入", "XSS", "跨站",
+                    "Webshell", "木马", "横向移动", "内网渗透", "数据窃取", "数据泄露", "钓鱼", "端口扫描",
+                    "探测", "勒索", "C2", "隧道", "DDoS", "拒绝服务", "爆破攻击"],
+    "risk_level": ["高危", "P0", "P1", "中危", "P2", "低危", "P3", "严重", "紧急"],
+    "stage_sequence": ["侦查", "探测", "入侵", "初始", "提权", "权限提升", "横向", "持久化", "驻留", "窃取", "破坏", "清除痕迹",
+                       "爆破", "暴力破解", "登录成功", "登录失败", "挖矿", "计划任务", "后门", "webshell"],
+    "description": ["入侵", "提权", "横向", "窃取", "爆破", "注入", "挖矿", "登录"],
+    "immediate_actions": ["封禁", "阻断", "隔离", "下线", "断开", "修改密码", "重置", "加固", "杀毒", "清除", "删除", "终止", "计划任务", "挖矿"],
+    "investigation": ["排查", "分析", "审计", "检查", "溯源", "取证", "查看日志"],
+    "prevention": ["补丁", "修复", "加固", "MFA", "多因素", "备份", "最小权限", "白名单", "监控", "告警",
+                   "SSH", "密钥", "登录", "root", "sudo", "审计", "强密码"],
+}
+
+# 同义词映射（标准答案含 A 词时，同时加入 B 词作为可命中关键词）
+_ANSWER_KEYWORD_SYNONYMS = {
+    "提权": ["权限提升"],
+    "权限提升": ["提权"],
+    "爆破": ["暴力破解", "爆破攻击", "口令爆破"],
+    "暴力破解": ["爆破"],
+    "入侵": ["攻击", "突破"],
+    "挖矿": ["矿机", "加密货币", "xmrig"],
+    "登录成功": ["成功登录", "登录"],
+    "封禁": ["封锁", "拉黑", "封IP", "封ip"],
+    "排查": ["调查", "分析日志", "检查日志"],
+    "加固": ["强化", "安全配置"],
+    "重置": ["修改密码", "改密码", "更换密码"],
+    "修改密码": ["重置", "改密码"],
+    "清除": ["删除", "移除", "清理"],
+    "终止": ["停止", "杀掉", "kill"],
+}
+
+def _adapt_dynamic_standard_answers(standard_answers: dict) -> dict:
+    """把动态场景 LLM 生成的简版标准答案适配为校验策略期望结构。
+
+    兼容两种输入：
+      - 简版: {"attack_type": "SSH暴力破解", "risk_level": "P0_高危", ...}
+      - 已是完整结构: {"key_fields": {...}, "scoring_rules": {...}, "correct_answer": {...}}（原样返回）
+    """
+    adapted: Dict[str, Any] = {}
+    for task_id, ans in (standard_answers or {}).items():
+        # 防御：LLM 可能把某个标准答案输出成字符串/列表而非 dict
+        # （如 T04 处置建议直接输出纯文本）→ 包装成 answer 字段，避免 .get() 崩溃
+        if not isinstance(ans, dict):
+            adapted[task_id] = {
+                "key_fields": {"answer": [str(ans)]} if ans is not None else {},
+                "scoring_rules": {
+                    "required_fields": ["answer"] if ans is not None else [],
+                    "min_match_rate": 0.6,
+                    "weight": 1.0,
+                },
+                "correct_answer": {"answer": str(ans)} if ans is not None else {},
+            }
+            continue
+        # 已是完整结构，直接保留
+        if "key_fields" in ans or "correct_answer" in ans:
+            adapted[task_id] = ans
+            continue
+
+        key_fields: Dict[str, List[str]] = {}
+        correct_answer: Dict[str, Any] = {}
+        for field, value in ans.items():
+            correct_answer[field] = value
+            keywords: List[str] = []
+
+            # 列表值：每个元素都是关键词（长句需拆分，避免整句精确匹配过严）
+            if isinstance(value, list):
+                for v in value:
+                    sv = str(v).strip()
+                    if not sv:
+                        continue
+                    keywords.append(sv)
+                    sv_lower = sv.lower()
+                    # 词表包含检查：任何元素只要包含常用词即加入（如 "初始入侵"→"入侵"、"权限提升/入侵"→"提权"）
+                    for kw in _ANSWER_KEYWORD_SPLITS.get(field, []):
+                        if kw.lower() in sv_lower and kw not in keywords:
+                            keywords.append(kw)
+                    # 斜杠/顿号分隔的同义词组拆开（如 "权限提升/入侵" → "权限提升"、"入侵"）
+                    for sep in ["/", "／", "、"]:
+                        for part in sv.split(sep):
+                            part = part.strip()
+                            if 2 <= len(part) <= 12 and part not in keywords:
+                                keywords.append(part)
+                    # 长句（>12 字符）额外拆 IP + 中文标点分句
+                    if len(sv) > 12:
+                        ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", sv)
+                        for ip in ips:
+                            if ip not in keywords:
+                                keywords.append(ip)
+                        for part in re.split(r"[,，、;；]", sv):
+                            part = part.strip()
+                            if 2 <= len(part) <= 12 and part not in keywords:
+                                keywords.append(part)
+            elif isinstance(value, str) and value.strip():
+                # 字符串值：整体 + 常用词拆分
+                keywords = [value.strip()]
+                value_lower = value.lower()
+                for kw in _ANSWER_KEYWORD_SPLITS.get(field, []):
+                    if kw.lower() in value_lower and kw not in keywords:
+                        keywords.append(kw)
+                # IP 提取（T03 src_ip 等）
+                ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", value)
+                for ip in ips:
+                    if ip not in keywords:
+                        keywords.append(ip)
+            elif isinstance(value, (int, float)):
+                keywords = [str(value)]
+
+            # 同义词扩展：标准答案含 A 词时，把 A 的同义词也加入可命中关键词
+            # （如标准答案是 "权限提升"，学员答 "提权" 也应命中）
+            for kw in list(keywords):
+                for s in _ANSWER_KEYWORD_SYNONYMS.get(kw, []):
+                    if s not in keywords:
+                        keywords.append(s)
+
+            if keywords:
+                key_fields[field] = keywords
+
+        adapted[task_id] = {
+            "key_fields": key_fields,
+            "scoring_rules": {
+                "required_fields": list(key_fields.keys()),
+                "min_match_rate": 0.6,
+                "weight": 1.0,
+            },
+            "correct_answer": correct_answer,
+        }
+    return adapted
+
+# ---------------------------------------------------------------------------
 # 辅助：正则关键词编译缓存
 # ---------------------------------------------------------------------------
 _keyword_cache: Dict[str, re.Pattern] = {}
@@ -744,6 +887,22 @@ class LogCorrelateService:
 
                     # 注入到 TaskEngine
                     from modules.training.task_engine import TaskEngine
+
+                    # 统一为所有任务注入实际日志作为输入（场景列表/弹窗两条入口都可见）
+                    task_input = log_lines[:50]
+                    injected_tasks = [
+                        {
+                            "task_id": t.get("task_id"),
+                            "order": t.get("order", i + 1),
+                            "title": t.get("title", ""),
+                            "description": t.get("description", ""),
+                            "input_type": t.get("input_type", "text"),
+                            "input_data": task_input,
+                            "submit_type": t.get("submit_type", "conclusion"),
+                            "hint": t.get("hint"),
+                        }
+                        for i, t in enumerate(tasks)
+                    ]
                     scenario_id = TaskEngine.inject_scenario(
                         scenario={
                             "name": scenario.get("name", f"实战溯源：{chain_name}"),
@@ -751,9 +910,10 @@ class LogCorrelateService:
                             "category": scenario.get("category", "实战"),
                             "difficulty": scenario.get("difficulty", "中级"),
                             "objectives": scenario.get("objectives", []),
-                            "tasks": tasks,
+                            "tasks": injected_tasks,
                         },
-                        standard_answers=standard_answers,
+                        # 适配为标准校验策略结构（否则 LLM 简版答案无 key_fields → 永远 0 分）
+                        standard_answers=_adapt_dynamic_standard_answers(standard_answers),
                     )
 
                     # 构建标准化的 dispatch 返回格式
@@ -767,16 +927,7 @@ class LogCorrelateService:
                             "description": scenario.get("description", ""),
                             "objectives": scenario.get("objectives", []),
                         },
-                        "tasks": [{
-                            "task_id": t.get("task_id"),
-                            "order": t.get("order", i + 1),
-                            "title": t.get("title", ""),
-                            "description": t.get("description", ""),
-                            "input_type": t.get("input_type", "text"),
-                            "input_data": log_lines[:50],  # 传入实际日志作为输入
-                            "submit_type": t.get("submit_type", "conclusion"),
-                            "hint": t.get("hint"),
-                        } for i, t in enumerate(tasks)],
+                        "tasks": injected_tasks,
                         "total_tasks": len(tasks),
                         "completed_tasks": 0,
                         "_dynamic": True,  # 前端可据此显示"实战场景"标签

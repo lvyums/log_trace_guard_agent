@@ -60,6 +60,19 @@ class TrainingService:
         if not standard:
             return Result.fail(f"未找到场景 {scenario_id} 任务 {task_id} 的标准答案")
 
+        # 防御：LLM 可能把标准答案输出成字符串/列表而非 dict
+        # （如 T04 处置建议直接输出纯文本）→ 包装成 answer 字段，避免 .get() 崩溃
+        if not isinstance(standard, dict):
+            standard = {
+                "key_fields": {"answer": [str(standard)]} if standard is not None else {},
+                "scoring_rules": {
+                    "required_fields": ["answer"] if standard is not None else [],
+                    "min_match_rate": 0.6,
+                    "weight": 1.0,
+                },
+                "correct_answer": {"answer": str(standard)} if standard is not None else {},
+            }
+
         # 2. 获取校验策略
         strategy = CheckStrategyFactory.get_strategy(submit_type)
         if not strategy:

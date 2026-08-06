@@ -92,9 +92,12 @@ class TraceLinkStrategy(BaseScriptStrategy):
                     all_ips.add(event["target"])
                     affected_assets.add(event["target"])
 
-        # 注入预分析中的 indicator IP
+        # 注入预分析中的 indicator IP（兼容字符串列表与 dict 列表两种格式）
         for ind in pre_indicators:
-            ip = ind.get("ip") or ind.get("value", "")
+            if isinstance(ind, dict):
+                ip = ind.get("ip") or ind.get("value", "")
+            else:
+                ip = str(ind)
             if ip and re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", ip):
                 all_ips.add(ip)
 

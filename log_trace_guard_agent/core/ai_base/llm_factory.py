@@ -23,7 +23,7 @@ class BaseLLMClient(ABC):
         self.client: Optional[AsyncOpenAI] = None
 
     @abstractmethod
-    async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None) -> dict:
+    async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None, max_tokens: Optional[int] = None) -> dict:
         """调用大模型，返回 {content, success, error}"""
         ...
 
@@ -46,19 +46,31 @@ class BaseLLMClient(ABC):
 class DeepSeekClient(BaseLLMClient):
     """DeepSeek API 实现"""
 
-    async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None) -> dict:
+    async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None, max_tokens: Optional[int] = None) -> dict:
         temp = temperature if temperature is not None else self.temperature
         t = timeout if timeout is not None else self.timeout
         start = time.monotonic()
         success = True
         try:
             self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=t)
-            response = await self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=temp,
-            )
+            kwargs = {
+                "model": self.model_name,
+                "messages": messages,
+                "temperature": temp,
+            }
+            if max_tokens is not None:
+                kwargs["max_tokens"] = max_tokens
+            response = await self.client.chat.completions.create(**kwargs)
             content = response.choices[0].message.content or ""
+            # 兜底：部分 reasoning 模型把正文放在 reasoning_content
+            if not content:
+                rc = getattr(response.choices[0].message, "reasoning_content", None)
+                if rc:
+                    content = rc
+            if not content:
+                # 空内容视为失败，避免上层拿到 success=True + "" 误判为成功
+                logger.warning(f"LLM 返回空内容, 模型={self.model_name}, choices={len(response.choices)}")
+                return {"content": None, "success": False, "error": "empty content"}
             return {"content": content, "success": True, "error": None}
         except Exception as e:
             success = False
@@ -92,9 +104,10 @@ class DeepSeekClient(BaseLLMClient):
 class LightweightClient(BaseLLMClient):
     """轻量模型实现（Qwen/Distill）"""
 
-    async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None) -> dict:
+    async def chat(self, messages: list[dict], temperature: Optional[float] = None, timeout: Optional[int] = None, max_tokens: Optional[int] = None) -> dict:
         temp = temperature if temperature is not None else self.temperature
         t = timeout if timeout is not None else self.timeout
+        mt = max_tokens if max_tokens is not None else 2048  # 默认放宽，避免长 JSON 被截断
         start = time.monotonic()
         success = True
         try:
@@ -103,9 +116,17 @@ class LightweightClient(BaseLLMClient):
                 model=self.model_name,
                 messages=messages,
                 temperature=temp,
-                max_tokens=512,
+                max_tokens=mt,
             )
             content = response.choices[0].message.content or ""
+            # 兜底：部分 reasoning 模型把正文放在 reasoning_content
+            if not content:
+                rc = getattr(response.choices[0].message, "reasoning_content", None)
+                if rc:
+                    content = rc
+            if not content:
+                logger.warning(f"轻量 LLM 返回空内容, 模型={self.model_name}, choices={len(response.choices)}")
+                return {"content": None, "success": False, "error": "empty content"}
             return {"content": content, "success": True, "error": None}
         except Exception as e:
             success = False
@@ -125,7 +146,7 @@ class LightweightClient(BaseLLMClient):
                 model=self.model_name,
                 messages=messages,
                 temperature=temp,
-                max_tokens=512,
+                max_tokens=2048,
                 stream=True,
             )
             async for chunk in stream:

@@ -73,7 +73,7 @@ class MockLLMClient:
     def __init__(self, response: dict):
         self._response = response
 
-    async def chat(self, messages, temperature=None, timeout=None):
+    async def chat(self, messages, temperature=None, timeout=None, max_tokens=None):
         return self._response
 
 
@@ -124,8 +124,9 @@ class TestFallbackScenario:
     def test_fallback_answers_use_chain_data(self):
         result = TemporalAnalyzer._fallback_scenario(CHAIN_DATA, SSH_LOG_LINES)
         answers = result["standard_answers"]
-        assert answers["T01"]["attack_type"] == "ssh_brute_force"
-        assert answers["T01"]["risk_level"] == "P1_高危"
+        # fallback 标准答案从真实日志/攻击链数据提取（中文可评分，非占位符）
+        assert "暴力破解" in answers["T01"]["attack_type"]
+        assert "高危" in answers["T01"]["risk_level"]
         assert "192.168.1.1" in answers["T01"]["key_indicators"]
         assert answers["T03"]["evidence_count"] == len(SSH_LOG_LINES)
 

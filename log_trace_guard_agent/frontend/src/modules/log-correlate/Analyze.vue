@@ -651,7 +651,7 @@ async function toTrainingScenario(chain: any) {
   try {
     const lines = input.value.split('\n').filter(l => l.trim())
     const res = await Api.logCorrelate.toScenario({
-      log_lines: lines.slice(0, 10),
+      log_lines: lines.slice(0, 50),
       chain_name: chain.chain_name || '',
       chain_description: chain.description || '',
       // ★ 传递完整攻击链数据，后端据此用 LLM 生成专属实战场景

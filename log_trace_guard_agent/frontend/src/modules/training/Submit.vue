@@ -32,7 +32,10 @@
           {{ steps[currentStep].question }}
         </div>
         <div v-if="steps[currentStep].sample" class="g-code-block" style="margin-bottom:12px">
-          <div class="g-code-body" style="max-height:100px;font-size:12px">
+          <div style="font-size:11px;font-weight:600;color:var(--el-color-primary);padding:6px 10px 0">
+            📋 待分析日志（{{ steps[currentStep].sample.split('\n').filter(l => l.trim()).length }} 行）
+          </div>
+          <div class="g-code-body" style="max-height:280px;font-size:12px">
             {{ steps[currentStep].sample }}
           </div>
         </div>
@@ -107,6 +110,21 @@
             <KnowledgePanel title="知识点详解">
               <div style="white-space:pre-wrap;line-height:1.8;font-size:13px">
                 {{ sr.analysis }}
+              </div>
+            </KnowledgePanel>
+          </div>
+
+          <!-- 标准答案（提交后即展示，让学员知道正确做法） -->
+          <div v-if="sr.correct_answer && Object.keys(sr.correct_answer).length" style="margin-top:12px">
+            <KnowledgePanel title="标准答案">
+              <div style="white-space:pre-wrap;line-height:1.8;font-size:13px">
+                <template v-for="(val, key) in sr.correct_answer" :key="key">
+                  <div style="margin-bottom:6px">
+                    <span style="font-weight:600;color:var(--el-color-primary)">{{ key }}:</span>
+                    <span v-if="Array.isArray(val)">{{ val.join('；') }}</span>
+                    <span v-else>{{ val }}</span>
+                  </div>
+                </template>
               </div>
             </KnowledgePanel>
           </div>

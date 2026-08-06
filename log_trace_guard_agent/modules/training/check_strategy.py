@@ -179,11 +179,10 @@ class ConclusionCheckStrategy(BaseCheckStrategy):
                 expected = correct_answer.get(field, "")
                 expected_str = str(expected).lower().strip() if expected else ""
 
-                # 全文关键词匹配
+                # 全文关键词匹配：key_fields 是等价表述集合，命中任一即字段正确
                 hits = sum(1 for kw in expected_values if kw.lower() in user_answer_str)
-                match_rate = hits / max(len(expected_values), 1)
 
-                if match_rate >= SIMILARITY_PASS:
+                if hits > 0:
                     matched_count += 1
                     checks.append({
                         "field": field,
@@ -192,14 +191,14 @@ class ConclusionCheckStrategy(BaseCheckStrategy):
                         "actual": user_answer_str[:100],
                         "detail": f"关键词 '{expected_values[0]}' 在答案中被识别",
                     })
-                elif match_rate >= SIMILARITY_PARTIAL:
+                elif expected_str and SequenceMatcher(None, user_answer_str, expected_str).ratio() >= SIMILARITY_PARTIAL:
                     matched_count += 0.5
                     checks.append({
                         "field": field,
                         "status": "partial",
                         "expected": expected_str[:100],
                         "actual": user_answer_str[:100],
-                        "detail": f"部分匹配，命中 {hits}/{len(expected_values)} 个关键词",
+                        "detail": "部分匹配，语义相似度达到部分标准",
                     })
                 else:
                     checks.append({
@@ -489,21 +488,20 @@ async def _free_text_check(submission: dict, key_fields: dict, correct_answer: d
         total_checked += 1
         expected_str = str(correct_answer.get(field, "")).lower().strip()
         hits = sum(1 for kw in expected_values if kw.lower() in user_str)
-        match_rate = hits / max(len(expected_values), 1)
 
-        if match_rate >= SIMILARITY_PASS:
+        if hits > 0:
             matched_count += 1
             checks.append({
                 "field": field, "status": "correct",
                 "expected": expected_str[:100], "actual": user_str[:100],
                 "detail": f"关键词 '{expected_values[0]}' 在答案中被识别",
             })
-        elif match_rate >= SIMILARITY_PARTIAL:
+        elif expected_str and SequenceMatcher(None, user_str, expected_str).ratio() >= SIMILARITY_PARTIAL:
             matched_count += 0.5
             checks.append({
                 "field": field, "status": "partial",
                 "expected": expected_str[:100], "actual": user_str[:100],
-                "detail": f"部分匹配，命中 {hits}/{len(expected_values)} 个关键词",
+                "detail": "部分匹配，语义相似度达到部分标准",
             })
         else:
             checks.append({

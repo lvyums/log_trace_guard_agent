@@ -629,15 +629,16 @@ class TemporalAnalyzer:
         try:
             llm = await LLMFactory.get_light_llm()
             result = await llm.chat([
-                {"role": "system", "content": "你是一个网络安全培训专家。根据真实攻击链数据生成实训场景。输���必须是纯JSON，不要用markdown包裹。"},
+                {"role": "system", "content": "你是一个网络安全培训专家。根据真实攻击链数据生成实训场景。输出必须是纯JSON，不要用markdown包裹。"},
                 {"role": "user", "content": prompt},
-            ], temperature=0.3, timeout=60)
+            ], temperature=0.3, timeout=60, max_tokens=4096)
 
             if not result.get("success"):
                 logger.warning(f"LLM 场景生成失败: {result.get('error', '未知错误')}")
                 return cls._fallback_scenario(chain_dict, log_lines)
 
             content = result["content"].strip()
+            logger.info(f"场景 LLM 原始输出长度: {len(content)} 字符, 前80字: {content[:80]!r}")
             # 去掉 markdown 包裹
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -670,6 +671,7 @@ class TemporalAnalyzer:
                         parsed = {}
 
             if not parsed or not parsed.get("scenario"):
+                logger.warning(f"场景 LLM 输出解析失败或无 scenario 字段, parsed类型={type(parsed).__name__}, 内容前200字: {content[:200]!r}")
                 return cls._fallback_scenario(chain_dict, log_lines)
 
             logger.info(f"实战场景生成成功: {parsed['scenario'].get('name', '?')}, {len(parsed.get('tasks', []))} 个任务")
@@ -685,12 +687,57 @@ class TemporalAnalyzer:
 
     @classmethod
     def _fallback_scenario(cls, chain_dict: dict, log_lines: List[str]) -> dict:
-        """LLM 生成失败时的降级方案 — 基于攻击链数据构造基础场景"""
+        """LLM 生成失败时的降级方案 — 基于攻击链数据构造基础场景
+
+        标准答案直接从真实日志提取（IP/账户/时间/阶段），保证学员答对即可得分，
+        而不是输出"请根据日志自行分析"之类的占位符。
+        """
         chain_name = chain_dict.get("chain_name", "unknown")
         description = chain_dict.get("description", "")
         risk_level = chain_dict.get("risk_level", "P2_低危")
         indicators = chain_dict.get("indicators", [])
         sugg = chain_dict.get("suggestion", "")
+
+        joined = "\n".join(log_lines[:100])
+        # ── 从真实日志提取证据 ──
+        src_ip = ""
+        ip_match = re.search(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", joined)
+        if ip_match:
+            src_ip = ip_match.group(1)
+        # 账户：优先 ssh 的 for/invalid user，其次 sudo 的 USER
+        accounts: List[str] = []
+        for m in re.finditer(r"(?:for|invalid user|user)\s+([A-Za-z0-9_.\-]+)", joined, re.IGNORECASE):
+            acct = m.group(1)
+            if acct.lower() not in ("root", "admin") and acct not in accounts:
+                accounts.append(acct)
+        if not accounts:
+            for m in re.finditer(r"USER=(\S+)", joined):
+                if m.group(1) not in accounts:
+                    accounts.append(m.group(1))
+        if not accounts:
+            accounts = ["root"]
+        # 时间范围
+        timestamps = re.findall(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", joined)
+        timeline = f"{timestamps[0]} 至 {timestamps[-1]}" if len(timestamps) >= 2 else (timestamps[0] if timestamps else "")
+        # 攻击类型中文名（从规则描述提炼，避免英文链名）
+        attack_type = description.split("：")[0] if description and "：" in description else (description or chain_name)
+        # 风险等级（从规则描述/链名推断）
+        if "高危" in risk_level or "critical" in str(chain_dict.get("severity", "")).lower():
+            risk_level_cn = "高危"
+        elif "中危" in risk_level or "medium" in str(chain_dict.get("severity", "")).lower():
+            risk_level_cn = "中危"
+        elif "低危" in risk_level or "low" in str(chain_dict.get("severity", "")).lower():
+            risk_level_cn = "低危"
+        else:
+            risk_level_cn = risk_level
+
+        # 攻击阶段：从规则描述拆出 "A → B → C"
+        stages: List[str] = []
+        if description and ("→" in description or "->" in description):
+            parts = re.split(r"→|->", description)
+            stages = [p.strip() for p in parts if p.strip()]
+        if not stages:
+            stages = ["多次登录失败", "登录成功", "提权"]
 
         return {
             "scenario": {
@@ -736,19 +783,19 @@ class TemporalAnalyzer:
             ],
             "standard_answers": {
                 "T01": {
-                    "attack_type": chain_name,
-                    "risk_level": risk_level,
-                    "key_indicators": indicators[:5],
+                    "attack_type": attack_type,
+                    "risk_level": risk_level_cn,
+                    "key_indicators": indicators[:5] or ([src_ip] if src_ip else []),
                 },
                 "T02": {
-                    "stage_sequence": ["请根据日志自行分析"],
-                    "total_stages": 1,
-                    "description": f"攻击者从 {log_lines[0][:60] if log_lines else '?'} 开始，{description}",
+                    "stage_sequence": stages,
+                    "total_stages": len(stages),
+                    "description": f"攻击者从 {timestamps[0] if timestamps else '? '}开始，{description or chain_name}",
                 },
                 "T03": {
-                    "src_ip": indicators[0] if indicators else "待提取",
-                    "affected_accounts": ["待提取"],
-                    "timeline": f"{len(log_lines)} 条日志的时间范围",
+                    "src_ip": src_ip or "待提取",
+                    "affected_accounts": accounts[:5],
+                    "timeline": timeline or f"{len(log_lines)} 条日志的时间范围",
                     "evidence_count": len(log_lines),
                 },
                 "T04": {
