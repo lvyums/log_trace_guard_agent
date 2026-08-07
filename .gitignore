@@ -48,12 +48,13 @@ Thumbs.db
 # Claude
 .claude/
 
-# 智能体记忆归档（本地交接用，不入库）
-docs/agent-memory/
+# Data
+data/
 
-# Data (runtime, not source)
-data/chroma_db/
-data/upload_temp/
+# 文档产物不入库（设计/报告/展示类，本地交接用）
+docs/
+log_trace_guard_cli/CLI功能详解.md
+log_trace_guard_cli/tests/sample_logs/cli全功能展示.md
 
 # Temporary / artifacts
 tmp/
