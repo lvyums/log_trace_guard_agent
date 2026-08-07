@@ -152,6 +152,12 @@ def _adapt_dynamic_standard_answers(standard_answers: dict) -> dict:
                 for ip in ips:
                     if ip not in keywords:
                         keywords.append(ip)
+                # timeline 特殊处理：拆出 HH:MM 时间对（学员常答 "10:00-10:02" 而非完整时间戳）
+                if field == "timeline":
+                    times = re.findall(r"\d{1,2}:\d{2}", value)
+                    for t in times:
+                        if t not in keywords:
+                            keywords.append(t)
             elif isinstance(value, (int, float)):
                 keywords = [str(value)]
 

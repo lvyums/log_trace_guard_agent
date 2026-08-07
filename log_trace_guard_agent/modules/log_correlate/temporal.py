@@ -708,7 +708,10 @@ class TemporalAnalyzer:
         accounts: List[str] = []
         for m in re.finditer(r"(?:for|invalid user|user)\s+([A-Za-z0-9_.\-]+)", joined, re.IGNORECASE):
             acct = m.group(1)
-            if acct.lower() not in ("root", "admin") and acct not in accounts:
+            # 排除 sshd 提示词本身（invalid/user 是 "invalid user" 结构的一部分，非真实账户）
+            if acct.lower() in ("root", "admin", "invalid", "user", "unknown"):
+                continue
+            if acct not in accounts:
                 accounts.append(acct)
         if not accounts:
             for m in re.finditer(r"USER=(\S+)", joined):
