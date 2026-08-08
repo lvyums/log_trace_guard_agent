@@ -6,6 +6,12 @@ on:
     paths:
       - 'log_trace_guard_cli/**'
 
+# 同日多次 push CLI 变更会生成相同日期 tag（vX.Y.Z-YYYYMMDD），
+# 并行运行会互相竞争同 tag 的 release。排队执行，避免 race。
+concurrency:
+  group: release-cli-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -53,10 +59,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          # 幂等处理：tag 是日期版（vX.Y.Z-YYYYMMDD），同日重复触发时相同。
+          # gh release create 遇到已存在的 release 会直接失败（exit 1），
+          # 导致同一天第二次 push CLI 变更时 CI 红。先查重，存在则删除重建。
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::warning::Release $TAG 已存在（同日重复触发），删除后重建"
+            # --cleanup-tag: 连同 tag 一起删，让 gh 从最新 HEAD 重建 tag
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
           # 用 gh CLI 创建 release（runner 预装，不依赖 Node runtime，无 Node20 弃用告警）
           # --generate-notes: GitHub 自动从 commits 生成变更说明，无需手写 body
-          gh release create "${{ steps.version.outputs.tag }}" log-guard-cli.zip \
-            --title "CLI ${{ steps.version.outputs.tag }}" \
+          gh release create "$TAG" log-guard-cli.zip \
+            --title "CLI $TAG" \
             --generate-notes \
             --draft=false \
             --prerelease=false
