@@ -65,7 +65,7 @@ log_guard/
 │   ├── polisher.py           # 结果润色器
 │   ├── orchestrator.py       # 总调度器
 │   └── settings.py           # 配置管理（.env / ~/.log-guard/config.json）
-├── modules/                  # 5个业务模块（零侵入）
+├── modules/                  # 5 个业务模块文件（+ ai_core AI 对话 = 6 大业务模块）
 │   ├── log_parse.py          # 日志解析
 │   ├── log_collect.py        # 日志采集
 │   ├── script_gen.py         # 脚本生成（正则/ES/Splunk/溯源/优化）

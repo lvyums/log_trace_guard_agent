@@ -1,4 +1,4 @@
-# 日志溯源卫士智能体 v3.0 — 前端开发指南
+# 日志溯源卫士智能体 v3.2 — 前端开发指南
 
 ## 开发模式
 
@@ -49,14 +49,14 @@ frontend/
 │   │   ├── KnowledgePanel.vue # 知识点面板
 │   │   ├── ConfirmBatch.vue # 批量确认弹窗
 │   │   └── CliDownloadBanner.vue # CLI下载横幅
-│   └── modules/            # 页面组件（按模块分组）
-│       ├── log-parse/      # 日志解析（4个页面）
-│       ├── log-correlate/  # 日志联合审查（2个页面）
-│       ├── advisory/       # 规划咨询（4个页面）
-│       ├── log-collect/    # 故障诊断（13个页面，含采集方案子功能）
-│       ├── script-gen/     # 脚本生成（4个页面）
-│       ├── compliance/     # 合规审计（3个页面）
-│       └── training/       # 攻防实训（2个页面）
+│   └── modules/            # 页面组件（按目录物理存放，导航归属见下方表格）
+│       ├── log-parse/      # 日志解析组件（4 页）
+│       ├── log-correlate/  # 日志联合审查组件（2 页）
+│       ├── advisory/       # 规划咨询-指导手册组件（Guide.vue）
+│       ├── log-collect/    # 历史目录：采集方案/故障诊断/架构推荐等组件（13 个文件，分属规划咨询与故障诊断导航）
+│       ├── script-gen/     # 脚本生成组件（4 页）+ 平台选型组件（Platform.vue 属规划咨询）
+│       ├── compliance/     # 合规审计组件（3 页）
+│       └── training/       # 攻防实训组件（3 个文件，含隐藏页 submit）
 └── dist/                   # 构建产出（gitignored）
 ```
 
