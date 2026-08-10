@@ -63,3 +63,6 @@ temp/
 *.bak
 =*
 take_screenshots.py
+
+# 答辩汇报材料（不入库）
+log_trace_guard_agent/log-trace-guard-architecture.html

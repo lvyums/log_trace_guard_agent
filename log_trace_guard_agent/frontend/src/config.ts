@@ -192,7 +192,7 @@ export const APP_CONFIG: AppConfig = {
       '/training/submit': { type: 'warning', title: '答题时遵循标准流程', content: '评分标准：识别设备类型(10%)→提取关键字段(30%)→判断风险等级(20%)→处置建议(40%)。' },
       '/training/report': { type: 'info', title: '报告用于跟踪技能成长', content: '重点关注薄弱环节、进步趋势、知识盲区。' },
       '/log-correlate/analyze': { type: 'info', title: '关联分析需要多源日志输入', content: '粘贴至少2-3条不同来源的日志，系统会自动构建时间线和检测攻击链。支持SSH、Web、防火墙等多类型混输。' },
-      '/log-correlate/patterns': { type: 'info', title: '攻击链模式库', content: '内置23条常见攻击链检测规则，涵盖数据库、网络、认证、容器、API等场景。' },
+      '/log-correlate/patterns': { type: 'info', title: '攻击链模式库', content: '内置16条安全攻击链检测规则，涵盖SSH爆破提权、SQL注入、横向移动、数据窃取、C2通信、勒索软件等场景。' },
     },
   },
 
