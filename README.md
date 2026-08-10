@@ -34,11 +34,11 @@
   - [CLI 安装使用](#cli-安装使用)
 - [🧩 全部功能说明](#-全部功能说明)
   - [日志解析](#日志解析模块)
-  - [日志采集](#日志采集模块)
+  - [日志联合审查](#日志联合审查模块)
+  - [规划咨询](#规划咨询模块)
+  - [故障诊断](#故障诊断模块)
   - [脚本生成](#脚本生成模块)
   - [合规审计](#合规审计模块)
-  - [日志联合审查 / 安全威胁狩猎](#日志联合审查--安全威胁狩猎模块)
-  - [规划咨询](#规划咨询模块)
   - [攻防实训](#攻防实训模块)
   - [CLI 命令行用法速查](#cli-命令行用法速查)
 - [🐳 Docker 容器化部署](#-docker-容器化部署)
@@ -62,7 +62,7 @@
 | 子项目 | 目录 | 说明 |
 |--------|------|------|
 | **Web 智能体** | `log_trace_guard_agent/` | FastAPI 后端 + Vue3 SPA 前端，**7 大业务模块、46 个业务 API 端点、20 个子页面** |
-| **CLI 工具** | `log_trace_guard_cli/` | 终端版，**5 大业务模块 + AI 智能对话**，可独立安装离线使用 |
+| **CLI 工具** | `log_trace_guard_cli/` | 终端版，**6 大业务模块（解析/采集/脚本/合规/联合审查/AI 对话）**，可独立安装离线使用 |
 
 **核心亮点：**
 
@@ -78,17 +78,19 @@
 
 ### Web 智能体 7 大模块
 
-| # | 模块 | 功能 | 三层架构 | 端点 |
-|---|------|------|----------|------|
-| 1 | **日志解析** | 日志源识别、结构化字段解析、风险研判（P0-P3）、字段释义问答、批量解析 | 规则 → RAG日志基础库 → LLM兜底 | 9 |
-| 2 | **日志采集** | 设备协议匹配、采集方案生成、分层架构推荐、故障智能排错 | 规则 → RAG采集架构库 → LLM故障诊断 | 5 |
-| 3 | **脚本生成** | 正则规则、ES 查询、Splunk SPL、攻击溯源、脚本优化、连接配置 | 规则/模板 → RAG技术脚本库 → LLM生成 | 13 |
-| 4 | **合规审计** | 等保2.0/网安法/数安法问答、合规基线生成、合规自查整改 | 规则 → RAG合规审计库 → LLM智能解读 | 4 |
-| 5 | **安全威胁狩猎** | 多源日志关联分析、16 种攻击链检测、大文件分片、攻击链转实训 | 关键词引擎 → RAG模式匹配 → LLM关联推理 | 8 |
-| 6 | **规划咨询** | 采集架构推荐、日志平台选型、定制指导手册 | 规则 → RAG方案库 → LLM方案生成 | 3 |
-| 7 | **攻防实训** | 场景派发、答题双维度评分、SSE 流式讲解、实训报告 | 规则评分 → LLM灰色区间增强 | 4 |
+> 模块命名与顺序与前端导航一致（`frontend/src/config.ts`）；后端为 7 个零耦合模块目录（`modules/`），其中 `log_collect` 的能力对应前端「规划咨询-采集方案」与「故障诊断」两个导航。
 
-> 📌 每个模块都有独立子页面（共 20 个），支持**运维 / 实训双模式**切换与跨模块联动。
+| # | 模块（前端导航） | 功能 | 三层架构 | 后端模块 | 端点 |
+|---|------|------|----------|---------|------|
+| 1 | **日志解析** | 日志源识别、结构化字段解析、风险研判（P0-P3）、字段释义问答、批量解析 | 规则 → RAG日志基础库 → LLM兜底 | `log_parse` | 9 |
+| 2 | **日志联合审查** | 多源日志关联分析、16 种攻击链检测、大文件分片、攻击链转实训 | 关键词引擎 → RAG模式匹配 → LLM关联推理 | `log_correlate` | 8 |
+| 3 | **规划咨询** | 采集方案、架构推荐、平台选型、定制指导手册 | 规则 → RAG采集架构库 → LLM方案生成 | `advisory` + `log_collect` | 6 |
+| 4 | **故障诊断** | 日志采集故障智能排错（原因定位 + 修复步骤） | 规则 → RAG采集架构库 → LLM故障诊断 | `log_collect` | 2 |
+| 5 | **脚本生成** | 正则规则、ES 查询、Splunk SPL、攻击溯源、脚本优化、连接配置 | 规则/模板 → RAG技术脚本库 → LLM生成 | `script_gen` | 13 |
+| 6 | **合规审计** | 等保2.0/网安法/数安法问答、合规基线生成、合规自查整改 | 规则 → RAG合规审计库 → LLM智能解读 | `compliance` | 4 |
+| 7 | **攻防实训** | 场景派发、答题双维度评分、SSE 流式讲解、实训报告 | 规则评分 → LLM灰色区间增强 | `training` | 4 |
+
+> 📌 前端共 7 个导航模块、20 个子页面（分布 4/2/4/1/4/3/2），支持**运维 / 实训双模式**切换与跨模块联动；端点合计 9+8+6+2+13+4+4 = **46 个业务 API**。
 
 ### CLI 智能体
 
@@ -138,9 +140,9 @@
 |--------|--------|----------|----------|
 | `log_basics` | 日志基础库 | log_features, risk_rules | 日志解析 |
 | `compliance` | 合规审计库 | compliance_standards, compliance_baselines | 合规审计 |
-| `collection` | 采集架构库 | collect_templates, device_protocol, arch_templates | 日志采集 / 规划咨询 |
+| `collection` | 采集架构库 | collect_templates, device_protocol, arch_templates | 规划咨询 / 故障诊断 |
 | `scripts` | 技术脚本库 | script_gen_*.json | 脚本生成 |
-| `cases` | 实训案例库 | training_scenarios, standard_answers, fault_kb, correlation_patterns | 威胁狩猎 / 攻防实训 |
+| `cases` | 实训案例库 | training_scenarios, standard_answers, fault_kb, correlation_patterns | 日志联合审查 / 攻防实训 |
 
 向量嵌入三级降级：**BGE**（1024 维）→ **MiniLM**（384 维）→ **N-gram**（128 维，当前降级态）。
 
@@ -168,7 +170,7 @@ agent/                                  # 仓库根
 │   └── docs/                           # 部署 / 开发规范 / 配置说明
 │
 └── log_trace_guard_cli/                # ── CLI 智能体 ──
-    ├── log_guard/                      # cli.py + ai_core + 5 业务模块
+    ├── log_guard/                      # cli.py + ai_core(AI 对话) + 5 业务模块文件
     ├── tests/                          # 243 测试（+1 跳过）
     └── setup.py / pyproject.toml       # 可独立安装
 ```
@@ -261,6 +263,8 @@ log-guard
 
 ### 日志解析模块
 
+> 对应后端模块目录 `modules/log_parse`。
+
 | 能力 | 端点 | 说明 |
 |------|------|------|
 | 日志识别 | `POST /api/v1/log-parse/identify` | 自动识别设备类型（ssh/web/firewall/waf/db/traffic） |
@@ -268,14 +272,6 @@ log-guard
 | 风险研判 | `POST /api/v1/log-parse/assess` | P0-P3 五级风险 + 处置建议 |
 | 字段释义 | `POST /explain` `/explain/batch` | RAG 检索 + LLM 讲解字段含义 |
 | 批量解析 | `POST /parse/batch` `/parse/batch-file` `/upload` | 批量文件解析（单文件 ≤10MB） |
-
-### 日志采集模块
-
-| 能力 | 端点 | 说明 |
-|------|------|------|
-| 设备匹配 | `POST /api/v1/log-collect/match` | 按厂商/型号/协议匹配采集模板 |
-| 采集方案 | `POST /plan` `/plan/batch` | 输出标准化采集配置（syslog/SNMP/API） |
-| 故障诊断 | `POST /fault/diagnose` `GET /fault/list` | 关键词匹配故障库，输出原因 + 修复步骤 |
 
 ### 脚本生成模块
 
@@ -297,7 +293,9 @@ log-guard
 | 基线生成 | `POST /baseline` | 按资产信息生成合规基线报告（可下载 Markdown） |
 | 合规自查 | `POST /check` `/check/batch` | 配置项逐条比对 → 满足/缺口 + 整改建议 |
 
-### 日志联合审查 / 安全威胁狩猎模块
+### 日志联合审查模块
+
+> 对应后端模块目录 `modules/log_correlate`。
 
 | 能力 | 端点 | 说明 |
 |------|------|------|
@@ -311,13 +309,28 @@ log-guard
 
 ### 规划咨询模块
 
+> 对应后端模块目录 `modules/advisory` + `modules/log_collect`（采集方案部分）。
+
 | 能力 | 端点 | 说明 |
 |------|------|------|
+| 设备匹配 | `POST /api/v1/log-collect/match` | 按厂商/型号/协议匹配采集模板 |
+| 采集方案 | `POST /plan` `/plan/batch` | 输出标准化采集配置（syslog/SNMP/API） |
 | 架构推荐 | `POST /api/v1/advisory/architecture/recommend` | 按企业规模推荐采集架构 |
 | 平台选型 | `POST /platform/choose` | 多平台多维度打分对比 |
 | 指导手册 | `POST /guide/generate` | 按场景生成定制化指导手册 |
 
+### 故障诊断模块
+
+> 对应后端模块目录 `modules/log_collect`（故障知识库部分）。
+
+| 能力 | 端点 | 说明 |
+|------|------|------|
+| 故障诊断 | `POST /api/v1/log-collect/fault/diagnose` | 关键词匹配故障知识库，输出原因 + 修复步骤 |
+| 故障清单 | `GET /fault/list` | 查看全部预置故障类型 |
+
 ### 攻防实训模块
+
+> 对应后端模块目录 `modules/training`。
 
 | 能力 | 端点 | 说明 |
 |------|------|------|
